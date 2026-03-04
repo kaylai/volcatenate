@@ -102,6 +102,19 @@ MODEL_COLORS_HEX = {
     "VESIcal_ShishkinaIdealMixing": "#5E6480",
 }
 
+# Marker styles for matplotlib scatter plots
+# Format: (legend_label, marker, size, facecolor, edgecolor, linewidth)
+MODEL_MARKER_STYLE = {
+    "DCompress":      ("D-Compress (IM)", "s",  150, "#01B0F0", "k", 0.5),
+    "EVo":            ("EVo (D-C)",       "o",  150, "#E46C0A", "k", 0.5),
+    "MAGEC":          ("MAGEC (IM)",      "s",  150, "#DD94BB", "k", 0.5),
+    "SulfurX":        ("Sulfur_X (IM)",   "s",  150, "#009E73", "k", 0.5),
+    "VolFe":          ("VolFe (Allison)", "^",  150, "#FFC00D", "k", 0.5),
+    "VESIcal_Iacono": ("VESIcal (IM)",   "s",  120, "none",    "k", 1.0),
+    "VESIcal_Dixon":  ("VESIcal (VC)",   "x",  100, "k",       "k", 1.5),
+    "VESIcal_MS":     ("VESIcal (MS)",   "*",  140, "k",       "k", 0.5),
+}
+
 
 def get_line_properties() -> dict[str, str]:
     """Return a dict of model names to Plotly ``rgb(...)`` colour strings."""
@@ -743,3 +756,892 @@ def plot_all_redox_variables(
 
     fig.set_layout_engine("constrained")
     return all_data, fig, (ax_fo2, ax_fe_spec, ax_s_spec)
+
+
+# ---------------------------------------------------------------------------
+# Composition overview & saturation pressure figures (Figs 1-3)
+# ---------------------------------------------------------------------------
+
+# Default volcano colours for composition/envelope plots
+_VOLCANO_COLORS_DEFAULT = ["#4477AA", "#EE6677", "#ABABAB", "#93CC44"]
+
+# Display names with special characters
+_DISPLAY_NAMES = {"Kilauea": "K\u012blauea"}
+
+
+def _get_comp_value(comp, key):
+    """Extract a value from a MeltComposition or dict."""
+    if isinstance(comp, dict):
+        return comp.get(key, np.nan)
+    return getattr(comp, key, np.nan)
+
+
+def _get_sample_name(comp):
+    """Extract sample name from a MeltComposition or dict."""
+    if isinstance(comp, dict):
+        return comp.get("Sample", comp.get("sample", ""))
+    return getattr(comp, "sample", "")
+
+
+def plot_composition_overview(
+    compositions,
+    volcano_order=None,
+    colors=None,
+    figsize=(16, 3.5),
+):
+    """Five-panel dot chart of starting composition variables.
+
+    Parameters
+    ----------
+    compositions : list
+        List of ``MeltComposition`` objects or dicts with keys
+        ``H2O``, ``CO2``, ``S``, ``T_C``, ``dNNO``, and ``Sample``.
+    volcano_order : list[str], optional
+        Sample names in the desired display order.  If *None*, uses
+        the order from *compositions*.
+    colors : dict or list, optional
+        Per-volcano colours.  A dict mapping sample name to colour,
+        or a list of colours applied in order.  Defaults to the
+        envelope palette (blue, red, grey, green).
+    figsize : tuple
+        Figure size in inches.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : ndarray of Axes
+    """
+    _ensure_mpl()
+    import matplotlib.ticker as mticker
+
+    variables = [
+        ("H2O",  r"H$_2$O (wt%)"),
+        ("CO2",  r"CO$_2$ (wt%)"),
+        ("S",    "S (wt%)"),
+        ("T_C",  "Temperature (\u00b0C)"),
+        ("dNNO", r"$\Delta$NNO"),
+    ]
+
+    # Resolve order
+    if volcano_order is None:
+        volcano_order = [_get_sample_name(c) for c in compositions]
+    comp_by_name = {_get_sample_name(c): c for c in compositions}
+
+    # Resolve colours
+    if colors is None:
+        color_dict = {
+            name: _VOLCANO_COLORS_DEFAULT[i % len(_VOLCANO_COLORS_DEFAULT)]
+            for i, name in enumerate(volcano_order)
+        }
+    elif isinstance(colors, dict):
+        color_dict = colors
+    else:
+        color_dict = {
+            name: colors[i % len(colors)]
+            for i, name in enumerate(volcano_order)
+        }
+
+    fig, axes = _plt.subplots(1, len(variables), figsize=figsize)
+
+    for i, (key, ylabel) in enumerate(variables):
+        ax = axes[i]
+        for j, vname in enumerate(volcano_order):
+            comp = comp_by_name.get(vname)
+            if comp is None:
+                continue
+            val = _get_comp_value(comp, key)
+            ax.scatter(
+                j, val,
+                color=color_dict.get(vname, "#333333"),
+                s=150, zorder=3,
+                edgecolors="k", linewidths=0.5,
+                marker="D",
+            )
+
+        ax.set_ylabel(ylabel, fontsize=13)
+        ax.set_xticks(range(len(volcano_order)))
+        ax.set_xticklabels(
+            [_DISPLAY_NAMES.get(v, v) for v in volcano_order],
+            fontsize=11,
+        )
+        ax.tick_params(axis="y", labelsize=11)
+
+        # Visual padding
+        ymin, ymax = ax.get_ylim()
+        margin = (ymax - ymin) * 0.15 if ymax != ymin else 0.1
+        ax.set_ylim(ymin - margin, ymax + margin)
+
+    fig.set_layout_engine("constrained")
+    return fig, axes
+
+
+def plot_satp_grouped(
+    satp_df,
+    models=None,
+    style=None,
+    figsize=(11, 5),
+):
+    """Grouped scatter plot of saturation pressures by sample.
+
+    Parameters
+    ----------
+    satp_df : pd.DataFrame
+        Output from :func:`~volcatenate.calculate_saturation_pressure`.
+        Must contain ``Sample`` column and ``<Model>_SatP_bars`` columns.
+    models : list[str], optional
+        Model display order.  If *None*, auto-detected from columns.
+    style : dict, optional
+        ``{model: (label, marker, size, facecolor, edgecolor, lw)}``.
+        Defaults to :data:`MODEL_MARKER_STYLE`.
+    figsize : tuple
+        Figure size in inches.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    """
+    _ensure_mpl()
+    import matplotlib.ticker as mticker
+
+    if style is None:
+        style = dict(MODEL_MARKER_STYLE)
+
+    # Auto-detect models from column names
+    if models is None:
+        models = [
+            c.replace("_SatP_bars", "")
+            for c in satp_df.columns
+            if c.endswith("_SatP_bars")
+        ]
+
+    samples = list(satp_df["Sample"])
+
+    # Split models into core and VESIcal groups
+    core_models = [m for m in models if not m.startswith("VESIcal")]
+    vesical_models = [m for m in models if m.startswith("VESIcal")]
+
+    # Build x-offsets within each panel
+    offsets = {}
+    x = 0
+    for m in core_models:
+        offsets[m] = x
+        x += 2
+    if vesical_models:
+        x += 3  # gap between groups
+        for m in vesical_models:
+            offsets[m] = x
+            x += 1
+
+    panel_width = x + 2  # total width per panel (with padding)
+
+    # Panel bases and dividers
+    panel_bases = {s: i * panel_width for i, s in enumerate(samples)}
+    dividers = [
+        (i + 1) * panel_width - 1.5
+        for i in range(len(samples) - 1)
+    ]
+    panel_left = -2.5
+    panel_right = len(samples) * panel_width - 3.5
+    panel_centres = [
+        panel_bases[s] + (x - 1) / 2
+        for s in samples
+    ]
+
+    fig, ax = _plt.subplots(figsize=figsize)
+
+    for model in models:
+        col_name = f"{model}_SatP_bars"
+        if col_name not in satp_df.columns:
+            continue
+
+        lbl, mkr, ms, fc, ec, lw = style.get(
+            model, (model, "o", 100, MODEL_COLORS_HEX.get(model, "#333"), "k", 0.5)
+        )
+
+        xs, ys = [], []
+        for _, row in satp_df.iterrows():
+            sample = row["Sample"]
+            val = row[col_name]
+            if pd.notna(val) and sample in panel_bases:
+                xs.append(panel_bases[sample] + offsets[model])
+                ys.append(val)
+
+        if mkr in ("x", "+", "|", "_"):
+            ax.scatter(
+                xs, ys, marker=mkr, s=ms, color=ec,
+                linewidths=lw, label=lbl, zorder=3,
+            )
+        else:
+            ax.scatter(
+                xs, ys, marker=mkr, s=ms,
+                facecolors=fc, edgecolors=ec, linewidths=lw,
+                label=lbl, zorder=3,
+            )
+
+    # Vertical panel dividers
+    for xd in dividers:
+        ax.axvline(xd, color="k", linewidth=0.8, zorder=1)
+
+    ax.set_xlim(panel_left, panel_right)
+    ax.set_ylim(0, None)
+
+    # Bold sample names centred at top of each panel
+    ytop = ax.get_ylim()[1]
+    for cx, s in zip(panel_centres, samples):
+        display = _DISPLAY_NAMES.get(s, s)
+        ax.text(cx, ytop * 0.95, display, ha="center", va="top", fontsize=20)
+
+    ax.set_ylabel("Saturation Pressure (bar)", fontsize=15)
+    ax.tick_params(axis="both", labelsize=12)
+    ax.yaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda v, p: f"{v:,.0f}")
+    )
+    ax.set_xticks([])
+
+    ax.legend(
+        fontsize=13, bbox_to_anchor=(0.54, 0.3),
+        frameon=True, edgecolor="k", facecolor="white", framealpha=1.0,
+        ncol=2,
+    )
+
+    fig.set_layout_engine("constrained")
+    return fig, ax
+
+
+def plot_satp_deviation(
+    satp_df,
+    ref_model="VESIcal_Iacono",
+    compositions=None,
+    x_variable="CO2",
+    compare_models=None,
+    style=None,
+    figsize=(7, 5),
+):
+    """Plot saturation pressure deviation from a reference model.
+
+    Parameters
+    ----------
+    satp_df : pd.DataFrame
+        Output from :func:`~volcatenate.calculate_saturation_pressure`.
+    ref_model : str
+        Reference model name.  A horizontal line at 0 % is drawn.
+    compositions : list, optional
+        ``MeltComposition`` objects or dicts with composition data.
+        Needed to provide x-axis values (e.g. starting CO\ :sub:`2`).
+        Matched to *satp_df* rows by sample name.
+    x_variable : str
+        Composition key for the x-axis (e.g. ``"CO2"``).
+    compare_models : list[str], optional
+        Models to compare against the reference.  Defaults to all
+        models in *satp_df* except *ref_model*.
+    style : dict, optional
+        ``{model: (label, marker, size, color)}``.
+    figsize : tuple
+        Figure size in inches.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    """
+    _ensure_mpl()
+    import matplotlib.ticker as mticker
+
+    ref_col = f"{ref_model}_SatP_bars"
+    if ref_col not in satp_df.columns:
+        raise KeyError(
+            f"Reference model column {ref_col!r} not in DataFrame. "
+            f"Available: {[c for c in satp_df.columns if c.endswith('_SatP_bars')]}"
+        )
+
+    # Build composition lookup: sample name (lower) → composition
+    comp_lookup = {}
+    if compositions is not None:
+        for c in compositions:
+            name = _get_sample_name(c).lower()
+            comp_lookup[name] = c
+
+    # Auto-detect comparison models
+    if compare_models is None:
+        compare_models = [
+            c.replace("_SatP_bars", "")
+            for c in satp_df.columns
+            if c.endswith("_SatP_bars") and c != ref_col
+        ]
+
+    # Default style from MODEL_MARKER_STYLE (pick label, marker, size, color)
+    if style is None:
+        style = {}
+        for m, (lbl, mkr, ms, fc, ec, lw) in MODEL_MARKER_STYLE.items():
+            color = fc if fc != "none" else ec
+            style[m] = (lbl, mkr, ms, color)
+
+    fig, ax = _plt.subplots(figsize=figsize)
+
+    for model in compare_models:
+        col_name = f"{model}_SatP_bars"
+        if col_name not in satp_df.columns:
+            continue
+
+        lbl, mkr, ms, color = style.get(
+            model, (model, "o", 80, MODEL_COLORS_HEX.get(model, "#333"))
+        )
+
+        xs, ys = [], []
+        for _, row in satp_df.iterrows():
+            p_model = row[col_name]
+            p_ref = row[ref_col]
+            if pd.isna(p_model) or pd.isna(p_ref) or p_ref == 0:
+                continue
+
+            # Get x-axis value from compositions
+            sample_lower = str(row["Sample"]).lower()
+            if sample_lower in comp_lookup:
+                x_val = _get_comp_value(comp_lookup[sample_lower], x_variable)
+            else:
+                continue
+
+            xs.append(x_val)
+            ys.append(100.0 * (p_model - p_ref) / p_ref)
+
+        ax.scatter(
+            xs, ys, marker=mkr, s=ms, color=color,
+            edgecolors="k", linewidths=0.5, label=lbl, zorder=3,
+        )
+
+    # Reference line
+    ref_label = style.get(ref_model, (ref_model,))[0] if ref_model in style else ref_model
+    ax.axhline(0, color="k", linewidth=1.2, zorder=2, label=ref_label)
+
+    # Axis labels
+    x_labels = {
+        "CO2": r"Starting CO$_2^{\,\mathrm{melt}}$ total (wt%)",
+        "H2O": r"Starting H$_2$O$^{\mathrm{melt}}$ total (wt%)",
+        "S":   r"Starting S$^{\mathrm{melt}}$ total (wt%)",
+    }
+    ax.set_xlabel(x_labels.get(x_variable, f"Starting {x_variable}"), fontsize=12)
+    ax.set_ylabel("Relative deviation from reference", fontsize=12)
+    ax.yaxis.set_major_formatter(mticker.PercentFormatter())
+    ax.legend(fontsize=9, edgecolor="k")
+    ax.set_xlim(left=0)
+
+    fig.set_layout_engine("constrained")
+    return fig, ax
+
+
+# ---------------------------------------------------------------------------
+# Manuscript figure convenience API (Figs 1–9)
+# ---------------------------------------------------------------------------
+# Each ``figure_N()`` encapsulates the paper's layout, colours, axis limits,
+# and legend placement so callers only pass data.
+#
+# Usage::
+#
+#     import volcatenate.plotting as vp
+#
+#     fig, axes = vp.figure_1(compositions)
+#     fig       = vp.figure_4(systems)
+#
+#     vp.generate_all_figures(
+#         systems, compositions=comps, satp_df=df, output_dir="figures/",
+#     )
+# ---------------------------------------------------------------------------
+
+# Public mapping of system names → colours (matches paper palette)
+SYSTEM_COLORS = {
+    "MORB": "#4477AA",
+    "Kilauea": "#EE6677",
+    "Fuego": "#ABABAB",
+    "Fogo": "#93CC44",
+}
+SYSTEM_ORDER = ["MORB", "Kilauea", "Fuego", "Fogo"]
+
+# Redox envelopes use a darker Fuego shade for print contrast
+_REDOX_COLORS = ["#4477AA", "#EE6677", "#6F6F6F", "#93CC44"]
+
+
+def _models_from_systems(systems, require_col=None):
+    """Extract unique model names present in a *systems* dict.
+
+    Parameters
+    ----------
+    systems : dict
+        ``{system_name: {model_name: DataFrame, "Name": str, ...}}``.
+    require_col : str, optional
+        Only include models whose DataFrame contains this column.
+    """
+    models = set()
+    for data in systems.values():
+        for key, val in data.items():
+            if key == "Name" or not isinstance(val, pd.DataFrame):
+                continue
+            if require_col and require_col not in val.columns:
+                continue
+            models.add(key)
+    return sorted(models)
+
+
+def _save_figure(fig, path, dpi=300, scale=4):
+    """Save a matplotlib or Plotly figure if *path* is not None."""
+    if path is None:
+        return
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    if hasattr(fig, "write_image"):  # Plotly
+        fig.write_image(path, scale=scale)
+    else:  # matplotlib
+        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+
+
+def _apply_standard_legend(fig):
+    """Apply unified Plotly legend placement (lower-right, vertical)."""
+    fig = unify_legend(fig)
+    fig.update_layout(
+        legend=dict(
+            x=0.995, y=0.02, xanchor="right", yanchor="bottom",
+            orientation="v", bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="black", borderwidth=1,
+        ),
+        margin=dict(r=50, b=50, t=50, l=50),
+    )
+    return fig
+
+
+# ---- Figure 1 ----
+
+def figure_1(compositions, save_path=None, dpi=300, **kwargs):
+    """Figure 1: Starting composition overview (5-panel dot chart).
+
+    Parameters
+    ----------
+    compositions : list
+        ``MeltComposition`` objects or dicts with H2O, CO2, S, T_C, dNNO.
+    save_path : str, optional
+        Save the figure to this path.
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    axes : ndarray of Axes
+    """
+    order = kwargs.pop("volcano_order", None)
+    if order is None:
+        order = [_get_sample_name(c) for c in compositions]
+    colors = kwargs.pop("colors", {
+        name: SYSTEM_COLORS.get(
+            name, _VOLCANO_COLORS_DEFAULT[i % len(_VOLCANO_COLORS_DEFAULT)]
+        )
+        for i, name in enumerate(order)
+    })
+    fig, axes = plot_composition_overview(
+        compositions, volcano_order=order, colors=colors, **kwargs,
+    )
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, axes
+
+
+# ---- Figure 2 ----
+
+def figure_2(satp_df, save_path=None, dpi=300, **kwargs):
+    """Figure 2: Absolute saturation pressures grouped by sample.
+
+    Parameters
+    ----------
+    satp_df : pd.DataFrame
+        From :func:`~volcatenate.calculate_saturation_pressure`.
+    save_path : str, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    ax : matplotlib Axes
+    """
+    fig, ax = plot_satp_grouped(satp_df, **kwargs)
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, ax
+
+
+# ---- Figure 3 ----
+
+def figure_3(satp_df, compositions, save_path=None, dpi=300, **kwargs):
+    """Figure 3: SatP deviation from reference model vs. starting CO2.
+
+    Parameters
+    ----------
+    satp_df : pd.DataFrame
+    compositions : list
+        Needed for x-axis values (starting CO2).
+    save_path : str, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    ax : matplotlib Axes
+    """
+    fig, ax = plot_satp_deviation(
+        satp_df, compositions=compositions, **kwargs,
+    )
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, ax
+
+
+# ---- Figure 4 ----
+
+def figure_4(systems, save_path=None, scale=4, **kwargs):
+    """Figure 4: P-normalized H2O, CO2, S degassing paths (Plotly).
+
+    Parameters
+    ----------
+    systems : dict
+        ``{system_name: basalt_data_dict}`` from ``load_results()``.
+    save_path : str, optional
+
+    Returns
+    -------
+    plotly.graph_objs.Figure
+    """
+    models = kwargs.pop("models", None) or _models_from_systems(systems)
+    basalt_list = list(systems.values())
+    colors = get_line_properties()
+    fig = plot_results(
+        models, basalt_list, ["H2Om", "CO2m", "Sm"],
+        colors, p_norm=True, scale=scale,
+    )
+    fig = _apply_standard_legend(fig)
+    _save_figure(fig, save_path, scale=scale)
+    return fig
+
+
+# ---- Figure 5 ----
+
+def figure_5(systems, save_path=None, dpi=300, **kwargs):
+    """Figure 5: Melt volatile deviation envelopes (H2O, CO2, S).
+
+    Parameters
+    ----------
+    systems : dict
+    save_path : str, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    axes : tuple of Axes (H2O, CO2, S)
+    """
+    colors = kwargs.pop("colors", list(SYSTEM_COLORS.values()))
+    exclude = kwargs.pop("exclude_models", ["VESIcal_MS"])
+    ylim = kwargs.pop("ylim", (-100, 350))
+    legend_order = kwargs.pop("legend_order", SYSTEM_ORDER)
+    _, fig, axes = plot_all_melt_volatiles(
+        systems, colors=colors, alpha=0.35,
+        legend_order=legend_order, exclude_models=exclude,
+        **kwargs,
+    )
+    for ax in axes:
+        ax.set_ylim(*ylim)
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, axes
+
+
+# ---- Figure 6 ----
+
+def figure_6(systems, save_path=None, scale=4, **kwargs):
+    """Figure 6: P-normalized redox variables (Plotly).
+
+    Auto-selects models with S speciation data (``S6St_m`` column).
+
+    Parameters
+    ----------
+    systems : dict
+    save_path : str, optional
+
+    Returns
+    -------
+    plotly.graph_objs.Figure
+    """
+    models = kwargs.pop("models", None) or _models_from_systems(
+        systems, require_col="S6St_m",
+    )
+    basalt_list = list(systems.values())
+    colors = get_line_properties()
+    fig = plot_results(
+        models, basalt_list,
+        ["fO2_FMQ", "Fe_speciation", "S_speciation"],
+        colors, p_norm=True,
+    )
+    # S6+/ST row (row 3): clamp to [0, 1]
+    n_cols = len(basalt_list)
+    for col in range(1, n_cols + 1):
+        update_axis_limits(fig, "y", 3, col, [0, 1])
+    # Fe3+/FeT last column: start at 0
+    update_axis_limits(fig, "y", 2, n_cols, [0, None])
+
+    fig = _apply_standard_legend(fig)
+    _save_figure(fig, save_path, scale=scale)
+    return fig
+
+
+# ---- Figure 7 ----
+
+def figure_7(systems, save_path=None, dpi=300, **kwargs):
+    """Figure 7: Redox deviation envelopes (fO2, Fe3+/FeT, S6+/ST).
+
+    Parameters
+    ----------
+    systems : dict
+    save_path : str, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    axes : tuple of Axes
+    """
+    colors = kwargs.pop("colors", _REDOX_COLORS)
+    ylim = kwargs.pop("ylim", (-200, 350))
+    legend_order = kwargs.pop("legend_order", SYSTEM_ORDER)
+    _, fig, axes = plot_all_redox_variables(
+        systems, colors=colors, alpha=0.35,
+        legend_order=legend_order, **kwargs,
+    )
+    for ax in axes:
+        ax.set_ylim(*ylim)
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, axes
+
+
+# ---- Figure 8 ----
+
+def figure_8(systems, save_path_lines=None, save_path_envelopes=None,
+             scale=4, dpi=300, **kwargs):
+    """Figure 8: C/S vapor paths (A) and deviation envelopes (B).
+
+    Parameters
+    ----------
+    systems : dict
+    save_path_lines : str, optional
+        Save path for 8A (Plotly).
+    save_path_envelopes : str, optional
+        Save path for 8B (matplotlib).
+
+    Returns
+    -------
+    fig_8a : plotly Figure
+    fig_8b : matplotlib Figure
+    ax_8b : matplotlib Axes
+    """
+    # 8A: C/S vapor line plots
+    models = kwargs.pop("models", None) or _models_from_systems(
+        systems, require_col="CS_v_mf",
+    )
+    basalt_list = list(systems.values())
+    colors = get_line_properties()
+    fig_8a = plot_results(models, basalt_list, ["C_S_vapor"], colors)
+    fig_8a.update_yaxes(range=[0, None])
+    fig_8a = unify_legend(fig_8a)
+    for col in range(1, len(basalt_list) + 1):
+        update_axis_limits(fig_8a, "y", 1, col, [0, 150])
+    _save_figure(fig_8a, save_path_lines, scale=scale)
+
+    # 8B: C/S vapor deviation envelopes
+    exclude = kwargs.pop("exclude_models", {
+        "MORB": ["DCompress", "EVo"],
+        "Kilauea": ["DCompress"],
+    })
+    sys_colors = list(SYSTEM_COLORS.values())
+    _, fig_8b, ax_8b = plot_deviation_envelopes(
+        systems, param="CS_v_mf", colors=sys_colors,
+        exclude_models=exclude, legend_order=SYSTEM_ORDER,
+    )
+    ax_8b.legend(loc="upper right", framealpha=1)
+    ax_8b.text(0.025, 250, "*Excluding outlier tools")
+    _save_figure(fig_8b, save_path_envelopes, dpi=dpi)
+
+    return fig_8a, fig_8b, ax_8b
+
+
+# ---- Figure 9 ----
+
+def figure_9(systems, save_path=None, dpi=300, **kwargs):
+    """Figure 9: O2 mass balance (reported vs. by-difference X_O2).
+
+    Only models with ``O2_v_mf`` and ``XO2_BYDIFF_v_mf`` columns are
+    plotted.
+
+    Parameters
+    ----------
+    systems : dict
+    save_path : str, optional
+
+    Returns
+    -------
+    fig : matplotlib Figure or None
+    axes : ndarray of Axes or None
+    """
+    _ensure_mpl()
+    o2_models = _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
+    if not o2_models:
+        warnings.warn("No models with O2 mass balance data for Figure 9.")
+        return None, None
+
+    abs_y_models = kwargs.pop("abs_y_models", ["MAGEC"])
+    data_colors = ["blue", "red", "darkgray", "green"]
+    basalt_list = list(systems.values())
+
+    n = len(o2_models)
+    ncols = min(n, 2)
+    nrows = math.ceil(n / ncols)
+    fig, axes = _plt.subplots(nrows, ncols, figsize=(5 * ncols, 5 * nrows))
+    if n == 1:
+        axes = np.array([axes])
+    axes_flat = np.array(axes).flat
+
+    panel_labels = "ABCDEFGH"
+    for idx, model in enumerate(o2_models):
+        ax = axes_flat[idx]
+        for enum, data in enumerate(basalt_list):
+            if model not in data or not isinstance(data[model], pd.DataFrame):
+                continue
+            df = data[model]
+            if "O2_v_mf" not in df.columns or "XO2_BYDIFF_v_mf" not in df.columns:
+                continue
+            y_vals = df["XO2_BYDIFF_v_mf"]
+            if model in abs_y_models:
+                y_vals = y_vals.abs()
+            ax.scatter(
+                df["O2_v_mf"], y_vals,
+                s=15, color=data_colors[enum % len(data_colors)],
+                edgecolors="k", linewidths=0.4, marker="D", alpha=0.9,
+            )
+
+        # 1:1 reference line
+        xlims, ylims = ax.get_xlim(), ax.get_ylim()
+        ref_min = min(xlims[0], ylims[0])
+        ref_max = max(xlims[1], ylims[1])
+        ax.plot([ref_min, ref_max], [ref_min, ref_max], "k-", linewidth=1)
+
+        ax.set_xlabel(r"Reported $X_{O_2}^{vapor}$ (molar frac)")
+        ylabel = r"By Difference $X_{O_2}^{vapor}$ (molar frac)"
+        if model in abs_y_models:
+            ylabel = r"|By Difference $X_{O_2}^{vapor}$| (molar frac)"
+            ax.text(
+                0.05, 0.95,
+                "y-axis: absolute value\n(raw values are negative)",
+                transform=ax.transAxes, ha="left", va="top",
+                fontsize=9, fontstyle="italic", color="dimgray",
+            )
+        ax.set_ylabel(ylabel)
+        ax.text(
+            0.95, 0.05, f"{panel_labels[idx]}) {model}",
+            transform=ax.transAxes, ha="right", va="bottom",
+            fontsize=12, fontweight="bold",
+        )
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+    # Hide unused axes
+    total_axes = nrows * ncols
+    for idx in range(n, total_axes):
+        axes_flat[idx].set_visible(False)
+
+    _plt.tight_layout()
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, axes
+
+
+# ---- Generate all ----
+
+def generate_all_figures(
+    systems,
+    compositions=None,
+    satp_df=None,
+    output_dir="figures",
+    dpi=300,
+    scale=4,
+):
+    """Generate all manuscript figures and save to *output_dir*.
+
+    Parameters
+    ----------
+    systems : dict
+        ``{"MORB": data_morb, ...}`` from :func:`~volcatenate.load_results`.
+    compositions : list, optional
+        ``MeltComposition`` objects for Figures 1 and 3.
+    satp_df : pd.DataFrame, optional
+        Saturation-pressure DataFrame for Figures 2 and 3.
+    output_dir : str
+        Directory for saved PNGs.
+    dpi : int
+        Resolution for matplotlib figures.
+    scale : int
+        Scale factor for Plotly figure export.
+
+    Returns
+    -------
+    dict
+        ``{figure_name: figure_object}`` for every generated figure.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    figs = {}
+
+    def _path(name):
+        return os.path.join(output_dir, name)
+
+    if compositions is not None:
+        print("Figure 1: Composition overview")
+        figs["figure_1"], _ = figure_1(
+            compositions,
+            save_path=_path("Fig1_composition_overview.png"), dpi=dpi,
+        )
+
+    if satp_df is not None:
+        print("Figure 2: Saturation pressures")
+        figs["figure_2"], _ = figure_2(
+            satp_df,
+            save_path=_path("Fig2_satp_grouped.png"), dpi=dpi,
+        )
+
+    if satp_df is not None and compositions is not None:
+        print("Figure 3: SatP deviation")
+        figs["figure_3"], _ = figure_3(
+            satp_df, compositions,
+            save_path=_path("Fig3_satp_deviation.png"), dpi=dpi,
+        )
+
+    print("Figure 4: Melt volatile degassing paths")
+    figs["figure_4"] = figure_4(
+        systems, save_path=_path("Fig4_melt_volatiles.png"), scale=scale,
+    )
+
+    print("Figure 5: Melt volatile envelopes")
+    figs["figure_5"], _ = figure_5(
+        systems, save_path=_path("Fig5_melt_volatile_envelopes.png"), dpi=dpi,
+    )
+
+    print("Figure 6: Redox variable degassing paths")
+    figs["figure_6"] = figure_6(
+        systems, save_path=_path("Fig6_redox_variables.png"), scale=scale,
+    )
+
+    print("Figure 7: Redox envelopes")
+    figs["figure_7"], _ = figure_7(
+        systems, save_path=_path("Fig7_redox_envelopes.png"), dpi=dpi,
+    )
+
+    print("Figure 8: C/S vapor")
+    fig_8a, fig_8b, _ = figure_8(
+        systems,
+        save_path_lines=_path("Fig8A_CS_vapor.png"),
+        save_path_envelopes=_path("Fig8B_CS_vapor_envelopes.png"),
+        scale=scale, dpi=dpi,
+    )
+    figs["figure_8a"] = fig_8a
+    figs["figure_8b"] = fig_8b
+
+    print("Figure 9: O2 mass balance")
+    fig9, _ = figure_9(
+        systems, save_path=_path("Fig9_O2_mass_balance.png"), dpi=dpi,
+    )
+    if fig9 is not None:
+        figs["figure_9"] = fig9
+
+    print(f"\nAll figures saved to {output_dir}/")
+    return figs

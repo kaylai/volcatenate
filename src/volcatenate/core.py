@@ -140,7 +140,7 @@ def calculate_saturation_pressure(
             continue
 
         if not backend.is_available():
-            logger.info("  %s: SKIPPED (not available)", model_name)
+            warnings.warn(f"{model_name}: skipped (not available)")
             for row in rows:
                 row[f"{model_name}_SatP_bars"] = np.nan
             _progress.advance(len(comps))
@@ -155,7 +155,7 @@ def calculate_saturation_pressure(
                 logger.info("    %s: %.1f bar", comp.sample, p)
             except Exception as exc:
                 rows[i][f"{model_name}_SatP_bars"] = np.nan
-                logger.warning("    %s: FAILED — %s", comp.sample, exc)
+                warnings.warn(f"{model_name} satP failed for {comp.sample}: {exc}")
             _progress.advance()
 
     if owns_progress:
@@ -222,7 +222,7 @@ def calculate_degassing(
             continue
 
         if not backend.is_available():
-            logger.info("  %s: SKIPPED (not available)", model_name)
+            warnings.warn(f"{model_name}: skipped (not available)")
             _progress.advance()
             continue
 
@@ -233,7 +233,7 @@ def calculate_degassing(
             results[model_name] = df
             logger.info("    %s: OK (%d steps)", model_name, len(df))
         except Exception as exc:
-            logger.warning("    %s: FAILED — %s", model_name, exc)
+            warnings.warn(f"{model_name} degassing failed: {exc}")
         _progress.advance()
 
     if owns_progress:

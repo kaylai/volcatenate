@@ -68,6 +68,7 @@ from volcatenate.compat import (
     loadData, load_results,
 )
 from volcatenate.log import setup_logging
+from volcatenate.plotting import generate_all_figures
 
 
 def list_models(available_only: bool = False) -> list[str]:
@@ -106,4 +107,6 @@ __all__ = [
     "load_results",
     "loadData",
     "degassing_results_to_compat",
+    # Plotting
+    "generate_all_figures",
 ]
