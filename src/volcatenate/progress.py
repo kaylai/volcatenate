@@ -18,6 +18,7 @@ Usage within volcatenate internals::
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
 
@@ -50,6 +51,7 @@ class VolcProgress:
         self._progress = None
         self._task_id = None
         self._console = None
+        self._warnings: list[str] = []
 
     def __enter__(self) -> "VolcProgress":
         if not self._enabled:
@@ -57,31 +59,20 @@ class VolcProgress:
         try:
             from rich.progress import (
                 Progress,
-                SpinnerColumn,
                 TextColumn,
                 BarColumn,
                 MofNCompleteColumn,
                 TimeElapsedColumn,
-                TimeRemainingColumn,
             )
             from rich.console import Console
 
             self._console = Console()
             self._progress = Progress(
-                SpinnerColumn("earth"),
-                TextColumn("[bold orange1]\U0001f30b"),
-                TextColumn("[bold white]{task.description}"),
-                BarColumn(
-                    bar_width=30,
-                    style="bright_black",
-                    complete_style="bold red",
-                    finished_style="bold green",
-                ),
+                TextColumn("{task.description}"),
+                BarColumn(bar_width=30),
                 MofNCompleteColumn(),
                 TextColumn("[dim]\u2022"),
                 TimeElapsedColumn(),
-                TextColumn("[dim]/"),
-                TimeRemainingColumn(),
                 console=self._console,
                 transient=False,
             )
@@ -97,6 +88,27 @@ class VolcProgress:
         if self._progress is not None:
             self._progress.__exit__(*exc_info)
             self._progress = None
+        # Emit accumulated warnings now that the bar is gone
+        self._flush_warnings()
+
+    def add_warning(self, message: str) -> None:
+        """Queue a warning to be emitted after the progress bar closes.
+
+        When no progress bar is active (disabled), the warning is
+        emitted immediately via ``warnings.warn()``.
+        """
+        if self._progress is not None:
+            # Bar is active — stash for later
+            self._warnings.append(message)
+        else:
+            # No bar — emit right away
+            warnings.warn(message, stacklevel=2)
+
+    def _flush_warnings(self) -> None:
+        """Emit all queued warnings now (called in __exit__)."""
+        for msg in self._warnings:
+            warnings.warn(msg, stacklevel=4)
+        self._warnings.clear()
 
     def advance(self, n: int = 1) -> None:
         """Move the bar forward by *n* steps."""

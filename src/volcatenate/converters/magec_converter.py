@@ -172,6 +172,11 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
                 rename_map[raw_name] = std_name
     out.rename(columns=rename_map, inplace=True)
 
+    # --- Drop MAGEC section-header columns (non-data noise) ---
+    _SECTION_HEADERS = {"Vapor:", "Melt:", "Track phases:", "fugacity:"}
+    out.drop(columns=[c for c in _SECTION_HEADERS if c in out.columns],
+             inplace=True, errors="ignore")
+
     # --- Compute CS_v_mf if species present ---
     if (all(c in out.columns for c in col.C_SPECIES) and
             all(s in out.columns for s in col.S_SPECIES)):

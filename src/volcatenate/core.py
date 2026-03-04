@@ -135,12 +135,12 @@ def calculate_saturation_pressure(
         try:
             backend = get_backend(model_name)
         except KeyError:
-            warnings.warn(f"Unknown model: {model_name}")
+            _progress.add_warning(f"Unknown model: {model_name}")
             _progress.advance(len(comps))
             continue
 
         if not backend.is_available():
-            warnings.warn(f"{model_name}: skipped (not available)")
+            _progress.add_warning(f"{model_name}: skipped (not available)")
             for row in rows:
                 row[f"{model_name}_SatP_bars"] = np.nan
             _progress.advance(len(comps))
@@ -155,7 +155,7 @@ def calculate_saturation_pressure(
                 logger.info("    %s: %.1f bar", comp.sample, p)
             except Exception as exc:
                 rows[i][f"{model_name}_SatP_bars"] = np.nan
-                warnings.warn(f"{model_name} satP failed for {comp.sample}: {exc}")
+                _progress.add_warning(f"{model_name} satP failed for {comp.sample}: {exc}")
             _progress.advance()
 
     if owns_progress:
@@ -217,12 +217,12 @@ def calculate_degassing(
         try:
             backend = get_backend(model_name)
         except KeyError:
-            warnings.warn(f"Unknown model: {model_name}")
+            _progress.add_warning(f"Unknown model: {model_name}")
             _progress.advance()
             continue
 
         if not backend.is_available():
-            warnings.warn(f"{model_name}: skipped (not available)")
+            _progress.add_warning(f"{model_name}: skipped (not available)")
             _progress.advance()
             continue
 
@@ -233,7 +233,7 @@ def calculate_degassing(
             results[model_name] = df
             logger.info("    %s: OK (%d steps)", model_name, len(df))
         except Exception as exc:
-            warnings.warn(f"{model_name} degassing failed: {exc}")
+            _progress.add_warning(f"{model_name} degassing failed: {exc}")
         _progress.advance()
 
     if owns_progress:

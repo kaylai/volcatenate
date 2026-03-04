@@ -229,11 +229,18 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
         "C_S_vapor":      "CS_v_mf",
         "Sm_norm":        "ST_m_ppmw_norm",
     }
+    col_name = y_map.get(y_variable)
+    if col_name is None:
+        logger.warning("Unknown y_variable %r for %s — skipping trace", y_variable, model)
+        return
+    if col_name not in data.columns:
+        logger.warning("%s: column %r missing — skipping %s trace", model, col_name, y_variable)
+        return
     try:
         fig.add_trace(
             go.Scatter(
                 mode="lines",
-                y=data[y_map[y_variable]],
+                y=data[col_name],
                 x=x_pressure,
                 name=model,
                 line_color=l_c,
@@ -244,8 +251,8 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
             row=row,
             col=col,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("%s: failed to add %s trace — %s", model, y_variable, exc)
 
 
 def plot_results(
