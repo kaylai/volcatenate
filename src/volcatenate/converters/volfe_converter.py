@@ -64,7 +64,15 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     #    object-dtype Series, so convert everything numeric up front.
     for c in out.columns:
         if out[c].dtype == object:
-            out[c] = pd.to_numeric(out[c], errors="ignore")
+            try:
+                out[c] = pd.to_numeric(out[c])
+            except (ValueError, TypeError):
+                pass  # genuinely non-numeric column (e.g. sample names)
+
+    # Defragment after 181-column type coercion; VolFe's internal
+    # construction leaves the DataFrame heavily fragmented and any
+    # subsequent column insertion triggers PerformanceWarning.
+    out = out.copy()
 
     # 1. Rename columns
     out.rename(columns=_RENAME, inplace=True)

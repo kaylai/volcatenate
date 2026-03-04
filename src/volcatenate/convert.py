@@ -61,13 +61,22 @@ def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
         (col.CO2T_M_PPMW, col.CO2T_M_PPMW_NORM),
         (col.ST_M_PPMW, col.ST_M_PPMW_NORM),
     ]
+    # Collect new columns in a dict and add all at once to avoid
+    # DataFrame fragmentation (PerformanceWarning on repeated insert).
+    new_cols: dict[str, pd.Series | float] = {}
     for src, dst in pairs:
         if src in df.columns and len(df) > 0:
             init_val = df[src].iloc[0]
             if init_val != 0 and not np.isnan(init_val):
-                df[dst] = df[src] / init_val
+                new_cols[dst] = df[src] / init_val
             else:
-                df[dst] = np.nan
+                new_cols[dst] = np.nan
+
+    if new_cols:
+        df = pd.concat(
+            [df, pd.DataFrame(new_cols, index=df.index)],
+            axis=1,
+        )
 
     return df
 
@@ -85,7 +94,12 @@ def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         DataFrame with all STANDARD_COLUMNS present.
     """
-    for c in col.STANDARD_COLUMNS:
-        if c not in df.columns:
-            df[c] = np.nan
+    missing = [c for c in col.STANDARD_COLUMNS if c not in df.columns]
+    if missing:
+        # Add all missing columns at once to avoid DataFrame fragmentation
+        # (repeated df[c] = val triggers PerformanceWarning).
+        df = pd.concat(
+            [df, pd.DataFrame({c: np.nan for c in missing}, index=df.index)],
+            axis=1,
+        )
     return df
