@@ -388,7 +388,7 @@ def plot_results(
     if save_fig:
         var_string = "_".join(y_variable_list)
         fig_filename = "P_norm_" + var_string
-        fig_directory = "outputs/figures/P_norm_figs"
+        fig_directory = "figures/P_norm_figs"
         save_plotly_fig(fig, fig_filename, directory=fig_directory, scale=scale)
 
     return fig
@@ -1154,7 +1154,530 @@ def plot_satp_deviation(
 
 
 # ---------------------------------------------------------------------------
-# Manuscript figure convenience API (Figs 1–9)
+# C/S depth profile (Fig 10)
+# ---------------------------------------------------------------------------
+
+# Physical constants for depth conversion
+RHO_BASALT = 2770      # kg/m³ (Poland et al. 2014)
+_G = 9.81              # m/s²
+P_PER_KM = RHO_BASALT * _G * 1000 / 1e5   # bars per km ≈ 271.6
+
+# Vapor mass fraction threshold for numerical stability
+_VAPOR_WT_MIN = 1e-4
+
+
+def p_to_depth(p_bars, rho=RHO_BASALT):
+    """Convert pressure (bars) to depth (km) assuming lithostatic load.
+
+    Parameters
+    ----------
+    p_bars : array-like
+        Pressure in bars.
+    rho : float
+        Crustal density in kg/m³ (default 2770).
+
+    Returns
+    -------
+    numpy.ndarray
+        Depth below surface in km.
+    """
+    ppk = rho * _G * 1000 / 1e5
+    return np.asarray(p_bars) / ppk
+
+
+def depth_to_p(depth_km, rho=RHO_BASALT):
+    """Convert depth (km) to pressure (bars) assuming lithostatic load.
+
+    Parameters
+    ----------
+    depth_km : array-like
+        Depth below surface in km.
+    rho : float
+        Crustal density in kg/m³ (default 2770).
+
+    Returns
+    -------
+    numpy.ndarray
+        Pressure in bars.
+    """
+    ppk = rho * _G * 1000 / 1e5
+    return np.asarray(depth_km) * ppk
+
+
+def get_cs_vs_p(df, truncate=True, vapor_wt_min=_VAPOR_WT_MIN):
+    """Extract sorted (P_bars, CS_v_mf) from a model DataFrame.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Model output with at least ``P_bars`` and ``CS_v_mf`` columns.
+    truncate : bool
+        If *True*, remove rows where ``vapor_wt < vapor_wt_min``.
+    vapor_wt_min : float
+        Minimum vapor mass fraction for truncation.
+
+    Returns
+    -------
+    p_bars : numpy.ndarray or None
+    cs_values : numpy.ndarray or None
+        Both sorted from high-P (deep) to low-P (shallow).
+    """
+    if not isinstance(df, pd.DataFrame):
+        return None, None
+    if "CS_v_mf" not in df.columns or "P_bars" not in df.columns:
+        return None, None
+
+    cols = ["P_bars", "CS_v_mf"]
+    if truncate and "vapor_wt" in df.columns:
+        cols.append("vapor_wt")
+
+    sub = df[cols].dropna(subset=["P_bars", "CS_v_mf"])
+    if sub.empty:
+        return None, None
+
+    sub = sub.sort_values("P_bars", ascending=False).reset_index(drop=True)
+
+    if truncate and "vapor_wt" in sub.columns:
+        mask = sub["vapor_wt"] >= vapor_wt_min
+        if mask.any():
+            first_good = mask.idxmax()
+            sub = sub.iloc[first_good:]
+        else:
+            return None, None
+
+    return sub["P_bars"].values, sub["CS_v_mf"].values
+
+
+def find_pressure_at_cs(p_bars, cs_values, cs_target):
+    """Find pressure(s) where a C/S curve crosses *cs_target*.
+
+    Uses linear interpolation on log₁₀(C/S) for smoother results.
+
+    Parameters
+    ----------
+    p_bars, cs_values : array-like
+        Paired arrays of pressure and C/S (any sort order).
+    cs_target : float
+        The C/S molar ratio to intersect.
+
+    Returns
+    -------
+    list[float]
+        Pressures at which crossings occur (may be empty).
+    """
+    if p_bars is None or len(p_bars) < 2:
+        return []
+
+    log_cs = np.log10(np.clip(cs_values, 1e-10, None))
+    log_target = np.log10(cs_target)
+
+    crossings = []
+    for i in range(len(log_cs) - 1):
+        if (log_cs[i] - log_target) * (log_cs[i + 1] - log_target) <= 0:
+            if abs(log_cs[i + 1] - log_cs[i]) < 1e-12:
+                p_cross = (p_bars[i] + p_bars[i + 1]) / 2
+            else:
+                frac = (log_target - log_cs[i]) / (log_cs[i + 1] - log_cs[i])
+                p_cross = p_bars[i] + frac * (p_bars[i + 1] - p_bars[i])
+            crossings.append(p_cross)
+
+    return crossings
+
+
+def find_cs_at_pressure(p_curve, cs_curve, p_target):
+    """Interpolate a model's C/S curve at a given pressure.
+
+    Parameters
+    ----------
+    p_curve, cs_curve : array-like
+        Model C/S data (may be any sort order).
+    p_target : float
+        Pressure (bars) at which to evaluate.
+
+    Returns
+    -------
+    float
+        Interpolated C/S molar ratio.
+    """
+    _ensure_mpl()
+    p_sorted = np.asarray(p_curve)[::-1].copy()
+    cs_sorted = np.asarray(cs_curve)[::-1].copy()
+    p_target = np.clip(p_target, p_sorted[0], p_sorted[-1])
+    f = _interp1d(p_sorted, np.log10(np.clip(cs_sorted, 1e-10, None)))
+    return 10 ** f(p_target)
+
+
+def plot_cs_depth_profile(
+    system_data,
+    gas_data=None,
+    depth_constraints=None,
+    satp_df=None,
+    models=None,
+    model_style=None,
+    rho=RHO_BASALT,
+    truncate=True,
+    figsize=(8, 7),
+    title=None,
+    xlim=(0.05, 2000),
+    max_depth_km=20.0,
+    ax=None,
+):
+    """C/S vapor ratio vs depth profile with gas & seismic constraints.
+
+    Compares model-predicted C/S vapor ratios with measured volcanic-gas
+    data to infer degassing depths, following the approach of
+    Werner et al. (2020).
+
+    Parameters
+    ----------
+    system_data : dict
+        ``{model_name: DataFrame}`` for one volcanic system (e.g. Kilauea).
+        Each DataFrame must contain ``P_bars`` and ``CS_v_mf`` columns.
+    gas_data : dict, optional
+        Measured gas C/S ratios.  Keys are labels; values are dicts with::
+
+            {"cs": float, "cs_lo": float, "cs_hi": float,
+             "source": str, "color": str}
+
+        Vertical bands and crossing markers are drawn for each entry.
+    depth_constraints : dict, optional
+        Independent geophysical depth constraints.  Keys are labels;
+        values are dicts with::
+
+            {"depth_belowsummit_km": float,
+             "belowsummit_lo": float, "belowsummit_hi": float,
+             "source": str, "color": str}
+
+        Horizontal shaded bands are drawn for each entry.
+    satp_df : pandas.DataFrame, optional
+        Saturation-pressure data with columns ``Sample``, ``Reservoir``,
+        and ``<Model>_SatP_bars``.  When provided, box-and-whisker
+        diagrams are drawn along each model curve.
+    models : list[str], optional
+        Model names to plot (default: all keys in *system_data* that are
+        DataFrames with ``CS_v_mf``).
+    model_style : dict, optional
+        ``{model_name: {"color": str, "marker": str, "label": str}}``.
+        Uses ``MODEL_COLORS_HEX`` colours by default.
+    rho : float
+        Crustal density in kg/m³ for pressure ↔ depth conversion.
+    truncate : bool
+        Truncate model curves where vapor mass fraction is negligible.
+    figsize : tuple
+        Figure size.
+    title : str, optional
+        Figure title.
+    xlim : tuple
+        C/S axis limits (log scale).
+    max_depth_km : float
+        Maximum depth (km) for y-axis.
+    ax : matplotlib Axes, optional
+        Plot on an existing axis.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    ax : matplotlib.axes.Axes
+    inferred : dict
+        ``{gas_label: {model: {"P_bars": float, "depth_km": float}}}``.
+    """
+    _ensure_mpl()
+
+    if ax is None:
+        fig, ax = _plt.subplots(figsize=figsize)
+    else:
+        fig = ax.figure
+
+    if gas_data is None:
+        gas_data = {}
+    if depth_constraints is None:
+        depth_constraints = {}
+
+    # -- Default model list and styles --
+    if models is None:
+        models = [
+            m for m, v in system_data.items()
+            if isinstance(v, pd.DataFrame) and "CS_v_mf" in v.columns
+        ]
+    if model_style is None:
+        model_style = {
+            m: {
+                "color": MODEL_COLORS_HEX.get(m, "#333"),
+                "marker": "o",
+                "label": m,
+            }
+            for m in models
+        }
+
+    # -- Depth constraint bands --
+    for dc_label, dc in depth_constraints.items():
+        ax.axhspan(
+            dc["belowsummit_lo"], dc["belowsummit_hi"],
+            color=dc["color"], alpha=0.10, zorder=0,
+        )
+        ax.axhline(
+            dc["depth_belowsummit_km"], color=dc["color"],
+            ls="--", lw=1.2, alpha=0.5, zorder=1,
+        )
+
+    # -- Gas data vertical bands --
+    for gas_label, gd in gas_data.items():
+        ax.axvspan(
+            gd["cs_lo"], gd["cs_hi"], color=gd["color"],
+            alpha=0.15, zorder=1,
+        )
+        ax.axvline(
+            gd["cs"], color=gd["color"], ls="-", lw=1.5,
+            alpha=0.6, zorder=2,
+        )
+
+    # -- Model curves --
+    model_curves = {}
+    for model in models:
+        if model not in system_data:
+            continue
+        p, cs = get_cs_vs_p(system_data[model], truncate=truncate)
+        if p is None:
+            continue
+        model_curves[model] = (p, cs)
+        depth = p_to_depth(p, rho=rho)
+        sty = model_style.get(model, {"color": "#333", "label": model})
+        ax.plot(
+            cs, depth, color=sty["color"], lw=2.5, ls="-",
+            label=sty.get("label", model), zorder=3,
+        )
+        # Anchor marker at deepest (highest-P) point
+        ax.plot(
+            cs[0], depth[0], marker="o", ms=8,
+            color=sty["color"], markeredgecolor="k",
+            markeredgewidth=0.8, zorder=5,
+        )
+
+    # -- Mark where curves cross gas data --
+    inferred = {}
+    for gas_label, gd in gas_data.items():
+        inferred[gas_label] = {}
+        for model in models:
+            if model not in model_curves:
+                continue
+            p, cs = model_curves[model]
+            crossings = find_pressure_at_cs(p, cs, gd["cs"])
+            sty = model_style.get(model, {"color": "#333"})
+            for pc in crossings:
+                dc_val = p_to_depth(pc, rho=rho)
+                ax.plot(
+                    gd["cs"], dc_val, marker="*", ms=14,
+                    color=sty["color"], markeredgecolor="k",
+                    markeredgewidth=0.6, zorder=6,
+                )
+                inferred[gas_label][model] = {
+                    "P_bars": pc, "depth_km": dc_val,
+                }
+
+    # -- Box-and-whisker plots from satP data --
+    if satp_df is not None and not satp_df.empty:
+        _draw_satp_boxes(ax, satp_df, model_curves, model_style, rho)
+
+    # -- Axis configuration --
+    ax.set_xscale("log")
+    ax.set_xlim(*xlim)
+    ax.set_ylim(bottom=0)
+    ax.invert_yaxis()
+
+    # Set y-limit from data
+    all_depths = []
+    for p, _ in model_curves.values():
+        all_depths.extend(p_to_depth(p, rho=rho).tolist())
+    if all_depths:
+        y_max = min(max(all_depths), max_depth_km)
+        for dc in depth_constraints.values():
+            y_max = max(y_max, dc["belowsummit_hi"] * 1.1)
+        ax.set_ylim(y_max, 0)
+
+    # -- Depth constraint labels --
+    for dc_label, dc in depth_constraints.items():
+        ax.text(
+            ax.get_xlim()[1] * 0.6,
+            dc["depth_belowsummit_km"] + 0.1,
+            dc_label.replace("\n", " "),
+            fontsize=8, color=dc["color"], fontweight="bold",
+            va="top", ha="right",
+            bbox=dict(
+                boxstyle="round,pad=0.15", fc="white",
+                ec=dc["color"], alpha=0.8, lw=0.5,
+            ),
+        )
+
+    # -- Gas data labels --
+    for gas_label, gd in gas_data.items():
+        label_clean = gas_label.replace("\n", " ")
+        ax.text(
+            gd["cs_hi"] * 1.15, 0.05,
+            f"{label_clean}\n{gd.get('source', '')}",
+            fontsize=8, color=gd["color"], fontweight="bold",
+            va="top", ha="left", rotation=90,
+            bbox=dict(
+                boxstyle="round,pad=0.2", fc="white",
+                ec=gd["color"], alpha=0.85, lw=0.5,
+            ),
+        )
+
+    # Axis labels
+    ax.set_xlabel(r"C/S$^{\mathrm{vapor}}$ (molar)", fontsize=13)
+    ax.set_ylabel("Depth Below Summit (km)", fontsize=13)
+    if title is not None:
+        ax.set_title(title, fontsize=14, fontweight="bold")
+
+    # Secondary y-axis for pressure
+    ax_p = ax.secondary_yaxis(
+        "right",
+        functions=(
+            lambda d: depth_to_p(d, rho=rho),
+            lambda p: p_to_depth(p, rho=rho),
+        ),
+    )
+    ax_p.set_ylabel("Pressure (bars)", fontsize=12)
+
+    # Legend
+    ax.legend(
+        loc="lower right", fontsize=9, edgecolor="k",
+        framealpha=0.9, title="Models", title_fontsize=10,
+    )
+
+    fig.tight_layout()
+    return fig, ax, inferred
+
+
+def _draw_satp_boxes(ax, satp_df, model_curves, model_style, rho):
+    """Draw box-and-whisker plots of MI saturation pressures along curves.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+    satp_df : DataFrame
+        Must have ``Sample``, ``Reservoir``, and ``*_SatP_bars`` columns.
+    model_curves : dict
+        ``{model: (p_bars, cs_values)}``.
+    model_style : dict
+    rho : float
+    """
+    # Auto-detect satP columns → model keys
+    satp_cols = {}
+    for col in satp_df.columns:
+        if col.endswith("_SatP_bars"):
+            key = col.replace("_SatP_bars", "")
+            # Try exact match first, then case-insensitive
+            for mk in model_curves:
+                if mk == key or mk.upper() == key.upper():
+                    satp_cols[col] = mk
+                    break
+
+    if not satp_cols:
+        return
+
+    reservoirs = [r for r in satp_df["Reservoir"].dropna().unique()]
+    hatch_list = [None, "//", "\\\\", "xx"]
+
+    for col, model_key in satp_cols.items():
+        if model_key not in model_curves:
+            continue
+        p_curve, cs_curve = model_curves[model_key]
+        sty = model_style.get(model_key, {"color": "gray"})
+
+        for j, reservoir in enumerate(reservoirs):
+            mask = satp_df["Reservoir"] == reservoir
+            vals = satp_df.loc[mask, col].dropna().values
+            if len(vals) == 0:
+                continue
+            depths = p_to_depth(vals, rho=rho)
+
+            # Position box so median line sits on the model curve
+            median_p = np.median(vals)
+            try:
+                x_pos = find_cs_at_pressure(p_curve, cs_curve, median_p)
+            except Exception:
+                continue
+            box_width = x_pos * 0.20
+
+            bp = ax.boxplot(
+                [depths],
+                positions=[x_pos],
+                widths=[box_width],
+                vert=True,
+                patch_artist=True,
+                manage_ticks=False,
+                zorder=4,
+            )
+
+            hatch = hatch_list[j % len(hatch_list)]
+            for box in bp["boxes"]:
+                box.set_facecolor(sty["color"])
+                box.set_alpha(0.45)
+                box.set_edgecolor("k")
+                box.set_linewidth(0.8)
+                if hatch:
+                    box.set_hatch(hatch)
+            for whisker in bp["whiskers"]:
+                whisker.set_color("k")
+                whisker.set_linewidth(0.8)
+            for cap in bp["caps"]:
+                cap.set_color("k")
+                cap.set_linewidth(0.8)
+            for median in bp["medians"]:
+                median.set_color("k")
+                median.set_linewidth(1.5)
+            for flier in bp["fliers"]:
+                flier.set(
+                    marker="o", markerfacecolor=sty["color"],
+                    markeredgecolor="k", markersize=3, alpha=0.6,
+                )
+
+
+# Kilauea defaults (used by figure_10 convenience function)
+KILAUEA_GAS_DATA = {
+    "2018 LERZ Fissures": {
+        "cs": 0.3, "cs_lo": 0.2, "cs_hi": 0.4,
+        "source": "Kern+ 2020",
+        "type": "UAS-mounted MultiGAS",
+        "color": "#f36e15",
+    },
+    "HMM Reservoir": {
+        "cs": 2.0, "cs_lo": 1.0, "cs_hi": 3.0,
+        "source": "Anderson+ 2019",
+        "type": "restored gas",
+        "color": "#1f77b4",
+    },
+}
+
+KILAUEA_DEPTH_CONSTRAINTS = {
+    "Halema\u02BBuma\u02BBu reservoir": {
+        "depth_bsl_km": 0.75, "bsl_lo": 0.0, "bsl_hi": 1.5,
+        "depth_belowsummit_km": 2.0,
+        "belowsummit_lo": 1.25, "belowsummit_hi": 2.75,
+        "source": "Anderson+ 2019",
+        "color": "#d62728",
+    },
+    "South Caldera reservoir": {
+        "depth_bsl_km": 2.5, "bsl_lo": 0.75, "bsl_hi": 3.25,
+        "depth_belowsummit_km": 3.75,
+        "belowsummit_lo": 3.0, "belowsummit_hi": 4.5,
+        "source": "Poland+ 2014, Anderson+ 2019",
+        "color": "#9467bd",
+    },
+}
+
+# Default C/S figure model styles (models with sulfur)
+_CS_MODEL_STYLE = {
+    "DCompress": {"color": "#01B0F0", "marker": "s",  "label": "D-Compress"},
+    "EVo":       {"color": "#E46C0A", "marker": "o",  "label": "EVo"},
+    "MAGEC":     {"color": "#DD94BB", "marker": "s",  "label": "MAGEC"},
+    "VolFe":     {"color": "#FFC00D", "marker": "^",  "label": "VolFe"},
+    "SulfurX":   {"color": "#009E73", "marker": "s",  "label": "Sulfur_X"},
+}
+
+
+# ---------------------------------------------------------------------------
+# Manuscript figure convenience API (Figs 1–10)
 # ---------------------------------------------------------------------------
 # Each ``figure_N()`` encapsulates the paper's layout, colours, axis limits,
 # and legend placement so callers only pass data.
@@ -1165,6 +1688,7 @@ def plot_satp_deviation(
 #
 #     fig, axes = vp.figure_1(compositions)
 #     fig       = vp.figure_4(systems)
+#     fig, ax, inferred = vp.figure_10(systems["Kilauea"])
 #
 #     vp.generate_all_figures(
 #         systems, compositions=comps, satp_df=df, output_dir="figures/",
@@ -1574,15 +2098,83 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
     return fig, axes
 
 
+# ---- Figure 10 ----
+
+def figure_10(
+    system_data,
+    gas_data=None,
+    depth_constraints=None,
+    satp_df=None,
+    system_name="K\u012blauea",
+    save_path=None,
+    dpi=300,
+    **kwargs,
+):
+    """Figure 10: C/S vapor ratio vs depth profile with gas constraints.
+
+    By default uses K\u012blauea gas data and seismic depth constraints
+    from the manuscript.  Override *gas_data* and *depth_constraints*
+    for other volcanoes.
+
+    Parameters
+    ----------
+    system_data : dict
+        ``{model_name: DataFrame}`` for one volcanic system.
+    gas_data : dict, optional
+        Default: ``KILAUEA_GAS_DATA``.
+    depth_constraints : dict, optional
+        Default: ``KILAUEA_DEPTH_CONSTRAINTS``.
+    satp_df : pandas.DataFrame, optional
+        Saturation-pressure data for box-whisker overlays.
+    system_name : str
+        Display name used in the title.
+    save_path : str, optional
+    dpi : int
+
+    Returns
+    -------
+    fig : matplotlib Figure
+    ax : matplotlib Axes
+    inferred : dict
+    """
+    if gas_data is None:
+        gas_data = KILAUEA_GAS_DATA
+    if depth_constraints is None:
+        depth_constraints = KILAUEA_DEPTH_CONSTRAINTS
+
+    title = kwargs.pop("title", None)
+    if title is None:
+        title = (
+            f"{system_name}: C/S vapor ratio vs depth\n"
+            "Model predictions with gas & seismic constraints"
+        )
+
+    model_style = kwargs.pop("model_style", _CS_MODEL_STYLE)
+
+    fig, ax, inferred = plot_cs_depth_profile(
+        system_data,
+        gas_data=gas_data,
+        depth_constraints=depth_constraints,
+        satp_df=satp_df,
+        model_style=model_style,
+        title=title,
+        **kwargs,
+    )
+
+    _save_figure(fig, save_path, dpi=dpi)
+    return fig, ax, inferred
+
+
 # ---- Generate all ----
 
 def generate_all_figures(
     systems,
     compositions=None,
     satp_df=None,
-    output_dir="figures",
+    output_dir=None,
     dpi=300,
     scale=4,
+    figure_kwargs=None,
 ):
     """Generate all manuscript figures and save to *output_dir*.
 
@@ -1593,30 +2185,55 @@ def generate_all_figures(
     compositions : list, optional
         ``MeltComposition`` objects for Figures 1 and 3.
     satp_df : pd.DataFrame, optional
-        Saturation-pressure DataFrame for Figures 2 and 3.
-    output_dir : str
-        Directory for saved PNGs.
+        Saturation-pressure DataFrame for Figures 2, 3, and 10.
+    output_dir : str, optional
+        Directory for saved PNGs.  Defaults to ``"figures/"``.
     dpi : int
         Resolution for matplotlib figures.
     scale : int
         Scale factor for Plotly figure export.
+    figure_kwargs : dict, optional
+        Per-figure keyword arguments.  Keys are figure names
+        (``"figure_1"`` through ``"figure_10"``; also ``"figure_8a"``
+        and ``"figure_8b"`` for the C/S sub-figures); values are dicts
+        of kwargs forwarded to the corresponding ``figure_N()`` call.
+
+        Example::
+
+            generate_all_figures(
+                systems,
+                figure_kwargs={
+                    "figure_9": {"exclude_models": ["SulfurX", "DCompress"]},
+                    "figure_5": {"ylim": (-50, 200)},
+                },
+            )
 
     Returns
     -------
     dict
         ``{figure_name: figure_object}`` for every generated figure.
     """
+    if output_dir is None:
+        from volcatenate.config import RunConfig
+        output_dir = os.path.join(RunConfig().output_dir, "figures")
+    if figure_kwargs is None:
+        figure_kwargs = {}
+
     os.makedirs(output_dir, exist_ok=True)
     figs = {}
 
     def _path(name):
         return os.path.join(output_dir, name)
 
+    def _kw(fig_name):
+        return figure_kwargs.get(fig_name, {})
+
     if compositions is not None:
         logger.info("Figure 1: Composition overview")
         figs["figure_1"], _ = figure_1(
             compositions,
             save_path=_path("Fig1_composition_overview.png"), dpi=dpi,
+            **_kw("figure_1"),
         )
 
     if satp_df is not None:
@@ -1624,6 +2241,7 @@ def generate_all_figures(
         figs["figure_2"], _ = figure_2(
             satp_df,
             save_path=_path("Fig2_satp_grouped.png"), dpi=dpi,
+            **_kw("figure_2"),
         )
 
     if satp_df is not None and compositions is not None:
@@ -1631,26 +2249,31 @@ def generate_all_figures(
         figs["figure_3"], _ = figure_3(
             satp_df, compositions,
             save_path=_path("Fig3_satp_deviation.png"), dpi=dpi,
+            **_kw("figure_3"),
         )
 
     logger.info("Figure 4: Melt volatile degassing paths")
     figs["figure_4"] = figure_4(
         systems, save_path=_path("Fig4_melt_volatiles.png"), scale=scale,
+        **_kw("figure_4"),
     )
 
     logger.info("Figure 5: Melt volatile envelopes")
     figs["figure_5"], _ = figure_5(
         systems, save_path=_path("Fig5_melt_volatile_envelopes.png"), dpi=dpi,
+        **_kw("figure_5"),
     )
 
     logger.info("Figure 6: Redox variable degassing paths")
     figs["figure_6"] = figure_6(
         systems, save_path=_path("Fig6_redox_variables.png"), scale=scale,
+        **_kw("figure_6"),
     )
 
     logger.info("Figure 7: Redox envelopes")
     figs["figure_7"], _ = figure_7(
         systems, save_path=_path("Fig7_redox_envelopes.png"), dpi=dpi,
+        **_kw("figure_7"),
     )
 
     logger.info("Figure 8: C/S vapor")
@@ -1659,6 +2282,7 @@ def generate_all_figures(
         save_path_lines=_path("Fig8A_CS_vapor.png"),
         save_path_envelopes=_path("Fig8B_CS_vapor_envelopes.png"),
         scale=scale, dpi=dpi,
+        **_kw("figure_8"),
     )
     figs["figure_8a"] = fig_8a
     figs["figure_8b"] = fig_8b
@@ -1666,9 +2290,21 @@ def generate_all_figures(
     logger.info("Figure 9: O2 mass balance")
     fig9, _ = figure_9(
         systems, save_path=_path("Fig9_O2_mass_balance.png"), dpi=dpi,
+        **_kw("figure_9"),
     )
     if fig9 is not None:
         figs["figure_9"] = fig9
+
+    # Figure 10: C/S depth profile (Kilauea by default)
+    if "Kilauea" in systems:
+        logger.info("Figure 10: C/S depth profile")
+        fig10, _, inferred = figure_10(
+            systems["Kilauea"],
+            satp_df=satp_df,
+            save_path=_path("Fig10_CS_depth_profile.png"), dpi=dpi,
+            **_kw("figure_10"),
+        )
+        figs["figure_10"] = fig10
 
     logger.info("All figures saved to %s/", output_dir)
     return figs
