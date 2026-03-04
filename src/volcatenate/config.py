@@ -250,6 +250,11 @@ class SulfurXConfig:
     coh_model: int = 0                # 0 = Iacono-Marziano, 1 = VolatileCalc
     slope_h2o: float = -0.3396        # K2O-H2O relationship: K2O = a * H2O + b
     constant_h2o: float = 2.7
+    n_steps: int = 600                # Pressure grid steps for degassing
+    fo2_tracker: int = 1              # 0 = buffered fO2, 1 = redox evolution
+    s_fe_choice: int = 1              # S speciation model: 0=Nash, 1=O'Neill&Mavrogenes
+    sigma: float = 0.005              # log10fO2 tolerance for redox calculation
+    sulfide_pre: int = 0              # 0 = no sulfide precipitation, 1 = enabled
 
 
 @dataclass
@@ -387,6 +392,11 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("sulfurx", "coh_model"):        "0 = Iacono-Marziano, 1 = VolatileCalc",
     ("sulfurx", "slope_h2o"):        "K2O-H2O relationship slope: K2O = a*H2O + b",
     ("sulfurx", "constant_h2o"):     "K2O-H2O relationship intercept",
+    ("sulfurx", "n_steps"):          "Pressure grid steps for degassing",
+    ("sulfurx", "fo2_tracker"):      "0 = buffered fO2, 1 = redox evolution",
+    ("sulfurx", "s_fe_choice"):      "S speciation: 0=Nash, 1=O'Neill&Mavrogenes",
+    ("sulfurx", "sigma"):            "log10fO2 tolerance for redox calculation",
+    ("sulfurx", "sulfide_pre"):      "0 = no sulfide precipitation, 1 = enabled",
 }
 
 # Maps section name → dataclass type (for load_config)

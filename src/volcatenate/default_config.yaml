@@ -102,3 +102,8 @@ sulfurx:
   coh_model: 0  # 0 = Iacono-Marziano, 1 = VolatileCalc
   slope_h2o: -0.3396  # K2O-H2O relationship slope: K2O = a*H2O + b
   constant_h2o: 2.7  # K2O-H2O relationship intercept
+  n_steps: 600  # Pressure grid steps for degassing
+  fo2_tracker: 1  # 0 = buffered fO2, 1 = redox evolution
+  s_fe_choice: 1  # S speciation: 0=Nash, 1=O'Neill&Mavrogenes
+  sigma: 0.005  # log10fO2 tolerance for redox calculation
+  sulfide_pre: 0  # 0 = no sulfide precipitation, 1 = enabled
