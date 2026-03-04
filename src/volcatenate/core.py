@@ -23,6 +23,7 @@ from volcatenate.composition import MeltComposition, read_compositions, composit
 from volcatenate.config import RunConfig
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger, setup_logging
+from volcatenate.progress import VolcProgress
 
 
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
@@ -59,6 +60,25 @@ def _resolve_compositions(
     raise TypeError(f"Cannot interpret {type(source)} as composition(s)")
 
 
+def _init_progress(config, _progress, total, description):
+    """Create or reuse a VolcProgress bar and configure logging.
+
+    Returns ``(progress, owns_progress)`` where *owns_progress* is
+    True when this call created the bar (and must close it later).
+    """
+    owns = _progress is None
+    if owns:
+        _progress = VolcProgress(
+            total=total,
+            description=description,
+            enabled=config.show_progress,
+        )
+        _progress.__enter__()
+    if config.verbose and _progress.console:
+        setup_logging(config.verbose, config.log_file, console=_progress.console)
+    return _progress, owns
+
+
 # ------------------------------------------------------------------
 # Saturation Pressure
 # ------------------------------------------------------------------
@@ -67,6 +87,7 @@ def calculate_saturation_pressure(
     compositions: Union[str, dict, list, MeltComposition],
     models: Optional[list[str]] = None,
     config: Optional[RunConfig] = None,
+    _progress: Optional[VolcProgress] = None,
 ) -> pd.DataFrame:
     """Calculate volatile saturation pressure for a batch of compositions.
 
@@ -98,6 +119,12 @@ def calculate_saturation_pressure(
     comps = _resolve_compositions(compositions)
     model_names = _resolve_models(models)
 
+    total_iters = len(model_names) * len(comps)
+    _progress, owns_progress = _init_progress(
+        config, _progress, total_iters,
+        "\U0001f30b Saturation pressures",
+    )
+
     # Build results table
     rows = []
     for comp in comps:
@@ -109,14 +136,17 @@ def calculate_saturation_pressure(
             backend = get_backend(model_name)
         except KeyError:
             warnings.warn(f"Unknown model: {model_name}")
+            _progress.advance(len(comps))
             continue
 
         if not backend.is_available():
             logger.info("  %s: SKIPPED (not available)", model_name)
             for row in rows:
                 row[f"{model_name}_SatP_bars"] = np.nan
+            _progress.advance(len(comps))
             continue
 
+        _progress.update_model(model_name)
         logger.info("  Running %s...", model_name)
         for i, comp in enumerate(comps):
             try:
@@ -126,6 +156,10 @@ def calculate_saturation_pressure(
             except Exception as exc:
                 rows[i][f"{model_name}_SatP_bars"] = np.nan
                 logger.warning("    %s: FAILED — %s", comp.sample, exc)
+            _progress.advance()
+
+    if owns_progress:
+        _progress.__exit__(None, None, None)
 
     return pd.DataFrame(rows)
 
@@ -138,6 +172,7 @@ def calculate_degassing(
     composition: Union[str, dict, MeltComposition],
     models: Optional[list[str]] = None,
     config: Optional[RunConfig] = None,
+    _progress: Optional[VolcProgress] = None,
 ) -> dict[str, pd.DataFrame]:
     """Run degassing path calculations for a single composition.
 
@@ -173,17 +208,25 @@ def calculate_degassing(
     model_names = _resolve_models(models)
     results: dict[str, pd.DataFrame] = {}
 
+    _progress, owns_progress = _init_progress(
+        config, _progress, len(model_names),
+        f"\U0001f30b Degassing \u2022 {comp.sample}",
+    )
+
     for model_name in model_names:
         try:
             backend = get_backend(model_name)
         except KeyError:
             warnings.warn(f"Unknown model: {model_name}")
+            _progress.advance()
             continue
 
         if not backend.is_available():
             logger.info("  %s: SKIPPED (not available)", model_name)
+            _progress.advance()
             continue
 
+        _progress.update_model(model_name)
         logger.info("  Running %s...", model_name)
         try:
             df = backend.calculate_degassing(comp, config)
@@ -191,6 +234,10 @@ def calculate_degassing(
             logger.info("    %s: OK (%d steps)", model_name, len(df))
         except Exception as exc:
             logger.warning("    %s: FAILED — %s", model_name, exc)
+        _progress.advance()
+
+    if owns_progress:
+        _progress.__exit__(None, None, None)
 
     return results
 
@@ -230,12 +277,20 @@ def export_degassing_paths(
 ) -> list[str]:
     """Save degassing-path DataFrames to individual CSVs.
 
+    The directory layout matches what :func:`~volcatenate.compat.loadData`
+    expects, so you can read the files back with::
+
+        loadData(model_names, topdirectory_name=output_dir)
+
     Parameters
     ----------
     results : dict[str, pd.DataFrame]
         Output from :func:`calculate_degassing`.  Keys are model names.
     output_dir : str
-        Directory for the CSVs.  A subfolder per model is created.
+        Top-level directory.  A subfolder per model is created
+        (``output_dir/MODEL/sample.csv``).  VESIcal models get the
+        extra nesting that ``loadData`` expects
+        (``output_dir/VESIcal/MODEL/sample.csv``).
     sample_name : str, optional
         Name used in the CSV filename (e.g. ``"kilauea"``).
         If *None*, a generic name is used.
@@ -249,7 +304,11 @@ def export_degassing_paths(
     name = sample_name or "degassing"
     written = []
     for model, df in results.items():
-        model_dir = os.path.join(output_dir, model)
+        # Match loadData's VESIcal nesting: topdirectory/VESIcal/MODEL/
+        if "VESIcal" in model:
+            model_dir = os.path.join(output_dir, "VESIcal", model)
+        else:
+            model_dir = os.path.join(output_dir, model)
         os.makedirs(model_dir, exist_ok=True)
         csv_path = os.path.join(model_dir, f"{name}.csv")
         df.to_csv(csv_path, index=False)
@@ -268,7 +327,7 @@ def run_comparison(
     models: Optional[list[str]] = None,
     config: Optional[RunConfig] = None,
     satp_output: str = "saturation_pressures.csv",
-    degassing_output_dir: str = "degassing_paths",
+    degassing_output_dir: Optional[str] = None,
 ) -> dict:
     """Run a complete model comparison: satP + degassing + CSV export.
 
@@ -291,8 +350,11 @@ def run_comparison(
         Configuration (defaults to paper settings).
     satp_output : str
         CSV path for saturation-pressure export.
-    degassing_output_dir : str
-        Directory for degassing-path CSVs.
+    degassing_output_dir : str, optional
+        Directory for degassing-path CSVs.  Defaults to
+        ``config.output_dir`` so that files land at
+        ``output_dir/MODEL/sample.csv`` — the layout that
+        :func:`~volcatenate.compat.loadData` expects.
 
     Returns
     -------
@@ -310,44 +372,78 @@ def run_comparison(
             satp_compositions="melt_inclusions.csv",
             degassing_compositions=[kilauea_dict, morb_dict],
             models=["EVo", "VolFe", "MAGEC"],
-            satp_output="results/satp.csv",
-            degassing_output_dir="results/degassing",
+            satp_output="saturation_pressures.csv",
         )
 
         # results["satp_df"] is the saturation pressure DataFrame
         # results["degassing"]["Kilauea"]["EVo"] is a degassing DataFrame
+
+        # Load the saved CSVs back for plotting:
+        data = volcatenate.load_results("volcatenate_output", model_names)
     """
     if config is None:
         config = RunConfig()
 
+    if degassing_output_dir is None:
+        degassing_output_dir = config.output_dir
+
     setup_logging(config.verbose, config.log_file)
     output = {"satp_df": None, "degassing": None}
 
-    # --- Saturation pressure ---
-    if satp_compositions is not None:
-        logger.info("=== Calculating saturation pressures ===")
-        satp_df = calculate_saturation_pressure(
-            satp_compositions, models=models, config=config,
-        )
-        export_saturation_pressure(satp_df, satp_output)
-        output["satp_df"] = satp_df
+    # Pre-compute total work for the unified progress bar
+    model_names = _resolve_models(models)
+    n_models = len(model_names)
 
-    # --- Degassing paths ---
-    if degassing_compositions is not None:
-        logger.info("=== Calculating degassing paths ===")
-        # Normalise to list
-        comps = _resolve_compositions(degassing_compositions)
-        all_degassing = {}
-        for comp in comps:
-            logger.info("--- %s ---", comp.sample)
-            results = calculate_degassing(comp, models=models, config=config)
-            export_degassing_paths(
-                results,
-                output_dir=degassing_output_dir,
-                sample_name=comp.sample.lower(),
+    satp_comps = (
+        _resolve_compositions(satp_compositions)
+        if satp_compositions is not None else []
+    )
+    degas_comps = (
+        _resolve_compositions(degassing_compositions)
+        if degassing_compositions is not None else []
+    )
+    total_work = n_models * len(satp_comps) + n_models * len(degas_comps)
+
+    with VolcProgress(
+        total=total_work,
+        description="\U0001f30b Model comparison",
+        enabled=config.show_progress,
+    ) as vp:
+        if config.verbose and vp.console:
+            setup_logging(config.verbose, config.log_file, console=vp.console)
+
+        # --- Saturation pressure ---
+        if satp_compositions is not None:
+            vp.update_description("\U0001f30b Saturation pressures")
+            logger.info("=== Calculating saturation pressures ===")
+            satp_df = calculate_saturation_pressure(
+                satp_compositions, models=models, config=config,
+                _progress=vp,
             )
-            all_degassing[comp.sample] = results
-        output["degassing"] = all_degassing
+            export_saturation_pressure(satp_df, satp_output)
+            output["satp_df"] = satp_df
+
+        # --- Degassing paths ---
+        if degassing_compositions is not None:
+            logger.info("=== Calculating degassing paths ===")
+            comps = _resolve_compositions(degassing_compositions)
+            all_degassing = {}
+            for comp in comps:
+                vp.update_description(
+                    f"\U0001f30b Degassing \u2022 [yellow]{comp.sample}[/yellow]"
+                )
+                logger.info("--- %s ---", comp.sample)
+                results = calculate_degassing(
+                    comp, models=models, config=config,
+                    _progress=vp,
+                )
+                export_degassing_paths(
+                    results,
+                    output_dir=degassing_output_dir,
+                    sample_name=comp.sample.lower(),
+                )
+                all_degassing[comp.sample] = results
+            output["degassing"] = all_degassing
 
     # --- Cleanup empty output directory ---
     if not config.keep_intermediates:

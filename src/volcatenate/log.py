@@ -15,7 +15,11 @@ import logging
 logger = logging.getLogger("volcatenate")
 
 
-def setup_logging(verbose: bool = False, log_file: str = "") -> None:
+def setup_logging(
+    verbose: bool = False,
+    log_file: str = "",
+    console: object = None,
+) -> None:
     """Configure the ``volcatenate`` logger.
 
     Parameters
@@ -25,6 +29,10 @@ def setup_logging(verbose: bool = False, log_file: str = "") -> None:
     log_file : str
         If non-empty, write **all** messages (DEBUG and above) to
         this file.  The file is overwritten each run.
+    console : rich.console.Console, optional
+        If provided and *verbose* is True, use ``RichHandler`` with
+        this console instance.  This prevents progress bar corruption
+        when both logging and progress bars are active.
 
     Notes
     -----
@@ -40,11 +48,29 @@ def setup_logging(verbose: bool = False, log_file: str = "") -> None:
     logger.handlers.clear()
 
     if verbose:
-        import sys
-        sh = logging.StreamHandler(sys.stdout)
-        sh.setLevel(logging.INFO)
-        sh.setFormatter(logging.Formatter("%(message)s"))
-        logger.addHandler(sh)
+        if console is not None:
+            try:
+                from rich.logging import RichHandler
+                sh = RichHandler(
+                    console=console,
+                    show_time=False,
+                    show_path=False,
+                    markup=True,
+                    level=logging.INFO,
+                )
+                logger.addHandler(sh)
+            except ImportError:
+                import sys
+                sh = logging.StreamHandler(sys.stdout)
+                sh.setLevel(logging.INFO)
+                sh.setFormatter(logging.Formatter("%(message)s"))
+                logger.addHandler(sh)
+        else:
+            import sys
+            sh = logging.StreamHandler(sys.stdout)
+            sh.setLevel(logging.INFO)
+            sh.setFormatter(logging.Formatter("%(message)s"))
+            logger.addHandler(sh)
 
     if log_file:
         fh = logging.FileHandler(log_file, mode="w")

@@ -65,7 +65,7 @@ from volcatenate.composition import MeltComposition, read_compositions
 from volcatenate.config import RunConfig, load_config, save_config, default_config_path
 from volcatenate.compat import (
     load_model_csv, load_data, degassing_results_to_compat,
-    loadData,
+    loadData, load_results,
 )
 from volcatenate.log import setup_logging
 
@@ -103,6 +103,7 @@ __all__ = [
     # Compat layer
     "load_model_csv",
     "load_data",
+    "load_results",
     "loadData",
     "degassing_results_to_compat",
 ]

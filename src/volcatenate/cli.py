@@ -113,12 +113,17 @@ def list_models_cmd(available_only):
 @click.option("--config", "config_path", default=None,
               type=click.Path(exists=True),
               help="Path to a YAML config file.")
-def saturation_pressure_cmd(input_csv, models, output, output_dir, config_path):
+@click.option("--no-progress", is_flag=True, default=False,
+              help="Disable progress bars.")
+def saturation_pressure_cmd(input_csv, models, output, output_dir, config_path,
+                            no_progress):
     """Calculate volatile saturation pressure for melt compositions."""
     from volcatenate import calculate_saturation_pressure
 
     model_list = [m.strip() for m in models.split(",")]
     config = _load_run_config(config_path, output_dir)
+    if no_progress:
+        config.show_progress = False
 
     click.echo(f"Reading compositions from {input_csv}")
     df = calculate_saturation_pressure(input_csv, models=model_list, config=config)
@@ -139,7 +144,9 @@ def saturation_pressure_cmd(input_csv, models, output, output_dir, config_path):
 @click.option("--config", "config_path", default=None,
               type=click.Path(exists=True),
               help="Path to a YAML config file.")
-def degassing_cmd(input_file, models, output_dir, config_path):
+@click.option("--no-progress", is_flag=True, default=False,
+              help="Disable progress bars.")
+def degassing_cmd(input_file, models, output_dir, config_path, no_progress):
     """Run degassing path calculations for a single composition.
 
     INPUT_FILE can be a CSV (uses the first row) or a JSON file
@@ -150,6 +157,8 @@ def degassing_cmd(input_file, models, output_dir, config_path):
 
     model_list = [m.strip() for m in models.split(",")]
     config = _load_run_config(config_path, output_dir)
+    if no_progress:
+        config.show_progress = False
 
     # Read composition
     if input_file.endswith(".json"):

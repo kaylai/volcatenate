@@ -431,3 +431,61 @@ def loadData(
                             os.path.join(save_dir, f"{vname}.csv"), index=False)
 
     return data_morb, data_kil, data_fuego, data_fogo
+
+
+# ------------------------------------------------------------------
+# Convenience wrapper
+# ------------------------------------------------------------------
+
+def load_results(
+    output_dir: str = "volcatenate_output",
+    model_names: Optional[list[str]] = None,
+    O2_mass_bal: bool = False,
+) -> tuple[dict, dict, dict, dict]:
+    """Load degassing results written by :func:`~volcatenate.core.run_comparison`.
+
+    This is a thin convenience wrapper around :func:`loadData` that
+    points at the right directory and fills in model names automatically.
+
+    Parameters
+    ----------
+    output_dir : str
+        The ``output_dir`` that was used for the volcatenate run
+        (same as ``RunConfig.output_dir``).  Degassing CSVs are
+        expected at ``output_dir/MODEL/sample.csv``.
+    model_names : list[str], optional
+        Model names to load.  If *None*, uses all registered backends.
+    O2_mass_bal : bool
+        Compute O\ :sub:`2` by difference in the vapor phase.
+
+    Returns
+    -------
+    tuple[dict, dict, dict, dict]
+        ``(data_morb, data_kil, data_fuego, data_fogo)`` — same
+        format as :func:`loadData`.
+
+    Example
+    -------
+    ::
+
+        import volcatenate
+
+        results = volcatenate.run_comparison(
+            degassing_compositions="compositions.csv",
+            models=["EVo", "VolFe", "MAGEC"],
+        )
+
+        # Later, or in a separate cell / script:
+        data_morb, data_kil, data_fuego, data_fogo = volcatenate.load_results(
+            "volcatenate_output", ["EVo", "VolFe", "MAGEC"],
+        )
+    """
+    if model_names is None:
+        from volcatenate.backends import list_backends
+        model_names = list_backends()
+
+    return loadData(
+        model_names,
+        topdirectory_name=output_dir,
+        O2_mass_bal=O2_mass_bal,
+    )

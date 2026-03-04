@@ -281,6 +281,7 @@ class RunConfig:
     keep_intermediates: bool = True
     verbose: bool = False
     log_file: str = ""
+    show_progress: bool = True
 
     vesical: VESIcalConfig = field(default_factory=VESIcalConfig)
     volfe: VolFeConfig = field(default_factory=VolFeConfig)
@@ -325,6 +326,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("_top", "keep_intermediates"):  "Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)",
     ("_top", "verbose"):             "Print progress to terminal",
     ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
+    ("_top", "show_progress"):       "Show rich progress bars (True/False)",
     # VESIcal
     ("vesical", "model"):            "Solubility model name",
     ("vesical", "steps"):            "Number of degassing steps",

@@ -33,6 +33,7 @@ output_dir: volcatenate_output  # Directory for intermediate model output files
 keep_intermediates: true  # Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)
 verbose: false  # Print progress to terminal
 log_file: ""  # Write all output to this file (empty = no log file)
+show_progress: true  # Show rich progress bars (True/False)
 
 vesical:
   model: IaconoMarziano  # Solubility model name
