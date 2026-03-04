@@ -1,0 +1,256 @@
+# volcatenate — complete configuration reference
+#
+# This file lists EVERY configurable option with its default value
+# (matching the Sulfur Comparison Paper settings).  Edit only the
+# fields you need to change — missing keys use defaults automatically.
+#
+# ── Quick start ─────────────────────────────────────────────────
+#
+# Option A — generate a personal copy from the CLI:
+#
+#     volcatenate init-config                    # → ./volcatenate_config.yaml
+#     volcatenate init-config -o my_config.yaml  # → custom path
+#
+# Option B — copy this file:
+#
+#     cp examples/volcatenate_config_complete.yaml volcatenate_config.yaml
+#
+# Then load in Python or from the CLI:
+#
+#     config = volcatenate.load_config("volcatenate_config.yaml")
+#     volcatenate saturation-pressure input.csv --config volcatenate_config.yaml
+#
+# You can safely delete entire sections you don't use — the library
+# will fall back to the defaults shown here.
+#
+#
+# ── What volcatenate manages internally ────────────────────────
+#
+# The settings below are the ONLY knobs you need to turn.
+# volcatenate automatically handles these native-tool parameters
+# so you do NOT set them in this file:
+#
+#   EVo (set from your input CSV / MeltComposition, not config):
+#     COMPOSITION          — always "basalt"
+#     RUN_TYPE             — controlled by volcatenate method
+#     SINGLE_STEP          — always False
+#     WTH2O_SET/START      — True; value from comp.H2O
+#     WTCO2_SET/START      — True; value from comp.CO2
+#     SULFUR_SET/START     — True; value from comp.S
+#     FO2_buffer_SET/START — auto-selected from comp.dNNO / comp.dFMQ
+#     FO2_SET/START        — always False (wt% initialization used)
+#     FH2_SET/START        — always False
+#     FH2O_SET/START       — always False
+#     FCO2_SET/START       — always False
+#     FE3_FET_SET/START    — FeOT split into FeO + Fe2O3 via comp.fe3fet
+#
+#   VolFe (set from your input CSV / MeltComposition, not config):
+#     Sample, T_C, oxides, H2O, CO2ppm, STppm, Xppm, fO2 indicator
+#     output csv           — always False (volcatenate handles output)
+#     print status         — always False (volcatenate handles logging)
+#     starting_P           — always Pvsat
+#     P_variation          — always polybaric
+#     T_variation          — always isothermal
+#     eq_Fe                — always yes
+#
+#   MAGEC:
+#     All composition data, T, P range — from input CSV
+#     MATLAB paths — auto-detected (override with solver_dir / matlab_bin)
+
+
+# ── Global settings ─────────────────────────────────────────────
+
+output_dir: ""                    # Root directory for all output (default: working directory)
+raw_output_dir: raw_tool_output   # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
+keep_raw_output: true             # Keep raw tool output files after run (false = auto-cleanup)
+verbose: false                    # Print detailed log messages to terminal
+log_file: ""                      # Write all log output to this file (empty = disabled)
+show_progress: true               # Show rich progress bars during model runs
+
+
+# ── VESIcal ─────────────────────────────────────────────────────
+# VESIcal wraps multiple solubility models (IaconoMarziano, Dixon,
+# MagmaSat).  volcatenate treats each as a separate backend:
+#   VESIcal_Iacono, VESIcal_Dixon, VESIcal_MS
+
+vesical:
+  model: IaconoMarziano          # Solubility model: IaconoMarziano, Dixon, MagmaSat
+  steps: 101                     # Number of degassing pressure steps
+  final_pressure: 1.0            # Final pressure (bar)
+  fractionate_vapor: 0.0         # 0.0 = closed-system, 1.0 = open-system
+
+
+# ── VolFe ───────────────────────────────────────────────────────
+
+volfe:
+  # Saturation
+  sulfur_saturation: false        # Enable sulfur saturation calculations
+  graphite_saturation: false      # Enable graphite saturation calculations
+  scss: ONeill21hyd               # SCSS model (ONeill21hyd, ONeill21, ONeill21dil, Liu07,
+                                  #   Fortin15_pss, Liu21_pss, ONeill22_pss, ONeill21_pss,
+                                  #   Smythe17_pss, Li22_pss, Blanchard21_eq11_pss, Blanchard21_eq12_pss)
+  scas: Zajacz19_pss              # SCAS model (Zajacz19_pss, Liu23, Chowdhury19_pss, Masotta15_pss)
+
+  # Redox input column (volcatenate-specific)
+  fo2_column: Fe3FeT              # 'DNNO', 'Fe3FeT', or 'DFMQ'
+
+  # Degassing
+  gassing_style: closed           # 'closed' or 'open'
+  gassing_direction: degas        # 'degas' or 'regas'
+  bulk_composition: melt-only     # 'melt-only', 'melt+vapor_wtg', or 'melt+vapor_initialCO2'
+
+  # Species
+  coh_species: yes_H2_CO_CH4_melt  # 'yes_H2_CO_CH4_melt', 'no_H2_CO_CH4_melt', or 'H2O-CO2 only'
+  h2s_melt: true                  # Include H2Smol as dissolved melt species
+  species_x: Ar                   # Chemical identity of species X: 'Ar' or 'Ne'
+
+  # Oxygen fugacity
+  fo2_model: Kress91A             # fO2-Fe3+/FeT: 'Kress91A', 'Kress91', 'ONeill18', 'Borisov18'
+  fmq_buffer: Frost91             # FMQ buffer: 'Frost91' or 'ONeill87'
+
+  # Solubility constants
+  co2_sol: MORB_Dixon95           # CO2T solubility (MORB_Dixon95, Basalt_Dixon97, NorthArchBasalt_Dixon97,
+                                  #   Basalt_Lesne11, VesuviusAlkaliBasalt_Lesne11, EtnaAlkaliBasalt_Lesne11,
+                                  #   StromboliAlkaliBasalt_Lense11, Basanite_Holloway94, Leucitite_Thibault94,
+                                  #   Rhyolite_Blank93)
+  h2o_sol: Basalt_Hughes24        # H2O solubility (Basalt_Hughes24, Rhyolite_HughesIP)
+  h2_sol: Basalt_Hughes24         # H2 solubility (Basalt_Hughes24, Andesite_Hughes24)
+  sulfide_sol: ONeill21dil        # S2- solubility (ONeill21dil, ONeill21, ONeill21hyd,
+                                  #   Boulliung23_eq6, Boulliung23_eq7)
+  sulfate_sol: ONeill22dil        # S6+ solubility (ONeill22dil, ONeill22, Boulliung22nP,
+                                  #   Boulliung22wP, Boulliung23_eq9, Boulliung23_eq11)
+  h2s_sol: Basalt_Hughes24        # H2S solubility (Basalt_Hughes24, BasalticAndesite_Hughes24)
+  ch4_sol: Basalt_Ardia13         # CH4 solubility (Basalt_Ardia13)
+  co_sol: Basalt_Hughes24         # CO solubility (Basalt_Hughes24)
+  x_sol: Ar_Basalt_HughesIP       # Species X solubility (Ar_Basalt_HughesIP, Ar_Rhyolite_HughesIP,
+                                  #   Ne_Basalt_HughesIP, Ne_Rhyolite_HughesIP)
+  c_spec_comp: Basalt             # CO2mol/CO32- speciation (Basalt, Andesite_Botcharnikov06,
+                                  #   Dacite_Botcharnikov06, Rhyolite)
+  h_spec_comp: MORB_HughesIP      # H2Omol/OH- speciation (MORB_HughesIP, StromboliAlkaliBasalt_Lesne10,
+                                  #   VesuviusAlkaliBasalt_Lesne10, EtnaAlkaliBasalt_Lesne10,
+                                  #   Andesite_Botcharnikov06, Albite_Silver89, Rhyolite_Zhang97)
+
+  # Fugacity coefficients
+  ideal_gas: false                # Treat all vapor species as ideal (overrides individual y_* settings)
+  y_co2: Shi92                    # CO2 (Shi92, Holland91_eq8_tab1, Holland91_eq4,A1-3_tab1,
+                                  #   Holland91_eq8,9_tab2, Flowers79, ideal)
+  y_so2: Shi92_Hughes23           # SO2 (Shi92_Hughes23, Shi92, ideal)
+  y_h2s: Shi92_Hughes24           # H2S (Shi92_Hughes23, Shi92, ideal)
+  y_h2: Shaw64                    # H2 (Shaw64, ideal)
+  y_o2: Shi92                     # O2 (Shi92, ideal)
+  y_s2: Shi92                     # S2 (Shi92, ideal)
+  y_co: Shi92                     # CO (Shi92, ideal)
+  y_ch4: Shi92                    # CH4 (Shi92, ideal)
+  y_h2o: Holland91                # H2O (Holland91, Flowers79, ideal)
+  y_ocs: Shi92                    # OCS (Shi92, ideal)
+
+  # Equilibrium constants (only those with multiple model options)
+  k_hosg: Ohmoto97                # H2S equil. 0.5S2+H2O=H2S+0.5O2 (Ohmoto97, noH2S)
+  k_osg: Ohmoto97                 # SO2 equil. 0.5S2+O2=SO2 (Ohmoto97, noSO2)
+  k_cohg: Ohmoto97                # CH4 equil. CH4+2O2=CO2+2H2O (Ohmoto97, noCH4)
+  k_ocsg: Moussallam19            # OCS equil. (Moussallam19, noOCS)
+
+
+# ── EVo ─────────────────────────────────────────────────────────
+
+evo:
+  # Gas system and Fe redox
+  gas_system: cohs                # Gas system: 'cohs', 'coh', 'cos', 'chs', etc.
+  fo2_buffer: FMQ                 # fO2 buffer: 'FMQ', 'NNO', 'IW'
+  fe_system: true                 # Include Fe redox equilibrium
+  find_saturation: true           # Find saturation pressure automatically
+  atomic_mass_set: false          # Use atomic mass fractions for H/C/S/N
+  ocs: false                      # Include OCS as a gas species
+
+  # Pressure grid
+  dp_min: 1                       # Minimum pressure step (bar)
+  dp_max: 100                     # Maximum pressure step (bar)
+  mass: 100                       # System mass (g)
+  p_start: 3000                   # Starting pressure (bar)
+  p_stop: 1                       # Final pressure (bar)
+  wgt: 0.00001                    # Initial gas weight fraction
+  loss_frac: 0.9999               # Gas loss fraction per step (open-system)
+
+  # Atomic mass fractions (ppm) — only used when atomic_mass_set = true
+  atomic_h: 500                   # Atomic H (ppm)
+  atomic_c: 200                   # Atomic C (ppm)
+  atomic_s: 4000                  # Atomic S (ppm)
+  atomic_n: 10                    # Atomic N (ppm)
+
+  # Nitrogen and graphite
+  nitrogen_set: false             # Set N from composition
+  graphite_saturated: false       # Graphite saturation at start
+
+  # Solubility and thermodynamic model selections
+  h2o_model: burguisser2015       # H2O solubility model
+  h2_model: gaillard2003          # H2 solubility model
+  c_model: burguisser2015         # CO2/C solubility model
+  co_model: armstrong2015         # CO solubility model
+  ch4_model: ardia2013            # CH4 solubility model
+  sulfide_capacity: oneill2020    # Sulfide capacity model
+  sulfate_capacity: nash2019      # Sulfate capacity model
+  scss: liu2007                   # SCSS model
+  n_model: libourel2003           # N solubility model
+  density_model: spera2000        # Melt density model
+  fo2_model: kc1991               # fO2 model
+  fmq_model: frost1991            # FMQ buffer calibration
+
+
+# ── MAGEC ───────────────────────────────────────────────────────
+# MAGEC runs via a MATLAB subprocess.  Requires a local MATLAB
+# installation with the MAGEC solver on the MATLAB path.
+# Paths are auto-detected; set here to override, or use env vars
+# MAGEC_SOLVER_DIR and MATLAB_BIN.
+
+magec:
+  solver_dir: ""                  # Path to directory containing MAGEC_Solver_v1b.p (auto-detected)
+  matlab_bin: ""                  # Path to MATLAB binary (auto-detected)
+
+  # Model physics options
+  sulfide_sat: 0                  # Sulfide saturation:   (1) Yes; (0) No
+  sulfate_sat: 0                  # Sulfate saturation:   (1) Yes; (0) No
+  graphite_sat: 0                 # Graphite saturation:  (1) Yes; (0) No
+  fe_redox: 2                     # Fe redox model:       (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+  s_redox: 2                      # S redox model:        (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010;
+                                  #                       (4) O'Neill 2022; (5) Boulliung 2023
+  scss: 1                         # SCSS model:           (1) Blanchard 2021; (2) Fortin 2015;
+                                  #                       (3) Smythe 2017; (4) O'Neill 2021
+  sulfide_cap: 1                  # Sulfide capacity:     (1) Nzotta 1999; (2) O'Neill 2021; (3) Boulliung 2023
+  co2_sol: 1                      # CO2 solubility:       (1) IM2012; (2) Liu 2005; (3.x) Burgisser 2015
+  h2o_sol: 1                      # H2O solubility:       (1) IM2012; (2) Liu 2005; (3.x) Burgisser 2015
+  co_sol: 1                       # CO solubility:        (1) Armstrong 2015; (2.x) Yoshioka 2019
+  adiabatic: 0                    # Thermal model:        (0) isothermal; (1) adiabatic
+  solver: 2                       # Solver:               (1) lsqnonlin; (2) fsolve
+  gas_behavior: 1                 # Gas equation of state: (1) real gas; (2) ideal
+  o2_balance: 0                   # O2 balance:           (0) Total O balanced; (1) fixed fO2 buffer
+
+  # Redox and pressure search
+  redox_option: "Fe3+/FeT"        # Redox input: 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
+  p_start_kbar: 3.0               # SatP search start pressure (kbar)
+  p_final_kbar: 0.001             # SatP search end pressure (kbar)
+  n_steps: 100                    # Number of pressure steps for SatP search
+
+  # Subprocess control
+  timeout: 300                    # MATLAB subprocess timeout (seconds)
+
+
+# ── SulfurX ─────────────────────────────────────────────────────
+# Path is auto-detected.  Set here to override, or use env var
+# SULFURX_PATH.
+
+sulfurx:
+  path: ""                        # Path to SulfurX installation (auto-detected)
+  coh_model: 0                    # C-O-H solubility: 0 = Iacono-Marziano, 1 = VolatileCalc
+  slope_h2o: -0.3396              # K2O-H2O relationship slope:  K2O = a * H2O + b
+  constant_h2o: 2.7               # K2O-H2O relationship intercept
+  n_steps: 600                    # Pressure grid steps for degassing
+  fo2_tracker: 1                  # fO2 evolution: 0 = buffered fO2, 1 = redox evolution
+  s_fe_choice: 1                  # S speciation model: 0 = Nash, 1 = O'Neill & Mavrogenes
+  sigma: 0.005                    # log10fO2 tolerance for redox calculation
+  sulfide_pre: 0                  # Sulfide precipitation: 0 = disabled, 1 = enabled
+
+
+# ── DCompress ───────────────────────────────────────────────────
+# DCompress currently has no configurable options.
+
+# dcompress: {}

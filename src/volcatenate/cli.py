@@ -109,7 +109,7 @@ def list_models_cmd(available_only):
 @click.option("-o", "--output", default="saturation_pressures.csv",
               help="Output CSV path.")
 @click.option("--output-dir", default=None,
-              help="Working directory for intermediate files.")
+              help="Root directory for all output files.")
 @click.option("--config", "config_path", default=None,
               type=click.Path(exists=True),
               help="Path to a YAML config file.")

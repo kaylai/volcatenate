@@ -159,28 +159,130 @@ class VESIcalConfig:
 
 @dataclass
 class VolFeConfig:
-    """VolFe model configuration."""
+    """VolFe model configuration.
 
+    Managed internally by volcatenate (not exposed here):
+      - ``output csv``     — always False; volcatenate handles its own output
+      - ``print status``   — always False; volcatenate handles logging
+      - ``starting_P``     — always 'Pvsat'
+      - ``P_variation``    — always 'polybaric'
+      - ``T_variation``    — always 'isothermal'
+      - ``eq_Fe``          — always 'yes'
+
+    Populated from the input composition (MeltComposition), not config:
+      - Sample name, T_C, all oxides, H2O, CO2ppm, STppm, Xppm
+      - fO2 indicator (DNNO / Fe3FeT / DFMQ) — chosen via ``fo2_column``
+    """
+
+    # Saturation
     sulfur_saturation: bool = False
     graphite_saturation: bool = False
+
+    # Redox input (volcatenate-specific: which column to read from the input CSV)
     fo2_column: str = "Fe3FeT"        # 'DNNO', 'Fe3FeT', or 'DFMQ'
-    gassing_style: str = "closed"
+
+    # Degassing
+    gassing_style: str = "closed"       # 'closed' or 'open'
+    gassing_direction: str = "degas"    # 'degas' or 'regas'
+    bulk_composition: str = "melt-only" # 'melt-only', 'melt+vapor_wtg', 'melt+vapor_initialCO2'
+
+    # Species
+    coh_species: str = "yes_H2_CO_CH4_melt"  # COH species in melt and vapor
+    h2s_melt: bool = True               # H2S as dissolved melt species
+    species_x: str = "Ar"               # Chemical identity of species X ('Ar' or 'Ne')
+
+    # Oxygen fugacity
+    fo2_model: str = "Kress91A"          # fO2–Fe3+/FeT relationship
+    fmq_buffer: str = "Frost91"          # FMQ buffer parameterisation
+
+    # Solubility constants
+    co2_sol: str = "MORB_Dixon95"        # CO2T solubility constant
+    h2o_sol: str = "Basalt_Hughes24"     # H2O solubility constant
+    h2_sol: str = "Basalt_Hughes24"      # H2 solubility constant
+    sulfide_sol: str = "ONeill21dil"     # S2- solubility constant
+    sulfate_sol: str = "ONeill22dil"     # S6+ solubility constant
+    h2s_sol: str = "Basalt_Hughes24"     # H2S solubility constant
+    ch4_sol: str = "Basalt_Ardia13"      # CH4 solubility constant
+    co_sol: str = "Basalt_Hughes24"      # CO solubility constant
+    x_sol: str = "Ar_Basalt_HughesIP"    # Species X solubility constant
+    c_spec_comp: str = "Basalt"          # CO2mol/CO32- speciation model
+    h_spec_comp: str = "MORB_HughesIP"   # H2Omol/OH- speciation model
+
+    # Saturation conditions
+    scss: str = "ONeill21hyd"            # SCSS model
+    scas: str = "Zajacz19_pss"           # SCAS model
+
+    # Fugacity coefficients
+    ideal_gas: bool = False              # Treat all vapor species as ideal gases
+    y_co2: str = "Shi92"                 # CO2 fugacity coefficient
+    y_so2: str = "Shi92_Hughes23"        # SO2 fugacity coefficient
+    y_h2s: str = "Shi92_Hughes24"        # H2S fugacity coefficient
+    y_h2: str = "Shaw64"                 # H2 fugacity coefficient
+    y_o2: str = "Shi92"                  # O2 fugacity coefficient
+    y_s2: str = "Shi92"                  # S2 fugacity coefficient
+    y_co: str = "Shi92"                  # CO fugacity coefficient
+    y_ch4: str = "Shi92"                 # CH4 fugacity coefficient
+    y_h2o: str = "Holland91"             # H2O fugacity coefficient
+    y_ocs: str = "Shi92"                 # OCS fugacity coefficient
+
+    # Equilibrium constants (only those with multiple model options)
+    k_hosg: str = "Ohmoto97"            # H2S equilibrium (0.5S2 + H2O = H2S + 0.5O2)
+    k_osg: str = "Ohmoto97"             # SO2 equilibrium (0.5S2 + O2 = SO2)
+    k_cohg: str = "Ohmoto97"            # CH4 equilibrium (CH4 + 2O2 = CO2 + 2H2O)
+    k_ocsg: str = "Moussallam19"         # OCS equilibrium
 
 
 @dataclass
 class EVoConfig:
-    """EVo model configuration."""
+    """EVo model configuration.
+
+    Managed internally by volcatenate (not exposed here):
+      - ``COMPOSITION``    — always 'basalt'
+      - ``RUN_TYPE``       — set by volcatenate method (closed/open)
+      - ``SINGLE_STEP``    — always False
+      - ``S_SAT_WARN``     — always False
+
+    Volatile initialization (from MeltComposition, not config):
+      - ``WTH2O_SET/START``  — always True; value from comp.H2O
+      - ``WTCO2_SET/START``  — always True; value from comp.CO2
+      - ``SULFUR_SET/START`` — always True; value from comp.S
+
+    fO2 buffer (auto-selected from composition data):
+      - ``FO2_buffer_SET``   — True only when no Fe3FeT data available
+      - ``FO2_buffer/START`` — picked from comp.dNNO or comp.dFMQ
+
+    Fugacity fallbacks (kept at EVo defaults):
+      - ``FO2_SET/START``, ``FH2_SET/START``, ``FH2O_SET/START``,
+        ``FCO2_SET/START`` — always False (wt% initialization used instead)
+
+    Iron split (from MeltComposition):
+      - FeOT is split into FeO + Fe2O3 using comp.fe3fet_computed in chem.yaml
+    """
 
     gas_system: str = "cohs"
     fo2_buffer: str = "FMQ"
     fe_system: bool = True
     find_saturation: bool = True
     atomic_mass_set: bool = False
+    ocs: bool = False                 # Include OCS as a gas species
     dp_min: int = 1
     dp_max: int = 100
     mass: int = 100
     p_start: int = 3000              # bar
     p_stop: int = 1                  # bar
+    wgt: float = 0.00001             # Initial gas weight fraction
+    loss_frac: float = 0.9999        # Gas loss fraction per step (open-system)
+
+    # Volatile initialization as atomic mass fractions (ppm).
+    # Only used when atomic_mass_set = True.
+    atomic_h: float = 500
+    atomic_c: float = 200
+    atomic_s: float = 4000
+    atomic_n: float = 10
+
+    # Nitrogen and graphite
+    nitrogen_set: bool = False        # Set N from composition (if True, uses N from MeltComposition)
+    graphite_saturated: bool = False  # Graphite saturation at start
 
     # Solubility model selections
     h2o_model: str = "burguisser2015"
@@ -271,19 +373,23 @@ class RunConfig:
     Parameters
     ----------
     output_dir : str
-        Directory for intermediate model output files (YAML configs,
-        MATLAB scripts, per-sample subdirectories, etc.).
-    keep_intermediates : bool
-        If *True* (default), all intermediate files are retained in
-        *output_dir* for inspection.  If *False*, intermediate files
+        Root directory for all output files (results CSVs, figures,
+        raw tool output).  Default ``""`` means the current working
+        directory.
+    raw_output_dir : str
+        Subdirectory (relative to *output_dir*) for raw model files
+        — EVo YAML configs, MAGEC MATLAB scripts, per-sample
+        subdirectories, etc.  Default ``"raw_tool_output"``.
+    keep_raw_output : bool
+        If *True* (default), all raw tool output files are retained
+        in *raw_output_dir* for inspection.  If *False*, raw files
         are cleaned up after each model run completes, keeping only
-        the final result DataFrames in memory.  This dramatically
-        reduces on-disk clutter (e.g., dozens of EVo YAML
-        subdirectories or MAGEC MATLAB scripts).
+        the final result DataFrames in memory.
     """
 
-    output_dir: str = "volcatenate_output"
-    keep_intermediates: bool = True
+    output_dir: str = ""
+    raw_output_dir: str = "raw_tool_output"
+    keep_raw_output: bool = True
     verbose: bool = False
     log_file: str = ""
     show_progress: bool = True
@@ -327,8 +433,9 @@ def default_config_path() -> str:
 
 _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     # top-level
-    ("_top", "output_dir"):          "Directory for intermediate model output files",
-    ("_top", "keep_intermediates"):  "Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)",
+    ("_top", "output_dir"):          "Root directory for all output (default: working directory)",
+    ("_top", "raw_output_dir"):     "Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)",
+    ("_top", "keep_raw_output"):    "Keep raw tool output files after run",
     ("_top", "verbose"):             "Print progress to terminal",
     ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
     ("_top", "show_progress"):       "Show rich progress bars (True/False)",
@@ -342,17 +449,61 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("volfe", "graphite_saturation"): "",
     ("volfe", "fo2_column"):         "'DNNO', 'Fe3FeT', or 'DFMQ'",
     ("volfe", "gassing_style"):      "'closed' or 'open'",
+    ("volfe", "gassing_direction"):  "'degas' or 'regas'",
+    ("volfe", "bulk_composition"):   "'melt-only', 'melt+vapor_wtg', or 'melt+vapor_initialCO2'",
+    ("volfe", "coh_species"):        "'yes_H2_CO_CH4_melt', 'no_H2_CO_CH4_melt', or 'H2O-CO2 only'",
+    ("volfe", "h2s_melt"):           "Include H2Smol as dissolved melt species",
+    ("volfe", "species_x"):          "'Ar' or 'Ne'",
+    ("volfe", "fo2_model"):          "fO2-Fe3+/FeT model: 'Kress91A', 'Kress91', 'ONeill18', 'Borisov18'",
+    ("volfe", "fmq_buffer"):         "FMQ buffer: 'Frost91' or 'ONeill87'",
+    ("volfe", "co2_sol"):            "CO2T solubility constant",
+    ("volfe", "h2o_sol"):            "H2O solubility constant",
+    ("volfe", "h2_sol"):             "H2 solubility constant",
+    ("volfe", "sulfide_sol"):        "S2- solubility constant",
+    ("volfe", "sulfate_sol"):        "S6+ solubility constant",
+    ("volfe", "h2s_sol"):            "H2S solubility constant",
+    ("volfe", "ch4_sol"):            "CH4 solubility constant",
+    ("volfe", "co_sol"):             "CO solubility constant",
+    ("volfe", "x_sol"):              "Species X solubility constant",
+    ("volfe", "c_spec_comp"):        "CO2mol/CO32- speciation model",
+    ("volfe", "h_spec_comp"):        "H2Omol/OH- speciation model",
+    ("volfe", "scss"):               "SCSS model",
+    ("volfe", "scas"):               "SCAS model",
+    ("volfe", "ideal_gas"):          "Treat all vapor species as ideal gases",
+    ("volfe", "y_co2"):              "CO2 fugacity coefficient model",
+    ("volfe", "y_so2"):              "SO2 fugacity coefficient model",
+    ("volfe", "y_h2s"):              "H2S fugacity coefficient model",
+    ("volfe", "y_h2"):               "H2 fugacity coefficient model",
+    ("volfe", "y_o2"):               "O2 fugacity coefficient model",
+    ("volfe", "y_s2"):               "S2 fugacity coefficient model",
+    ("volfe", "y_co"):               "CO fugacity coefficient model",
+    ("volfe", "y_ch4"):              "CH4 fugacity coefficient model",
+    ("volfe", "y_h2o"):              "H2O fugacity coefficient model",
+    ("volfe", "y_ocs"):              "OCS fugacity coefficient model",
+    ("volfe", "k_hosg"):             "H2S equilibrium constant (0.5S2 + H2O = H2S + 0.5O2)",
+    ("volfe", "k_osg"):              "SO2 equilibrium constant (0.5S2 + O2 = SO2)",
+    ("volfe", "k_cohg"):             "CH4 equilibrium constant (CH4 + 2O2 = CO2 + 2H2O)",
+    ("volfe", "k_ocsg"):             "OCS equilibrium constant",
     # EVo
     ("evo", "gas_system"):           "'cohs', 'coh', 'cos', etc.",
     ("evo", "fo2_buffer"):           "'FMQ', 'NNO', etc.",
     ("evo", "fe_system"):            "Include Fe redox equilibrium",
     ("evo", "find_saturation"):      "Find saturation pressure automatically",
-    ("evo", "atomic_mass_set"):      "",
+    ("evo", "atomic_mass_set"):      "Use atomic mass fractions for H/C/S/N",
+    ("evo", "ocs"):                  "Include OCS as a gas species",
     ("evo", "dp_min"):               "Minimum pressure step (bar)",
     ("evo", "dp_max"):               "Maximum pressure step (bar)",
     ("evo", "mass"):                 "System mass (g)",
     ("evo", "p_start"):              "Starting pressure (bar)",
     ("evo", "p_stop"):               "Final pressure (bar)",
+    ("evo", "wgt"):                  "Initial gas weight fraction",
+    ("evo", "loss_frac"):            "Gas loss fraction per step (open-system)",
+    ("evo", "atomic_h"):             "Atomic H (ppm) — only used when atomic_mass_set=true",
+    ("evo", "atomic_c"):             "Atomic C (ppm) — only used when atomic_mass_set=true",
+    ("evo", "atomic_s"):             "Atomic S (ppm) — only used when atomic_mass_set=true",
+    ("evo", "atomic_n"):             "Atomic N (ppm) — only used when atomic_mass_set=true",
+    ("evo", "nitrogen_set"):         "Set N from composition",
+    ("evo", "graphite_saturated"):   "Graphite saturation at start",
     ("evo", "h2o_model"):            "",
     ("evo", "h2_model"):             "",
     ("evo", "c_model"):              "",
@@ -425,7 +576,12 @@ def _format_value(val: object) -> str:
             return f'"{val}"'
         return val
     if isinstance(val, float):
-        return f"{val}"
+        s = f"{val}"
+        # YAML 1.1 requires a '.' before 'e' for scientific notation
+        # (e.g. '1e-05' is parsed as a string, '1.0e-05' as a float)
+        if "e" in s and "." not in s:
+            s = s.replace("e", ".0e", 1)
+        return s
     return str(val)
 
 

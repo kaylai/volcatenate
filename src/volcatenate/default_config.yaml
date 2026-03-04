@@ -29,8 +29,9 @@
 #
 #        volcatenate saturation-pressure input.csv --config my_config.yaml
 
-output_dir: volcatenate_output  # Directory for intermediate model output files
-keep_intermediates: true  # Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)
+output_dir: ""  # Root directory for all output (default: working directory)
+raw_output_dir: raw_tool_output  # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
+keep_raw_output: true  # Keep raw tool output files after run
 verbose: false  # Print progress to terminal
 log_file: ""  # Write all output to this file (empty = no log file)
 show_progress: true  # Show rich progress bars (True/False)
@@ -46,18 +47,62 @@ volfe:
   graphite_saturation: false
   fo2_column: Fe3FeT  # 'DNNO', 'Fe3FeT', or 'DFMQ'
   gassing_style: closed  # 'closed' or 'open'
+  gassing_direction: degas  # 'degas' or 'regas'
+  bulk_composition: melt-only  # 'melt-only', 'melt+vapor_wtg', or 'melt+vapor_initialCO2'
+  coh_species: yes_H2_CO_CH4_melt  # 'yes_H2_CO_CH4_melt', 'no_H2_CO_CH4_melt', or 'H2O-CO2 only'
+  h2s_melt: true  # Include H2Smol as dissolved melt species
+  species_x: Ar  # 'Ar' or 'Ne'
+  fo2_model: Kress91A  # fO2-Fe3+/FeT: 'Kress91A', 'Kress91', 'ONeill18', 'Borisov18'
+  fmq_buffer: Frost91  # FMQ buffer: 'Frost91' or 'ONeill87'
+  co2_sol: MORB_Dixon95  # CO2T solubility constant
+  h2o_sol: Basalt_Hughes24  # H2O solubility constant
+  h2_sol: Basalt_Hughes24  # H2 solubility constant
+  sulfide_sol: ONeill21dil  # S2- solubility constant
+  sulfate_sol: ONeill22dil  # S6+ solubility constant
+  h2s_sol: Basalt_Hughes24  # H2S solubility constant
+  ch4_sol: Basalt_Ardia13  # CH4 solubility constant
+  co_sol: Basalt_Hughes24  # CO solubility constant
+  x_sol: Ar_Basalt_HughesIP  # Species X solubility constant
+  c_spec_comp: Basalt  # CO2mol/CO32- speciation model
+  h_spec_comp: MORB_HughesIP  # H2Omol/OH- speciation model
+  scss: ONeill21hyd  # SCSS model
+  scas: Zajacz19_pss  # SCAS model
+  ideal_gas: false  # Treat all vapor species as ideal gases
+  y_co2: Shi92  # CO2 fugacity coefficient model
+  y_so2: Shi92_Hughes23  # SO2 fugacity coefficient model
+  y_h2s: Shi92_Hughes24  # H2S fugacity coefficient model
+  y_h2: Shaw64  # H2 fugacity coefficient model
+  y_o2: Shi92  # O2 fugacity coefficient model
+  y_s2: Shi92  # S2 fugacity coefficient model
+  y_co: Shi92  # CO fugacity coefficient model
+  y_ch4: Shi92  # CH4 fugacity coefficient model
+  y_h2o: Holland91  # H2O fugacity coefficient model
+  y_ocs: Shi92  # OCS fugacity coefficient model
+  k_hosg: Ohmoto97  # H2S equilibrium constant
+  k_osg: Ohmoto97  # SO2 equilibrium constant
+  k_cohg: Ohmoto97  # CH4 equilibrium constant
+  k_ocsg: Moussallam19  # OCS equilibrium constant
 
 evo:
   gas_system: cohs  # 'cohs', 'coh', 'cos', etc.
   fo2_buffer: FMQ  # 'FMQ', 'NNO', etc.
   fe_system: true  # Include Fe redox equilibrium
   find_saturation: true  # Find saturation pressure automatically
-  atomic_mass_set: false
+  atomic_mass_set: false  # Use atomic mass fractions for H/C/S/N
+  ocs: false  # Include OCS as a gas species
   dp_min: 1  # Minimum pressure step (bar)
   dp_max: 100  # Maximum pressure step (bar)
   mass: 100  # System mass (g)
   p_start: 3000  # Starting pressure (bar)
   p_stop: 1  # Final pressure (bar)
+  wgt: 0.00001  # Initial gas weight fraction
+  loss_frac: 0.9999  # Gas loss fraction per step (open-system)
+  atomic_h: 500  # Atomic H (ppm) — only used when atomic_mass_set=true
+  atomic_c: 200  # Atomic C (ppm) — only used when atomic_mass_set=true
+  atomic_s: 4000  # Atomic S (ppm) — only used when atomic_mass_set=true
+  atomic_n: 10  # Atomic N (ppm) — only used when atomic_mass_set=true
+  nitrogen_set: false  # Set N from composition
+  graphite_saturated: false  # Graphite saturation at start
   h2o_model: burguisser2015
   h2_model: gaillard2003
   c_model: burguisser2015

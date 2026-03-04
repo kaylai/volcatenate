@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import io
 import os
+import shutil
 import sys
 
 import numpy as np
@@ -23,23 +24,33 @@ from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_sta
 
 
 @contextlib.contextmanager
-def _quiet_volfe():
+def _quiet_volfe(work_dir: str | None = None):
     """Suppress VolFe's tqdm progress bars and stdout, increase recursion limit.
 
     VolFe uses ``tqdm.tqdm`` for pressure-step progress (writes to stderr)
     and its degassing solver can exceed Python's default 1000-recursion limit
     on compositions with many pressure steps.
+
+    VolFe's ``jac_newton3()`` writes debug CSV files
+    (``results_jacnewton2.csv``, ``results_jacnewton3.csv``) to the CWD.
+    If *work_dir* is provided, the CWD is temporarily changed so these
+    files land there instead of cluttering the user's project directory.
     """
     buf_out = io.StringIO()
     buf_err = io.StringIO()
     old_tqdm = os.environ.get("TQDM_DISABLE")
     old_limit = sys.getrecursionlimit()
+    old_cwd = os.getcwd()
     os.environ["TQDM_DISABLE"] = "1"
     sys.setrecursionlimit(max(old_limit, 10_000))
+    if work_dir:
+        os.makedirs(work_dir, exist_ok=True)
+        os.chdir(work_dir)
     try:
         with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
             yield
     finally:
+        os.chdir(old_cwd)
         if old_tqdm is None:
             os.environ.pop("TQDM_DISABLE", None)
         else:
@@ -78,23 +89,31 @@ class Backend(ModelBackend):
         cfg = config.volfe
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_satp")
 
         try:
-            with _quiet_volfe():
+            with _quiet_volfe(work_dir):
                 result = vf.calc_Pvsat(setup_df, models=models_df)
             # Result is a DataFrame; extract pressure from first row
             if "P_bar" in result.columns:
-                return float(result["P_bar"].iloc[0])
+                p = float(result["P_bar"].iloc[0])
             elif "P_bars" in result.columns:
-                return float(result["P_bars"].iloc[0])
-            # Fall back to first numeric column that looks like pressure
-            for col_name in result.columns:
-                if "p" in col_name.lower() and "bar" in col_name.lower():
-                    return float(result[col_name].iloc[0])
-            return np.nan
+                p = float(result["P_bars"].iloc[0])
+            else:
+                # Fall back to first numeric column that looks like pressure
+                p = np.nan
+                for col_name in result.columns:
+                    if "p" in col_name.lower() and "bar" in col_name.lower():
+                        p = float(result[col_name].iloc[0])
+                        break
         except Exception as exc:
             logger.warning("[VolFe] satP failed for %s: %s", comp.sample, exc)
-            return np.nan
+            p = np.nan
+
+        if not config.keep_raw_output:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+        return p
 
     # ----------------------------------------------------------------
     # Degassing path
@@ -109,8 +128,9 @@ class Backend(ModelBackend):
         cfg = config.volfe
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_degas")
 
-        with _quiet_volfe():
+        with _quiet_volfe(work_dir):
             result = vf.calc_gassing(setup_df, models=models_df, suppress_warnings=True)
 
         # Standardize output
@@ -118,6 +138,9 @@ class Backend(ModelBackend):
         result = compute_cs_v_mf(result)
         result = normalize_volatiles(result)
         result = ensure_standard_columns(result)
+
+        if not config.keep_raw_output:
+            shutil.rmtree(work_dir, ignore_errors=True)
 
         return result
 
@@ -173,14 +196,70 @@ def _build_setup_df(comp: MeltComposition, cfg) -> pd.DataFrame:
 
 
 def _build_models_df(cfg):
-    """Build the VolFe model-options DataFrame."""
+    """Build the VolFe model-options DataFrame.
+
+    Maps volcatenate's VolFeConfig fields to the exact option names
+    that VolFe expects.  Options not listed here (single-option params,
+    in-development flags) are left to VolFe's built-in defaults via
+    ``make_df_and_add_model_defaults``.
+    """
     import VolFe as vf
 
     model_opts = [
+        # ── Saturation conditions ──
         ["sulfur_saturation", str(cfg.sulfur_saturation)],
         ["graphite_saturation", str(cfg.graphite_saturation)],
+        ["SCSS", cfg.scss],
+        ["SCAS", cfg.scas],
+
+        # ── Degassing ──
+        ["gassing_style", cfg.gassing_style],
+        ["gassing_direction", cfg.gassing_direction],
+        ["bulk_composition", cfg.bulk_composition],
+
+        # ── Species ──
+        ["COH_species", cfg.coh_species],
+        ["H2S_m", str(cfg.h2s_melt)],
+        ["species X", cfg.species_x],
+
+        # ── Oxygen fugacity ──
+        ["fO2", cfg.fo2_model],
+        ["FMQbuffer", cfg.fmq_buffer],
+
+        # ── Solubility constants ──
+        ["carbon dioxide", cfg.co2_sol],
+        ["water", cfg.h2o_sol],
+        ["hydrogen", cfg.h2_sol],
+        ["sulfide", cfg.sulfide_sol],
+        ["sulfate", cfg.sulfate_sol],
+        ["hydrogen sulfide", cfg.h2s_sol],
+        ["methane", cfg.ch4_sol],
+        ["carbon monoxide", cfg.co_sol],
+        ["species X solubility", cfg.x_sol],
+        ["Cspeccomp", cfg.c_spec_comp],
+        ["Hspeccomp", cfg.h_spec_comp],
+
+        # ── Fugacity coefficients ──
+        ["ideal_gas", str(cfg.ideal_gas)],
+        ["y_CO2", cfg.y_co2],
+        ["y_SO2", cfg.y_so2],
+        ["y_H2S", cfg.y_h2s],
+        ["y_H2", cfg.y_h2],
+        ["y_O2", cfg.y_o2],
+        ["y_S2", cfg.y_s2],
+        ["y_CO", cfg.y_co],
+        ["y_CH4", cfg.y_ch4],
+        ["y_H2O", cfg.y_h2o],
+        ["y_OCS", cfg.y_ocs],
+
+        # ── Equilibrium constants ──
+        ["KHOSg", cfg.k_hosg],
+        ["KOSg", cfg.k_osg],
+        ["KCOHg", cfg.k_cohg],
+        ["KOCSg", cfg.k_ocsg],
+
+        # ── Volcatenate-managed (not configurable) ──
         ["output csv", "False"],
         ["print status", "False"],
-        ["gassing_style", cfg.gassing_style],
     ]
     return vf.make_df_and_add_model_defaults(model_opts)

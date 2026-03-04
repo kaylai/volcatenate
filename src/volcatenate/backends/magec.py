@@ -78,7 +78,7 @@ class Backend(ModelBackend):
         self._check_solver(config)
 
         cfg = config.magec
-        work_dir = os.path.join(config.output_dir, "magec", comp.sample)
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         inp_dir = os.path.join(work_dir, "inputs")
         out_dir = os.path.join(work_dir, "outputs")
         os.makedirs(inp_dir, exist_ok=True)
@@ -114,8 +114,8 @@ class Backend(ModelBackend):
                 cfg.n_steps, cfg.timeout,
             )
 
-        # Clean up intermediate files if requested
-        if not config.keep_intermediates:
+        # Clean up raw tool output if requested
+        if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return result
@@ -132,7 +132,7 @@ class Backend(ModelBackend):
         self._check_solver(config)
 
         cfg = config.magec
-        work_dir = os.path.join(config.output_dir, "magec", comp.sample)
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         inp_dir = os.path.join(work_dir, "inputs")
         out_dir = os.path.join(work_dir, "outputs")
         os.makedirs(inp_dir, exist_ok=True)
@@ -163,8 +163,8 @@ class Backend(ModelBackend):
         df = normalize_volatiles(df)
         df = ensure_standard_columns(df)
 
-        # Clean up intermediate files if requested
-        if not config.keep_intermediates:
+        # Clean up raw tool output if requested
+        if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return df

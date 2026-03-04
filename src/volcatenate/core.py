@@ -446,10 +446,10 @@ def run_comparison(
             output["degassing"] = all_degassing
 
     # --- Cleanup empty output directory ---
-    if not config.keep_intermediates:
-        out_dir = config.output_dir
-        if os.path.isdir(out_dir) and not os.listdir(out_dir):
-            shutil.rmtree(out_dir, ignore_errors=True)
+    if not config.keep_raw_output:
+        raw_dir = os.path.join(config.output_dir, config.raw_output_dir)
+        if os.path.isdir(raw_dir) and not os.listdir(raw_dir):
+            shutil.rmtree(raw_dir, ignore_errors=True)
 
     logger.info("=== Comparison complete ===")
     return output

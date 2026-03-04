@@ -124,7 +124,7 @@ class Backend(ModelBackend):
         _patch_evo_prompts()
 
         cfg = config.evo
-        work_dir = os.path.join(config.output_dir, f"{comp.sample}_evo_satp")
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_satp")
         os.makedirs(work_dir, exist_ok=True)
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
@@ -149,8 +149,8 @@ class Backend(ModelBackend):
         if "P" in df.columns and len(df) > 0:
             result = float(df["P"].iloc[0])
 
-        # Clean up intermediate files if requested
-        if not config.keep_intermediates:
+        # Clean up raw tool output if requested
+        if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return result
@@ -167,7 +167,7 @@ class Backend(ModelBackend):
         _patch_evo_prompts()
 
         cfg = config.evo
-        work_dir = os.path.join(config.output_dir, f"{comp.sample}_evo_degas")
+        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_degas")
         os.makedirs(work_dir, exist_ok=True)
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
@@ -205,8 +205,8 @@ class Backend(ModelBackend):
         df = normalize_volatiles(df)
         df = ensure_standard_columns(df)
 
-        # Clean up intermediate files if requested
-        if not config.keep_intermediates:
+        # Clean up raw tool output if requested
+        if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return df
@@ -299,7 +299,7 @@ def _write_yaml_configs(
 
         "GAS_SYS": cfg.gas_system,
         "FE_SYSTEM": cfg.fe_system,
-        "OCS": False,
+        "OCS": cfg.ocs,
         "S_SAT_WARN": False,
 
         "T_START": t_kelvin,
@@ -308,8 +308,8 @@ def _write_yaml_configs(
         "DP_MIN": cfg.dp_min,
         "DP_MAX": cfg.dp_max,
         "MASS": cfg.mass,
-        "WgT": 0.00001,
-        "LOSS_FRAC": 0.9999,
+        "WgT": cfg.wgt,
+        "LOSS_FRAC": cfg.loss_frac,
 
         "DENSITY_MODEL": cfg.density_model,
         "FO2_MODEL": cfg.fo2_model,
@@ -334,10 +334,10 @@ def _write_yaml_configs(
         "FO2_SET": False,
         "FO2_START": 0.0,
 
-        "ATOMIC_H": 500,
-        "ATOMIC_C": 200,
-        "ATOMIC_S": 4000,
-        "ATOMIC_N": 10,
+        "ATOMIC_H": cfg.atomic_h,
+        "ATOMIC_C": cfg.atomic_c,
+        "ATOMIC_S": cfg.atomic_s,
+        "ATOMIC_N": cfg.atomic_n,
 
         "FH2_SET": False,
         "FH2_START": 0.24,
@@ -355,10 +355,10 @@ def _write_yaml_configs(
         "SULFUR_SET": True,
         "SULFUR_START": comp.S / 100.0,
 
-        "NITROGEN_SET": False,
+        "NITROGEN_SET": cfg.nitrogen_set,
         "NITROGEN_START": 0.0001,
 
-        "GRAPHITE_SATURATED": False,
+        "GRAPHITE_SATURATED": cfg.graphite_saturated,
         "GRAPHITE_START": 0.0001,
     }
 

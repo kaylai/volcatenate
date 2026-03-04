@@ -8,8 +8,8 @@ This script demonstrates the complete workflow:
 Usage:
     python run_full_comparison.py
 
-To suppress intermediate file clutter (EVo YAML dirs, MAGEC scripts, etc.):
-    Set keep_intermediates=False in the RunConfig below.
+To suppress raw tool output clutter (EVo YAML dirs, MAGEC scripts, etc.):
+    Set keep_raw_output=False in the RunConfig below.
 """
 
 import os
@@ -31,8 +31,7 @@ import volcatenate.plotting as vp
 # ──────────────────────────────────────────────────────────────────
 
 config = RunConfig(
-    output_dir="volcatenate_output",
-    keep_intermediates=False,   # Set True to keep EVo YAML dirs, MAGEC scripts, etc.
+    keep_raw_output=False,   # Set True to keep EVo YAML dirs, MAGEC scripts, etc.
 )
 
 RESULTS_DIR = "results"

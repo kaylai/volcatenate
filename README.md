@@ -128,7 +128,7 @@ Run saturation pressure + degassing + CSV export in one call:
 import volcatenate
 from volcatenate.config import RunConfig
 
-config = RunConfig(keep_intermediates=False)
+config = RunConfig(keep_raw_output=False)
 
 results = volcatenate.run_comparison(
     satp_compositions="examples/example_satP_input.csv",
@@ -220,7 +220,7 @@ from volcatenate.config import RunConfig, EVoConfig, VolFeConfig
 
 config = RunConfig(
     output_dir="my_output",
-    keep_intermediates=False,       # Clean up intermediate files after each run
+    keep_raw_output=False,          # Clean up raw tool files after each run
     evo=EVoConfig(p_stop=10),       # Change EVo final pressure to 10 bar
     volfe=VolFeConfig(
         gassing_style="closed",
@@ -229,9 +229,9 @@ config = RunConfig(
 )
 ```
 
-### `keep_intermediates`
+### `keep_raw_output`
 
-When set to `False`, intermediate files (EVo YAML directories, MAGEC Excel/MATLAB scripts, etc.) are automatically cleaned up after each model run, keeping only the result DataFrames in memory. Set to `True` (default) to retain all files for debugging or inspection.
+When set to `False`, raw tool output files (EVo YAML directories, MAGEC Excel/MATLAB scripts, VolFe solver debug files, etc.) are automatically cleaned up after each model run, keeping only the result DataFrames in memory. Set to `True` (default) to retain all files in the `raw_tool_output/` subdirectory for debugging or inspection.
 
 ## Plotting
 
