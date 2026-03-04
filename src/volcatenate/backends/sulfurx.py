@@ -283,6 +283,16 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
 
     logger.debug("[SulfurX] Saturation pressure: %.1f bar", P_initial)
 
+    # Guard: abort if the internal satP solver did not converge.
+    # A NaN or non-positive P_initial means the degassing loop will
+    # produce garbage or hang (each step's inner solver may run 100k
+    # iterations trying to converge from bad initial conditions).
+    if np.isnan(P_initial) or P_initial <= 0:
+        raise RuntimeError(
+            f"SulfurX internal satP solver did not converge "
+            f"(P_initial={P_initial!r}).  Cannot compute degassing path."
+        )
+
     # ── Step 2: Set up pressure grid and results DataFrame ─────────
     def_variables = NewVariables(P_initial, n_steps)
     my_data = def_variables.results_dic()

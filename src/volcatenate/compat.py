@@ -90,7 +90,7 @@ def load_model_csv(
     pd.DataFrame
         Standardized DataFrame.
     """
-    df = pd.read_csv(csv_path).fillna(0)
+    df = pd.read_csv(csv_path)
 
     # Auto-detect and convert
     if model_name in _AUTO_CONVERTERS:

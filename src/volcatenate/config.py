@@ -20,7 +20,7 @@ import glob
 import os
 import platform
 import shutil
-from dataclasses import dataclass, field, fields, asdict, MISSING as dataclass_field_missing
+from dataclasses import dataclass, field, fields, MISSING as dataclass_field_missing
 from typing import Type, TypeVar
 
 

@@ -507,7 +507,8 @@ def _compute_deviation_envelope(
             )
             interp_data[model_name] = f(x_common)
             model_names.append(model_name)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Interpolation failed for %s: %s", model_name, exc)
             continue
 
     if not model_names:
@@ -1612,47 +1613,47 @@ def generate_all_figures(
         return os.path.join(output_dir, name)
 
     if compositions is not None:
-        print("Figure 1: Composition overview")
+        logger.info("Figure 1: Composition overview")
         figs["figure_1"], _ = figure_1(
             compositions,
             save_path=_path("Fig1_composition_overview.png"), dpi=dpi,
         )
 
     if satp_df is not None:
-        print("Figure 2: Saturation pressures")
+        logger.info("Figure 2: Saturation pressures")
         figs["figure_2"], _ = figure_2(
             satp_df,
             save_path=_path("Fig2_satp_grouped.png"), dpi=dpi,
         )
 
     if satp_df is not None and compositions is not None:
-        print("Figure 3: SatP deviation")
+        logger.info("Figure 3: SatP deviation")
         figs["figure_3"], _ = figure_3(
             satp_df, compositions,
             save_path=_path("Fig3_satp_deviation.png"), dpi=dpi,
         )
 
-    print("Figure 4: Melt volatile degassing paths")
+    logger.info("Figure 4: Melt volatile degassing paths")
     figs["figure_4"] = figure_4(
         systems, save_path=_path("Fig4_melt_volatiles.png"), scale=scale,
     )
 
-    print("Figure 5: Melt volatile envelopes")
+    logger.info("Figure 5: Melt volatile envelopes")
     figs["figure_5"], _ = figure_5(
         systems, save_path=_path("Fig5_melt_volatile_envelopes.png"), dpi=dpi,
     )
 
-    print("Figure 6: Redox variable degassing paths")
+    logger.info("Figure 6: Redox variable degassing paths")
     figs["figure_6"] = figure_6(
         systems, save_path=_path("Fig6_redox_variables.png"), scale=scale,
     )
 
-    print("Figure 7: Redox envelopes")
+    logger.info("Figure 7: Redox envelopes")
     figs["figure_7"], _ = figure_7(
         systems, save_path=_path("Fig7_redox_envelopes.png"), dpi=dpi,
     )
 
-    print("Figure 8: C/S vapor")
+    logger.info("Figure 8: C/S vapor")
     fig_8a, fig_8b, _ = figure_8(
         systems,
         save_path_lines=_path("Fig8A_CS_vapor.png"),
@@ -1662,12 +1663,12 @@ def generate_all_figures(
     figs["figure_8a"] = fig_8a
     figs["figure_8b"] = fig_8b
 
-    print("Figure 9: O2 mass balance")
+    logger.info("Figure 9: O2 mass balance")
     fig9, _ = figure_9(
         systems, save_path=_path("Fig9_O2_mass_balance.png"), dpi=dpi,
     )
     if fig9 is not None:
         figs["figure_9"] = fig9
 
-    print(f"\nAll figures saved to {output_dir}/")
+    logger.info("All figures saved to %s/", output_dir)
     return figs
