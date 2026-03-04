@@ -2,6 +2,12 @@
 
 Wraps the VESIcal library (https://github.com/kaylai/VESIcal).
 VESIcal does not model sulfur, so S-related output columns are NaN.
+
+Supports named variants so that users can request specific VESIcal
+solubility models directly (e.g. ``"VESIcal_Iacono"``,
+``"VESIcal_Dixon"``) without changing the config file::
+
+    volcatenate.calculate_degassing(comp, models=["VESIcal_Iacono", "VESIcal_Dixon"])
 """
 
 from __future__ import annotations
@@ -18,11 +24,37 @@ from volcatenate.converters.vesical_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 
 
+# Display name → VESIcal internal model name
+VARIANT_MAP: dict[str, str] = {
+    "VESIcal_MS":                   "MagmaSat",
+    "VESIcal_Dixon":                "Dixon",
+    "VESIcal_Iacono":               "IaconoMarziano",
+    "VESIcal_IaconoMarziano":       "IaconoMarziano",
+    "VESIcal_Liu":                  "Liu",
+    "VESIcal_ShishkinaIdealMixing": "ShishkinaIdealMixing",
+}
+
+
 class Backend(ModelBackend):
+
+    def __init__(self, variant: str | None = None) -> None:
+        # variant is the VESIcal internal model name (e.g. "IaconoMarziano")
+        # or None to use the config default.
+        self._variant = variant
+        if variant is None:
+            self._name = "VESIcal"
+        else:
+            # Find the canonical short display name
+            for display, internal in VARIANT_MAP.items():
+                if internal == variant:
+                    self._name = display
+                    break
+            else:
+                self._name = f"VESIcal_{variant}"
 
     @property
     def name(self) -> str:
-        return "VESIcal"
+        return self._name
 
     def is_available(self) -> bool:
         try:
@@ -43,7 +75,8 @@ class Backend(ModelBackend):
 
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model = v.models.default_models[config.vesical.model]
+        model_name = self._variant or config.vesical.model
+        model = v.models.default_models[model_name]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -71,9 +104,10 @@ class Backend(ModelBackend):
         import VESIcal as v
 
         cfg = config.vesical
+        model_name = self._variant or cfg.model
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model = v.models.default_models[cfg.model]
+        model = v.models.default_models[model_name]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -87,7 +121,7 @@ class Backend(ModelBackend):
             )
 
         # Standardize output
-        df = convert(df, model_variant=cfg.model)
+        df = convert(df, model_variant=model_name)
         df = compute_cs_v_mf(df)
         df = normalize_volatiles(df)
         df = ensure_standard_columns(df)

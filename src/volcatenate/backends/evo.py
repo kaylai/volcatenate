@@ -53,20 +53,33 @@ def _patch_evo_prompts():
 
 @contextlib.contextmanager
 def _quiet_evo():
-    """Capture EVo's prolific stdout and route it to the volcatenate logger.
+    """Capture EVo's prolific stdout/stderr and route to the volcatenate logger.
 
     EVo prints config dumps, chemistry summaries, pressure-step progress,
-    and class repr to stdout.  This redirects all of that to
-    ``logger.debug`` so it only appears in log files (not the terminal
-    or notebook output cell).
+    and class repr to stdout.  It also uses tqdm for progress bars, which
+    writes to stderr and floods Jupyter notebooks with hundreds of
+    ``0%| | 0/N`` lines.
+
+    This redirects both stdout and stderr to ``logger.debug``, and sets
+    ``TQDM_DISABLE=1`` to prevent tqdm output entirely.
     """
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        yield
-    captured = buf.getvalue()
-    if captured.strip():
-        for line in captured.strip().splitlines():
-            logger.debug("[EVo] %s", line)
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    old_tqdm = os.environ.get("TQDM_DISABLE")
+    os.environ["TQDM_DISABLE"] = "1"
+    try:
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            yield
+    finally:
+        if old_tqdm is None:
+            os.environ.pop("TQDM_DISABLE", None)
+        else:
+            os.environ["TQDM_DISABLE"] = old_tqdm
+    for buf in (buf_out, buf_err):
+        captured = buf.getvalue()
+        if captured.strip():
+            for line in captured.strip().splitlines():
+                logger.debug("[EVo] %s", line)
 
 
 # ── Custom YAML dumper (EVo expects True/False not true/false) ──────

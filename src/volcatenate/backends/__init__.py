@@ -56,10 +56,15 @@ def _discover() -> None:
 def get_backend(name: str) -> ModelBackend:
     """Return the backend instance for the given model name.
 
+    Supports VESIcal variant names like ``"VESIcal_Iacono"`` or
+    ``"VESIcal_Dixon"`` — these create a VESIcal backend pinned to
+    a specific solubility model, independent of the config file.
+
     Parameters
     ----------
     name : str
-        Model name (case-sensitive), e.g. ``"EVo"``, ``"VolFe"``.
+        Model name (case-sensitive), e.g. ``"EVo"``, ``"VolFe"``,
+        ``"VESIcal_Iacono"``.
 
     Raises
     ------
@@ -68,12 +73,23 @@ def get_backend(name: str) -> ModelBackend:
     """
     if not _REGISTRY:
         _discover()
-    if name not in _REGISTRY:
-        raise KeyError(
-            f"Unknown backend {name!r}. "
-            f"Available: {sorted(_REGISTRY.keys())}"
-        )
-    return _REGISTRY[name]
+    if name in _REGISTRY:
+        return _REGISTRY[name]
+
+    # Dynamic VESIcal variant lookup
+    if name.startswith("VESIcal_"):
+        from volcatenate.backends.vesical import Backend as VESIcalBackend, VARIANT_MAP
+        if name in VARIANT_MAP:
+            instance = VESIcalBackend(variant=VARIANT_MAP[name])
+            _REGISTRY[name] = instance  # cache for reuse
+            return instance
+
+    raise KeyError(
+        f"Unknown backend {name!r}. "
+        f"Available: {sorted(_REGISTRY.keys())}. "
+        f"VESIcal variants: VESIcal_MS, VESIcal_Dixon, VESIcal_Iacono, "
+        f"VESIcal_Liu, VESIcal_ShishkinaIdealMixing"
+    )
 
 
 def list_backends(available_only: bool = False) -> list[str]:

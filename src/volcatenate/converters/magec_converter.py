@@ -1,13 +1,17 @@
 """Convert raw MAGEC output (xlsx or CSV) to the standardized column format.
 
-MAGEC (Sun & Yao, 2024) produces Excel files with columns that may vary
-between solver versions.  Known raw column names include:
+MAGEC (Sun & Yao, 2024) produces Excel files with columns like:
 
-* ``P_degas (kbar)`` — pressure in kilobars
-* ``Mass (wt%)``     — total vapor mass fraction (wt%)
-* ``H2O (wt%)``      — dissolved H2O in melt (wt%)
-* ``CO2 (ppm)``      — dissolved CO2 in melt (ppm)
-* ``S (ppm)``        — dissolved S in melt (ppm)
+* ``P_degas (kbar)``         — pressure in kilobars
+* ``Mass (wt%)``             — total vapor mass fraction (wt%)
+* ``H2O (ppm)``              — dissolved H2O in melt (ppm)
+* ``CO2T_m_ppmw``            — dissolved CO2 in melt (ppm, already standard)
+* ``S_T (ppm)``              — total dissolved S in melt (ppm)
+* ``Fe3+/FeT_degas``         — melt Fe3+/FeT at each degassing step
+* ``logfO2_degas``           — log10(fO2) at each step
+* ``d_QFM_degas``            — delta-FMQ at each step
+* ``S6+/S_T``                — sulfur speciation ratio
+* Vapor species as ``H2O (mol%)``, ``CO2 (mol%)``, etc.
 
 The already-converted MAGEC files from the Sulfur Comparison Paper use
 the standard column names directly (P_bars, H2OT_m_wtpc, etc.).  This
@@ -42,7 +46,7 @@ _RENAME: dict[str, str] = {
     col.LOGFO2: col.LOGFO2,
     col.DFMQ: col.DFMQ,
     col.VAPOR_WT: col.VAPOR_WT,
-    # Raw MAGEC names from xlsx outputs
+    # Raw MAGEC names — older solver variants
     "H2O (wt%)": col.H2OT_M_WTPC,
     "CO2 (ppm)": col.CO2T_M_PPMW,
     "S (ppm)": col.ST_M_PPMW,
@@ -53,10 +57,17 @@ _RENAME: dict[str, str] = {
     "Fe3Fet": col.FE3FET_M,
     "S6+/ST": col.S6ST_M,
     "S6St": col.S6ST_M,
+    # Raw MAGEC names — current solver (v1b) with _degas/_initial suffixes
+    "S_T (ppm)": col.ST_M_PPMW,
+    "S6+/S_T": col.S6ST_M,
+    "Fe3+/FeT_degas": col.FE3FET_M,
+    "logfO2_degas": col.LOGFO2,
+    "d_QFM_degas": col.DFMQ,
 }
 
 # Vapor mole fraction mappings for raw MAGEC names
 _VAPOR_RENAME: dict[str, str] = {
+    # X-prefix form (older/alternative MAGEC output)
     "XH2O": col.H2O_V_MF,
     "XH2":  col.H2_V_MF,
     "XO2":  col.O2_V_MF,
@@ -80,6 +91,21 @@ _VAPOR_RENAME: dict[str, str] = {
     col.OCS_V_MF: col.OCS_V_MF,
 }
 
+# Vapor species in mol% form (current MAGEC v1b output) → standard name.
+# Values need to be divided by 100 to convert from mol% to mole fraction.
+_VAPOR_MOLPCT: dict[str, str] = {
+    "H2O (mol%)": col.H2O_V_MF,
+    "H2 (mol%)":  col.H2_V_MF,
+    "O2 (mol%)":  col.O2_V_MF,
+    "CO2 (mol%)": col.CO2_V_MF,
+    "CO (mol%)":  col.CO_V_MF,
+    "CH4 (mol%)": col.CH4_V_MF,
+    "SO2 (mol%)": col.SO2_V_MF,
+    "H2S (mol%)": col.H2S_V_MF,
+    "S2 (mol%)":  col.S2_V_MF,
+    "COS (mol%)": col.OCS_V_MF,
+}
+
 
 def is_raw(df: pd.DataFrame) -> bool:
     """Return *True* if *df* uses raw MAGEC column names (not yet standardized).
@@ -95,7 +121,8 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     """Convert a MAGEC output DataFrame to the standardized column format.
 
     Handles both raw MAGEC xlsx output and already-converted files.
-    For raw output, converts pressure from kbar to bar and renames columns.
+    For raw output, converts pressure from kbar to bar, H2O from ppm
+    to wt%, vapor mol% to mole fractions, and renames columns.
 
     Parameters
     ----------
@@ -127,11 +154,22 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
                 out[col.VAPOR_WT] = out[candidate] / 100.0
                 break
 
+    # --- Handle H2O in ppm (MAGEC v1b gives melt H2O in ppm, not wt%) ---
+    if col.H2OT_M_WTPC not in out.columns and "H2O (ppm)" in out.columns:
+        out[col.H2OT_M_WTPC] = out["H2O (ppm)"] / 10000.0
+
+    # --- Handle vapor species in mol% (MAGEC v1b output) ---
+    for molpct_col, std_col in _VAPOR_MOLPCT.items():
+        if molpct_col in out.columns and std_col not in out.columns:
+            out[std_col] = out[molpct_col] / 100.0
+
     # --- Rename scalar and volatile columns ---
     rename_map = {}
     for raw_name, std_name in {**_RENAME, **_VAPOR_RENAME}.items():
         if raw_name in out.columns and raw_name != std_name:
-            rename_map[raw_name] = std_name
+            # Don't overwrite a column we already created above
+            if std_name not in out.columns:
+                rename_map[raw_name] = std_name
     out.rename(columns=rename_map, inplace=True)
 
     # --- Compute CS_v_mf if species present ---

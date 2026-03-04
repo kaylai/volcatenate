@@ -93,6 +93,7 @@ MODEL_COLORS_HEX = {
     "MAGEC":     "#DD94BB",
     "SulfurX":   "#009E73",
     "VolFe":     "#FFC00D",
+    "VESIcal":                      "#000000",
     "VESIcal_MS":                   "#000000",
     "VESIcal_Dixon":                "#D9D9D9",
     "VESIcal_IaconoMarziano":      "#545454",
@@ -110,6 +111,7 @@ def get_line_properties() -> dict[str, str]:
         "MAGEC":                        "rgb(221, 148, 187)",
         "SulfurX":                      "rgb(0, 158, 115)",
         "VolFe":                        "rgb(255, 192, 13)",
+        "VESIcal":                      "rgb(0, 0, 0)",
         "VESIcal_MS":                   "rgb(0, 0, 0)",
         "VESIcal_Dixon":                "rgb(217, 217, 217)",
         "VESIcal_IaconoMarziano":       "rgb(84, 84, 84)",
@@ -304,6 +306,9 @@ def plot_results(
         for b, basalt in enumerate(basalt_list, start=1):
             for model in model_list:
                 if model not in basalt:
+                    continue
+                if model not in lc_list:
+                    logger.warning("No color defined for %s — skipping trace", model)
                     continue
                 add_trace_to_subplot(
                     fig, basalt[model], model, y_variable,
