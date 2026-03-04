@@ -15,12 +15,15 @@ import sys
 import numpy as np
 import pandas as pd
 
+from scipy.optimize import brentq
+
 from volcatenate.log import logger
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
 from volcatenate.converters.sulfurx_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.iron import fe3fet_kc91
 
 
 @contextlib.contextmanager
@@ -242,6 +245,93 @@ def _patch_composition(composition: dict):
         _dr.MeltComposition = _original
 
 
+def _fmq_frost1991(T_K: float, P_bar: float = 1.0) -> float:
+    """FMQ buffer — Frost (1991) Reviews in Mineralogy, Vol. 25.
+
+    Same equation used internally by SulfurX's ``OxygenFugacity.fmq()``.
+    """
+    return -25096.3 / T_K + 8.735 + 0.110 * (P_bar - 1) / T_K
+
+
+def _nno_frost1991(T_K: float, P_bar: float = 1.0) -> float:
+    """NNO buffer — Frost (1991) Reviews in Mineralogy, Vol. 25."""
+    return -24930.0 / T_K + 9.36 + 0.046 * (P_bar - 1) / T_K
+
+
+def _logfo2_from_fe3fet(fe3fet: float, T_K: float,
+                        composition: dict[str, float]) -> float:
+    """Invert KC91 to get logfO2 from Fe3+/FeT at 1 bar.
+
+    Uses Brent's method to find the logfO2 that makes
+    ``fe3fet_kc91(logfO2, T_K, composition) == fe3fet``.
+    """
+    def residual(logfo2):
+        return fe3fet_kc91(logfo2, T_K, composition, P_bar=1.0) - fe3fet
+
+    # Search over a generous logfO2 range (IW-5 to HM+5 ≈ -25 to 0)
+    return brentq(residual, -25.0, 0.0, xtol=1e-8)
+
+
+def _compute_delta_fmq(comp: MeltComposition) -> float:
+    """Determine delta_FMQ for SulfurX from the available redox input.
+
+    Priority:
+      1. ``dFMQ`` — direct, no conversion needed.
+      2. ``Fe3FeT`` — invert Kress & Carmichael (1991) at 1 bar to get
+         logfO2, then subtract Frost (1991) FMQ.  This mirrors what
+         SulfurX does internally (KC91 for Fe redox, Frost FMQ buffer).
+      3. ``dNNO`` — convert via Frost (1991) NNO and FMQ at 1 bar:
+         ``dFMQ = dNNO + [NNO(T) - FMQ(T)]``.
+
+    The offset ``NNO(T) - FMQ(T)`` is temperature-dependent (~0.74 at
+    1200 °C, ~0.75 at 1030 °C), so the old constant ``dNNO - 0.7``
+    approximation was systematically wrong by ~0.04–0.05 and also did
+    not match how SulfurX's author computed dFMQ from Fe3FeT.
+    """
+    T_K = comp.T_C + 273.15
+    fmq_1bar = _fmq_frost1991(T_K)
+
+    # --- Path 1: dFMQ given directly ---
+    if comp.dFMQ is not None:
+        logger.debug("[SulfurX] Using supplied dFMQ = %.4f", comp.dFMQ)
+        return comp.dFMQ
+
+    # --- Path 2: Fe3FeT → KC91 inverse → logfO2 → dFMQ ---
+    fe3fet = comp.fe3fet_computed
+    if not np.isnan(fe3fet):
+        oxides = comp.oxide_dict
+        try:
+            logfo2 = _logfo2_from_fe3fet(fe3fet, T_K, oxides)
+            delta = logfo2 - fmq_1bar
+            logger.info(
+                "[SulfurX] Fe3FeT=%.3f → logfO2=%.3f → dFMQ=%.4f "
+                "(Frost 1991 FMQ at %.0f °C = %.3f)",
+                fe3fet, logfo2, delta, comp.T_C, fmq_1bar,
+            )
+            return delta
+        except ValueError as exc:
+            logger.warning(
+                "[SulfurX] KC91 inversion failed for Fe3FeT=%.3f: %s. "
+                "Falling back to dNNO.",
+                fe3fet, exc,
+            )
+
+    # --- Path 3: dNNO → Frost NNO → logfO2 → dFMQ ---
+    if comp.dNNO is not None:
+        nno_1bar = _nno_frost1991(T_K)
+        delta = comp.dNNO + (nno_1bar - fmq_1bar)
+        logger.info(
+            "[SulfurX] dNNO=%.3f → dFMQ=%.4f "
+            "(Frost 1991: NNO=%.3f, FMQ=%.3f at %.0f °C)",
+            comp.dNNO, delta, nno_1bar, fmq_1bar, comp.T_C,
+        )
+        return delta
+
+    raise ValueError(
+        "SulfurX requires a redox constraint: dFMQ, Fe3FeT, or dNNO."
+    )
+
+
 def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     """Run the full SulfurX degassing path.
 
@@ -264,14 +354,7 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     co2_ppm = comp.CO2 * 10_000
     s_ppm = comp.S * 10_000
 
-    # Determine delta_FMQ from composition
-    if comp.dFMQ is not None:
-        delta_FMQ = comp.dFMQ
-    elif comp.dNNO is not None:
-        # Approximate conversion: dFMQ ≈ dNNO - 0.7
-        delta_FMQ = comp.dNNO - 0.7
-    else:
-        raise ValueError("SulfurX requires dFMQ or dNNO to set initial fO2.")
+    delta_FMQ = _compute_delta_fmq(comp)
 
     coh_model = cfg.coh_model
     choice = 0  # No crystallization
