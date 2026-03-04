@@ -62,10 +62,16 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     out.rename(columns=_RENAME, inplace=True)
 
     # 2. Compute logfO2 = log10(fO2) from the raw linear column
+    #    fO2 can be 0 at the tail of a degassing path → log10(0) = -inf.
+    #    Suppress the numpy warning; rows with 0 get NaN.
     if "fO2_bar" in out.columns:
-        out[col.LOGFO2] = np.log10(out["fO2_bar"])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            vals = np.log10(out["fO2_bar"])
+        out[col.LOGFO2] = vals.replace(-np.inf, np.nan)
     elif "fO2" in out.columns:
-        out[col.LOGFO2] = np.log10(out["fO2"])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            vals = np.log10(out["fO2"])
+        out[col.LOGFO2] = vals.replace(-np.inf, np.nan)
 
     # 3. Recompute CS_v_mf if species are present but ratio is missing/zero
     if (all(c in out.columns for c in col.C_SPECIES) and

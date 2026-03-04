@@ -24,6 +24,7 @@ from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
 from volcatenate.converters.magec_converter import convert, parse_saturation_pressure
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.log import logger
 
 
 class Backend(ModelBackend):
@@ -356,16 +357,34 @@ def _run_magec_matlab(
 
     # Use eval(fileread(...)) instead of run() to avoid MATLAB's
     # directory scanning behaviour that causes "Invalid text character".
-    result = subprocess.run(
-        [cfg.matlab_bin, "-batch", f"eval(fileread('{script_path}'))"],
-        capture_output=True,
-        text=True,
-        timeout=cfg.timeout,
-    )
+    try:
+        result = subprocess.run(
+            [cfg.matlab_bin, "-batch", f"eval(fileread('{script_path}'))"],
+            capture_output=True,
+            text=True,
+            timeout=cfg.timeout,
+        )
+    except subprocess.TimeoutExpired:
+        warnings.warn(
+            f"MAGEC timed out after {cfg.timeout}s. This usually means the "
+            f"saturation pressure is outside the search range "
+            f"({cfg.p_start_kbar}–{cfg.p_final_kbar} kbar). "
+            f"Try increasing magec.p_start_kbar in your config."
+        )
+        # Clean up any files MAGEC left in the solver directory
+        for leftover in [
+            os.path.join(solver_dir, local_in),
+            os.path.join(solver_dir, local_out),
+        ]:
+            try:
+                os.remove(leftover)
+            except OSError:
+                pass
+        return
 
     if result.stdout:
         for line in result.stdout.strip().split("\n"):
-            print(f"    [MATLAB] {line}")
+            logger.debug("    [MATLAB] %s", line)
     if result.returncode != 0:
         stderr_msg = result.stderr[:500] if result.stderr else "no stderr"
         stdout_msg = result.stdout[:500] if result.stdout else "no stdout"

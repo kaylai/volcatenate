@@ -67,6 +67,7 @@ from volcatenate.compat import (
     load_model_csv, load_data, degassing_results_to_compat,
     loadData,
 )
+from volcatenate.log import setup_logging
 
 
 def list_models(available_only: bool = False) -> list[str]:
@@ -97,6 +98,8 @@ __all__ = [
     "load_config",
     "save_config",
     "default_config_path",
+    # Logging
+    "setup_logging",
     # Compat layer
     "load_model_csv",
     "load_data",

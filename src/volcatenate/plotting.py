@@ -37,6 +37,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from volcatenate.log import logger
+
 # ---------------------------------------------------------------------------
 # Grid layout utilities (ported from plot_grid.py)
 # ---------------------------------------------------------------------------
@@ -155,19 +157,19 @@ def save_plotly_fig(
 
     if overwrite_if_exists:
         fig.write_image(filepath, scale=scale)
-        print(f"Saved {filepath}")
+        logger.info("Saved %s", filepath)
         return filepath
 
     if not os.path.exists(filepath):
         fig.write_image(filepath, scale=scale)
-        print(f"Saved {filepath}")
+        logger.info("Saved %s", filepath)
         return filepath
 
     date_str = datetime.now().strftime("%m%d%y")
     dated_filepath = os.path.join(directory, f"{base_filename}_{date_str}.{extension}")
     if not os.path.exists(dated_filepath):
         fig.write_image(dated_filepath, scale=scale)
-        print(f"Saved {dated_filepath}")
+        logger.info("Saved %s", dated_filepath)
         return dated_filepath
 
     counter = 1
@@ -177,7 +179,7 @@ def save_plotly_fig(
         )
         if not os.path.exists(counted_filepath):
             fig.write_image(counted_filepath, scale=scale)
-            print(f"Saved {counted_filepath}")
+            logger.info("Saved %s", counted_filepath)
             return counted_filepath
         counter += 1
 
@@ -587,10 +589,10 @@ def plot_deviation_envelopes(
             exclude_models=system_excludes,
         )
         if env is None:
-            print(f"  Skipping {system_name}: no valid models for {param}")
+            logger.info("  Skipping %s: no valid models for %s", system_name, param)
             continue
         if system_excludes:
-            print(f"  {system_name}: excluded {system_excludes}, using {env['model_names']}")
+            logger.info("  %s: excluded %s, using %s", system_name, system_excludes, env['model_names'])
         envelope_width = env["dev_pct_max"] - env["dev_pct_min"]
         env["mean_spread"] = np.nanmean(envelope_width)
         envelope_data[system_name] = env

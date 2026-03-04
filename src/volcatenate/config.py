@@ -233,8 +233,9 @@ class MAGECConfig:
     p_final_kbar: float = 0.001
     n_steps: int = 100
 
-    # Subprocess timeout (seconds)
-    timeout: int = 3600
+    # Subprocess timeout (seconds) — if MAGEC hangs (e.g. saturation
+    # pressure outside search range), it will be killed after this.
+    timeout: int = 300
 
 
 @dataclass
@@ -278,6 +279,8 @@ class RunConfig:
 
     output_dir: str = "volcatenate_output"
     keep_intermediates: bool = True
+    verbose: bool = False
+    log_file: str = ""
 
     vesical: VESIcalConfig = field(default_factory=VESIcalConfig)
     volfe: VolFeConfig = field(default_factory=VolFeConfig)
@@ -320,6 +323,8 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     # top-level
     ("_top", "output_dir"):          "Directory for intermediate model output files",
     ("_top", "keep_intermediates"):  "Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)",
+    ("_top", "verbose"):             "Print progress to terminal",
+    ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
     # VESIcal
     ("vesical", "model"):            "Solubility model name",
     ("vesical", "steps"):            "Number of degassing steps",

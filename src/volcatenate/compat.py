@@ -30,6 +30,8 @@ import math
 import os
 from typing import Optional
 
+from volcatenate.log import logger
+
 import numpy as np
 import pandas as pd
 
@@ -184,7 +186,7 @@ def load_data(
                         )
                         results[vname][model] = df
                     except Exception as exc:
-                        print(f"Warning: Failed to load {filepath}: {exc}")
+                        logger.warning("Failed to load %s: %s", filepath, exc)
 
     return results
 
@@ -338,7 +340,7 @@ def loadData(
                         )
                         data_dict[model] = df
                     except Exception as exc:
-                        print(f"Warning: Failed to load {filepath}: {exc}")
+                        logger.warning("Failed to load %s: %s", filepath, exc)
 
     datasets = [data_morb, data_kil, data_fuego, data_fogo]
 
@@ -389,8 +391,10 @@ def loadData(
                 else:
                     for vcol in _VAPOR_MF_COLS:
                         if vcol not in df.columns:
-                            print(f"{vcol} not found in columns for "
-                                  f"{model} in {data['Name']}")
+                            logger.warning(
+                                "%s not found in columns for %s in %s",
+                                vcol, model, data["Name"],
+                            )
                             break
                     df["SUM_v_mf"] = 0
                     df["XO2_BYDIFF_v_mf"] = 0
@@ -410,7 +414,7 @@ def loadData(
                     try:
                         data[model] = data[model][cols_to_keep]
                     except Exception:
-                        print(f"Issue simplifying {model}")
+                        logger.warning("Issue simplifying %s", model)
 
             if save_simplified:
                 for data in datasets:

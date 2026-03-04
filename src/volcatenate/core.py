@@ -22,6 +22,7 @@ from volcatenate.backends import get_backend, list_backends
 from volcatenate.composition import MeltComposition, read_compositions, composition_from_dict
 from volcatenate.config import RunConfig
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.log import logger, setup_logging
 
 
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
@@ -91,6 +92,7 @@ def calculate_saturation_pressure(
     if config is None:
         config = RunConfig()
 
+    setup_logging(config.verbose, config.log_file)
     os.makedirs(config.output_dir, exist_ok=True)
 
     comps = _resolve_compositions(compositions)
@@ -110,20 +112,20 @@ def calculate_saturation_pressure(
             continue
 
         if not backend.is_available():
-            print(f"  {model_name}: SKIPPED (not available)")
+            logger.info("  %s: SKIPPED (not available)", model_name)
             for row in rows:
                 row[f"{model_name}_SatP_bars"] = np.nan
             continue
 
-        print(f"  Running {model_name}...")
+        logger.info("  Running %s...", model_name)
         for i, comp in enumerate(comps):
             try:
                 p = backend.calculate_saturation_pressure(comp, config)
                 rows[i][f"{model_name}_SatP_bars"] = p
-                print(f"    {comp.sample}: {p:.1f} bar")
+                logger.info("    %s: %.1f bar", comp.sample, p)
             except Exception as exc:
                 rows[i][f"{model_name}_SatP_bars"] = np.nan
-                print(f"    {comp.sample}: FAILED — {exc}")
+                logger.warning("    %s: FAILED — %s", comp.sample, exc)
 
     return pd.DataFrame(rows)
 
@@ -157,6 +159,7 @@ def calculate_degassing(
     if config is None:
         config = RunConfig()
 
+    setup_logging(config.verbose, config.log_file)
     os.makedirs(config.output_dir, exist_ok=True)
 
     comps = _resolve_compositions(composition)
@@ -178,16 +181,16 @@ def calculate_degassing(
             continue
 
         if not backend.is_available():
-            print(f"  {model_name}: SKIPPED (not available)")
+            logger.info("  %s: SKIPPED (not available)", model_name)
             continue
 
-        print(f"  Running {model_name}...")
+        logger.info("  Running %s...", model_name)
         try:
             df = backend.calculate_degassing(comp, config)
             results[model_name] = df
-            print(f"    {model_name}: OK ({len(df)} steps)")
+            logger.info("    %s: OK (%d steps)", model_name, len(df))
         except Exception as exc:
-            print(f"    {model_name}: FAILED — {exc}")
+            logger.warning("    %s: FAILED — %s", model_name, exc)
 
     return results
 
@@ -216,7 +219,7 @@ def export_saturation_pressure(
     """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     df.to_csv(path, index=False)
-    print(f"  Saturation pressures saved to {path}")
+    logger.info("  Saturation pressures saved to %s", path)
     return path
 
 
@@ -251,7 +254,7 @@ def export_degassing_paths(
         csv_path = os.path.join(model_dir, f"{name}.csv")
         df.to_csv(csv_path, index=False)
         written.append(csv_path)
-        print(f"  {model}: saved to {csv_path}")
+        logger.info("  %s: saved to %s", model, csv_path)
     return written
 
 
@@ -317,11 +320,12 @@ def run_comparison(
     if config is None:
         config = RunConfig()
 
+    setup_logging(config.verbose, config.log_file)
     output = {"satp_df": None, "degassing": None}
 
     # --- Saturation pressure ---
     if satp_compositions is not None:
-        print("\n=== Calculating saturation pressures ===")
+        logger.info("=== Calculating saturation pressures ===")
         satp_df = calculate_saturation_pressure(
             satp_compositions, models=models, config=config,
         )
@@ -330,12 +334,12 @@ def run_comparison(
 
     # --- Degassing paths ---
     if degassing_compositions is not None:
-        print("\n=== Calculating degassing paths ===")
+        logger.info("=== Calculating degassing paths ===")
         # Normalise to list
         comps = _resolve_compositions(degassing_compositions)
         all_degassing = {}
         for comp in comps:
-            print(f"\n--- {comp.sample} ---")
+            logger.info("--- %s ---", comp.sample)
             results = calculate_degassing(comp, models=models, config=config)
             export_degassing_paths(
                 results,
@@ -351,5 +355,5 @@ def run_comparison(
         if os.path.isdir(out_dir) and not os.listdir(out_dir):
             shutil.rmtree(out_dir, ignore_errors=True)
 
-    print("\n=== Comparison complete ===")
+    logger.info("=== Comparison complete ===")
     return output

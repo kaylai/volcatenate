@@ -6,19 +6,67 @@ EVo is run via YAML config files → ``evo.run_evo()`` → CSV output.
 
 from __future__ import annotations
 
+import contextlib
 import glob
+import io
 import os
 import shutil
+import warnings
 
 import numpy as np
 import pandas as pd
 import yaml
+
+from volcatenate.log import logger
 
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
 from volcatenate.converters.evo_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+
+
+# ── Patch EVo's interactive prompts ──────────────────────────────
+# EVo sometimes asks y/N questions (e.g. SiO2-composition mismatch,
+# temperature outside solubility model range).  When run inside
+# volcatenate there is no terminal, so we monkey-patch query_yes_no
+# to always answer "yes" and emit a Python warning instead.
+
+def _auto_yes(question, default="yes"):
+    """Non-interactive replacement for ``evo.messages.query_yes_no``."""
+    warnings.warn(
+        f"EVo asked: \"{question}\" — automatically continuing. "
+        "Check your composition and settings if this is unexpected.",
+        stacklevel=2,
+    )
+    return True
+
+
+def _patch_evo_prompts():
+    """Replace interactive prompts in the evo.messages module."""
+    try:
+        import evo.messages
+        evo.messages.query_yes_no = _auto_yes
+    except (ImportError, AttributeError):
+        pass
+
+
+@contextlib.contextmanager
+def _quiet_evo():
+    """Capture EVo's prolific stdout and route it to the volcatenate logger.
+
+    EVo prints config dumps, chemistry summaries, pressure-step progress,
+    and class repr to stdout.  This redirects all of that to
+    ``logger.debug`` so it only appears in log files (not the terminal
+    or notebook output cell).
+    """
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        yield
+    captured = buf.getvalue()
+    if captured.strip():
+        for line in captured.strip().splitlines():
+            logger.debug("[EVo] %s", line)
 
 
 # ── Custom YAML dumper (EVo expects True/False not true/false) ──────
@@ -60,6 +108,7 @@ class Backend(ModelBackend):
         config: RunConfig,
     ) -> float:
         import evo
+        _patch_evo_prompts()
 
         cfg = config.evo
         work_dir = os.path.join(config.output_dir, f"{comp.sample}_evo_satp")
@@ -71,7 +120,8 @@ class Backend(ModelBackend):
 
         evo_output_folder = os.path.join(work_dir, "output")
         try:
-            evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
+            with _quiet_evo():
+                evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
         except Exception:
             return np.nan
 
@@ -99,6 +149,7 @@ class Backend(ModelBackend):
         config: RunConfig,
     ) -> pd.DataFrame:
         import evo
+        _patch_evo_prompts()
 
         cfg = config.evo
         work_dir = os.path.join(config.output_dir, f"{comp.sample}_evo_degas")
@@ -109,7 +160,8 @@ class Backend(ModelBackend):
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
-        evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
+        with _quiet_evo():
+            evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
 
         csv_files = glob.glob(os.path.join(evo_output_folder, "dgs_output_*.csv"))
         if not csv_files:
