@@ -61,6 +61,141 @@ def _build_composition(comp: MeltComposition) -> dict:
     }
 
 
+def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, constant_h2o):
+    """Find Iacono-Marziano saturation pressure using multiple initial guesses.
+
+    SulfurX's ``IaconoMarziano.saturation_pressure()`` uses
+    ``scipy.optimize.root`` with a single initial guess derived from the
+    constructor's ``pressure`` parameter (``self.Pb = pressure * 10``).
+    If the guess is far from the true solution, the solver silently
+    returns the guess unchanged — a false convergence.
+
+    This helper tries a spread of starting pressures and picks the
+    converged result, avoiding the need for the user to manually iterate.
+
+    Returns
+    -------
+    tuple[float, float]
+        ``(P_sat_bar, XH2O_f)``
+    """
+    from Iacono_Marziano_COH import IaconoMarziano
+
+    # Wide range of initial guesses (MPa) so that at least one is close
+    # to the true satP regardless of whether the composition is
+    # H2O-dominated, CO2-dominated, or mixed.
+    guesses_mpa = [20, 50, 100, 150, 200, 300, 400]
+
+    candidates: list[tuple[float, float, int]] = []
+    for g_mpa in guesses_mpa:
+        guess_bar = g_mpa * 10
+        coh = IaconoMarziano(
+            pressure=g_mpa, temperature_k=tk,
+            composition=composition,
+            a=slope_h2o, b=constant_h2o,
+        )
+        try:
+            P_sat, XH2O_f = coh.saturation_pressure(co2_ppm, h2o_wt)
+        except Exception:
+            logger.debug("[SulfurX] satP guess %d MPa: solver exception", g_mpa)
+            continue
+
+        # Non-convergence: result ≈ initial guess (solver didn't move)
+        if abs(P_sat - guess_bar) < 5.0:
+            logger.debug(
+                "[SulfurX] satP guess %d MPa: non-convergence "
+                "(P_sat=%.1f ≈ init=%.1f bar)", g_mpa, P_sat, guess_bar,
+            )
+            continue
+
+        # Physical bounds
+        if P_sat <= 0 or XH2O_f <= 0 or XH2O_f >= 1:
+            logger.debug(
+                "[SulfurX] satP guess %d MPa: unphysical "
+                "(P=%.1f bar, XH2O=%.4f)", g_mpa, P_sat, XH2O_f,
+            )
+            continue
+
+        logger.debug(
+            "[SulfurX] satP guess %d MPa → P_sat=%.1f bar, XH2O=%.4f",
+            g_mpa, P_sat, XH2O_f,
+        )
+        candidates.append((P_sat, XH2O_f, g_mpa))
+
+    if not candidates:
+        # Nothing converged — last resort with a high-pressure fallback
+        logger.warning(
+            "[SulfurX] No satP guess converged. "
+            "Using 300 MPa fallback (result may be unreliable)."
+        )
+        coh = IaconoMarziano(
+            pressure=300, temperature_k=tk,
+            composition=composition,
+            a=slope_h2o, b=constant_h2o,
+        )
+        return coh.saturation_pressure(co2_ppm, h2o_wt)
+
+    # Sort by P_sat and take the median (most robust to outliers)
+    candidates.sort(key=lambda c: c[0])
+
+    # Log spread — large spread would indicate multiple local solutions
+    if len(candidates) > 1:
+        spread = candidates[-1][0] - candidates[0][0]
+        if spread > 100:  # bar
+            logger.warning(
+                "[SulfurX] satP spread across guesses: %.0f bar "
+                "(%.0f–%.0f bar); check convergence.",
+                spread, candidates[0][0], candidates[-1][0],
+            )
+
+    mid = len(candidates) // 2
+    P_sat, XH2O_f, g_mpa = candidates[mid]
+    logger.debug(
+        "[SulfurX] Final satP: %.1f bar (from %d/%d converged guesses, "
+        "best initial guess %d MPa)",
+        P_sat, len(candidates), len(guesses_mpa), g_mpa,
+    )
+    return P_sat, XH2O_f
+
+
+@contextlib.contextmanager
+def _patch_composition(composition: dict):
+    """Monkey-patch SulfurX's MeltComposition so degassing uses *our* composition.
+
+    SulfurX's ``degassingrun.py`` hard-codes a specific volcanic composition
+    inside its ``MeltComposition`` class (Hawaiian basalt for ``choice=0``).
+    Every pressure step in the degassing loop creates a new
+    ``MeltComposition`` and feeds it to IaconoMarziano, OxygenFugacity, etc.
+
+    If the real sample composition differs from the hardcoded one, the
+    initial conditions (computed with the real composition) and the
+    per-step calculations (using the hardcoded one) are inconsistent,
+    causing the inner convergence loop (100 000 iterations) to never
+    converge → the run "hangs".
+
+    This context manager replaces ``degassingrun.MeltComposition`` with a
+    thin wrapper that always returns the *volcatenate* composition,
+    normalised to 100 wt%.  The original class is restored on exit.
+    """
+    import degassingrun as _dr
+
+    _original = _dr.MeltComposition
+
+    # Pre-normalise once
+    total = sum(composition.values())
+    normed = {k: v / total * 100.0 for k, v in composition.items()}
+
+    class _Patched:
+        """Drop-in replacement that returns the volcatenate composition."""
+        def __init__(self, melt_fraction, choice):
+            self.composition = dict(normed)  # fresh copy each time
+
+    _dr.MeltComposition = _Patched
+    try:
+        yield
+    finally:
+        _dr.MeltComposition = _original
+
+
 def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     """Run the full SulfurX degassing path.
 
@@ -108,23 +243,16 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     sulfide = {"Fe": 65.43, "Ni": 0, "Cu": 0, "O": 0, "S": 36.47}
 
     # ── Step 1: Calculate saturation pressure ──────────────────────
-    # Initial pressure guess (MPa) — must be close to the true satP
-    # for scipy.optimize.root to converge.  A composition-dependent
-    # estimate works much better than a fixed 400 MPa, which is too
-    # high for low-volatile compositions and causes the solver to
-    # return the initial guess unchanged.
-    rough_p_mpa = max(10, h2o_wt * 30 + co2_ppm * 0.05)
-
+    # The IM satP solver is very sensitive to the initial guess.  We
+    # use a multi-guess strategy that tries several starting pressures
+    # and picks the converged result.
     if coh_model == 0:
+        P_initial, XH2Of_initial = _find_saturation_pressure_im(
+            composition, tk, co2_ppm, h2o_wt, slope_h2o, constant_h2o,
+        )
+        # Reinitialize at saturation pressure (as main_Fuego.py does)
         from Iacono_Marziano_COH import IaconoMarziano
 
-        coh = IaconoMarziano(
-            pressure=rough_p_mpa, temperature_k=tk,
-            composition=composition,
-            a=slope_h2o, b=constant_h2o,
-        )
-        P_initial, XH2Of_initial = coh.saturation_pressure(co2_ppm, h2o_wt)
-        # Reinitialize at saturation pressure (as main_Fuego.py does)
         coh = IaconoMarziano(
             pressure=P_initial / 10, temperature_k=tk,
             composition=composition,
@@ -254,33 +382,39 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     df_results.iloc[0, i0("d34s_melt")] = d34s_initial
 
     # ── Step 5: Degassing loop ─────────────────────────────────────
-    for i in range(1, n_steps):
-        degas = COHS_degassing(
-            pressure=df_results["pressure"][i],
-            temperature=temperature,
-            COH_model=coh_model,
-            xlt_choice=choice,
-            S_Fe_choice=s_fe_choice,
-            H2O_initial=h2o_wt,
-            CO2_initial=co2_ppm,
-            S_initial=s_ppm,
-            d34s_initial=d34s_initial,
-            a=slope_h2o,
-            b=constant_h2o,
-            monte_c=0,
-            op=open_degassing,
-        )
-        if fo2_tracker == 1:
-            df_results.iloc[i] = degas.degassing_redox(
-                df_results=df_results, index=i,
-                e_balance_initial=df_results["electron_balance"][i - 1],
-                sigma=sigma, sulfide_pre=sulfide_pre,
+    # Monkey-patch SulfurX's hardcoded MeltComposition so that
+    # degassing_redox / degassing_noredox use *our* composition
+    # instead of the built-in Hawaiian basalt.  Without this patch
+    # the per-step calculations are inconsistent with the initial
+    # conditions and the inner convergence loop (100k iter) hangs.
+    with _patch_composition(composition):
+        for i in range(1, n_steps):
+            degas = COHS_degassing(
+                pressure=df_results["pressure"][i],
+                temperature=temperature,
+                COH_model=coh_model,
+                xlt_choice=choice,
+                S_Fe_choice=s_fe_choice,
+                H2O_initial=h2o_wt,
+                CO2_initial=co2_ppm,
+                S_initial=s_ppm,
+                d34s_initial=d34s_initial,
+                a=slope_h2o,
+                b=constant_h2o,
+                monte_c=0,
+                op=open_degassing,
             )
-        else:
-            df_results.iloc[i] = degas.degassing_noredox(
-                df_results=df_results, index=i,
-                delta_FMQ=delta_FMQ, sulfide_pre=sulfide_pre,
-            )
+            if fo2_tracker == 1:
+                df_results.iloc[i] = degas.degassing_redox(
+                    df_results=df_results, index=i,
+                    e_balance_initial=df_results["electron_balance"][i - 1],
+                    sigma=sigma, sulfide_pre=sulfide_pre,
+                )
+            else:
+                df_results.iloc[i] = degas.degassing_noredox(
+                    df_results=df_results, index=i,
+                    delta_FMQ=delta_FMQ, sulfide_pre=sulfide_pre,
+                )
 
     return df_results
 
@@ -326,19 +460,13 @@ class Backend(ModelBackend):
         co2_ppm = comp.CO2 * 10_000
         composition = _build_composition(comp)
 
-        rough_p_mpa = max(10, h2o_wt * 30 + co2_ppm * 0.05)
-
         try:
             with _quiet_sulfurx():
                 if cfg.coh_model == 0:
-                    from Iacono_Marziano_COH import IaconoMarziano
-
-                    coh = IaconoMarziano(
-                        pressure=rough_p_mpa, temperature_k=tk,
-                        composition=composition,
-                        a=cfg.slope_h2o, b=cfg.constant_h2o,
+                    P_sat, _ = _find_saturation_pressure_im(
+                        composition, tk, co2_ppm, h2o_wt,
+                        cfg.slope_h2o, cfg.constant_h2o,
                     )
-                    P_sat, _ = coh.saturation_pressure(co2_ppm, h2o_wt)
                     return float(P_sat)
                 else:
                     from VC_COH import VolatileCalc
@@ -365,8 +493,46 @@ class Backend(ModelBackend):
         with _quiet_sulfurx():
             df = _run_degassing(comp, config.sulfurx)
 
-        # Standardize
+        # Standardize columns
         df = convert(df)
+
+        # ── Filter: keep only rows at or below saturation ────────
+        # SulfurX's pressure grid starts at satP and decreases, but
+        # row 0 represents the *initial* (pre-degassing) conditions.
+        # Remove rows where no degassing has actually occurred, i.e.
+        # the volatiles haven't changed from their starting values.
+        # Keep at least row 0 (the saturation point itself).
+        from volcatenate import columns as col
+
+        if col.VAPOR_WT in df.columns:
+            # Row 0 = saturation point (vapor_wt ≈ 0).
+            # Rows where vapor has appeared (vapor_wt > 0) are
+            # the actual degassing path.  Keep row 0 + all rows with
+            # non-trivial vapor.
+            has_vapor = df[col.VAPOR_WT] > 1e-10
+            if has_vapor.any():
+                # Keep the saturation point (first row with vapor > 0
+                # or the very first row) plus the degassing path.
+                first_vapor_idx = has_vapor.idxmax()
+                # Include 1 row before first vapor as the satP anchor
+                start = max(0, first_vapor_idx - 1)
+                df = df.iloc[start:].reset_index(drop=True)
+            else:
+                # No vapor at all — keep everything (may indicate a
+                # problem, but let downstream handle it).
+                logger.warning(
+                    "[SulfurX] No vapor produced in degassing run "
+                    "(check saturation pressure convergence)."
+                )
+
+        # Also trim any trailing zero-rows that weren't populated
+        # by the degassing loop (e.g. if the loop ended early).
+        if col.H2OT_M_WTPC in df.columns:
+            populated = df[col.H2OT_M_WTPC] > 0
+            if populated.any():
+                last_populated = populated[::-1].idxmax()
+                df = df.iloc[: last_populated + 1]
+
         df = compute_cs_v_mf(df)
         df = normalize_volatiles(df)
         df = ensure_standard_columns(df)
