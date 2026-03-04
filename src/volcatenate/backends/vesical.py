@@ -90,7 +90,9 @@ class Backend(ModelBackend):
                     return float(result.get("SaturationPressure_bars", np.nan))
                 # Or a DataFrame / scalar depending on version
                 return float(result)
-            except Exception:
+            except Exception as exc:
+                from volcatenate.log import logger
+                logger.warning("[VESIcal] satP failed for %s: %s", comp.sample, exc)
                 return np.nan
 
     # ----------------------------------------------------------------

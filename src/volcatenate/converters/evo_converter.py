@@ -116,8 +116,6 @@ def convert(
     # 3. vapor_wt: Gas_wt is a percentage → convert to mass fraction
     if "Gas_wt" in out.columns:
         out[col.VAPOR_WT] = out["Gas_wt"] / 100.0
-    elif col.VAPOR_WT in out.columns:
-        out[col.VAPOR_WT] = out[col.VAPOR_WT] / 100.0
 
     # 4. Melt volatile concentrations
     #    H2O_melt is already wt%
@@ -149,11 +147,11 @@ def convert(
 
             mol = _wt_to_molfrac(composition)
             fe3fet_vals = np.empty(len(out))
-            for i, row in out.iterrows():
+            for idx, (_, row) in enumerate(out.iterrows()):
                 P_pa = row[col.P_BARS] * 1e5       # bar → Pa
                 lnfo2 = np.log(row["fo2"])          # natural log
                 F = kc91_fo2(mol, T_K, P_pa, lnfo2)  # Fe2O3/FeO mole ratio
-                fe3fet_vals[i] = 2.0 * F / (1.0 + 2.0 * F)
+                fe3fet_vals[idx] = 2.0 * F / (1.0 + 2.0 * F)
             out[col.FE3FET_M] = fe3fet_vals
         except ImportError:
             out[col.FE3FET_M] = np.nan

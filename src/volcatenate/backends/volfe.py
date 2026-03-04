@@ -92,7 +92,8 @@ class Backend(ModelBackend):
                 if "p" in col_name.lower() and "bar" in col_name.lower():
                     return float(result[col_name].iloc[0])
             return np.nan
-        except Exception:
+        except Exception as exc:
+            logger.warning("[VolFe] satP failed for %s: %s", comp.sample, exc)
             return np.nan
 
     # ----------------------------------------------------------------

@@ -4,6 +4,11 @@ Provides a volcano-themed progress bar that works in both
 terminals and Jupyter notebooks.  Rich auto-detects the
 environment, so no special handling is needed.
 
+Features:
+- Lava-coloured progress bar (red → green on completion)
+- Built-in Rich spinner with lava styling
+- Queues warnings until the bar closes to avoid display corruption
+
 Usage within volcatenate internals::
 
     from volcatenate.progress import VolcProgress
@@ -61,21 +66,30 @@ class VolcProgress:
                 Progress,
                 TextColumn,
                 BarColumn,
+                SpinnerColumn,
                 MofNCompleteColumn,
                 TimeElapsedColumn,
             )
             from rich.console import Console
 
             self._console = Console()
+
             self._progress = Progress(
+                SpinnerColumn("dots"),
                 TextColumn("{task.description}"),
-                BarColumn(bar_width=30),
+                BarColumn(
+                    bar_width=30,
+                    complete_style="bold red",
+                    finished_style="bold green",
+                    pulse_style="bright_red",
+                ),
                 MofNCompleteColumn(),
                 TextColumn("[dim]\u2022"),
                 TimeElapsedColumn(),
                 console=self._console,
                 transient=False,
             )
+
             self._progress.__enter__()
             self._task_id = self._progress.add_task(
                 self._description, total=self._total,
@@ -86,6 +100,16 @@ class VolcProgress:
 
     def __exit__(self, *exc_info) -> None:
         if self._progress is not None:
+            # Mark bar visually complete: swap 🌋 to ✅ and append "Done"
+            if self._task_id is not None:
+                done_desc = self._description.replace(
+                    "\U0001f30b", "\u2705"   # 🌋 → ✅
+                )
+                self._progress.update(
+                    self._task_id,
+                    completed=self._total,
+                    description=f"{done_desc} [bold green]\u2714 Done[/bold green]",
+                )
             self._progress.__exit__(*exc_info)
             self._progress = None
         # Emit accumulated warnings now that the bar is gone

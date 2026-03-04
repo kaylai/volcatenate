@@ -25,7 +25,16 @@ from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_sta
 
 @contextlib.contextmanager
 def _quiet_sulfurx():
-    """Suppress SulfurX's stdout/stderr and tqdm progress bars."""
+    """Suppress SulfurX's stdout/stderr and tqdm progress bars.
+
+    Routes captured output to the volcatenate logger at DEBUG level.
+
+    Note: scipy's MINPACK Fortran code prints directly to C-level stdout
+    (bypassing Python's ``sys.stdout``).  We do NOT attempt OS-level FD
+    redirection here because it breaks Jupyter's I/O.  The Fortran
+    "improvement from the last ten iterations" messages will still appear
+    in terminals; this is a known cosmetic issue.
+    """
     buf_out = io.StringIO()
     buf_err = io.StringIO()
     old_tqdm = os.environ.get("TQDM_DISABLE")
@@ -70,8 +79,11 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     If the guess is far from the true solution, the solver silently
     returns the guess unchanged — a false convergence.
 
-    This helper tries a spread of starting pressures and picks the
-    converged result, avoiding the need for the user to manually iterate.
+    This helper tries a spread of starting pressures, clusters the
+    converged results, and picks the most-agreed-upon solution.  True
+    solutions are stable attractors: many different initial guesses
+    converge to the same value, while local minima attract only guesses
+    that happen to start nearby.
 
     Returns
     -------
@@ -80,10 +92,8 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     """
     from Iacono_Marziano_COH import IaconoMarziano
 
-    # Wide range of initial guesses (MPa) so that at least one is close
-    # to the true satP regardless of whether the composition is
-    # H2O-dominated, CO2-dominated, or mixed.
-    guesses_mpa = [20, 50, 100, 150, 200, 300, 400]
+    # Wide range of initial guesses (MPa).
+    guesses_mpa = [10, 20, 30, 50, 75, 100, 150, 200, 250, 300, 400]
 
     candidates: list[tuple[float, float, int]] = []
     for g_mpa in guesses_mpa:
@@ -96,59 +106,61 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
         try:
             P_sat, XH2O_f = coh.saturation_pressure(co2_ppm, h2o_wt)
         except Exception:
-            logger.debug("[SulfurX] satP guess %d MPa: solver exception", g_mpa)
+            logger.debug("[SulfurX] guess %g MPa → FAIL", g_mpa)
             continue
 
         # Non-convergence: result ≈ initial guess (solver didn't move)
         if abs(P_sat - guess_bar) < 5.0:
-            logger.debug(
-                "[SulfurX] satP guess %d MPa: non-convergence "
-                "(P_sat=%.1f ≈ init=%.1f bar)", g_mpa, P_sat, guess_bar,
-            )
+            logger.debug("[SulfurX] guess %g MPa → %.0f bar (≈ init, SKIP)", g_mpa, P_sat)
             continue
 
         # Physical bounds
         if P_sat <= 0 or XH2O_f <= 0 or XH2O_f >= 1:
-            logger.debug(
-                "[SulfurX] satP guess %d MPa: unphysical "
-                "(P=%.1f bar, XH2O=%.4f)", g_mpa, P_sat, XH2O_f,
-            )
+            logger.debug("[SulfurX] guess %g MPa → %.0f bar XH2O=%.4f (unphysical, SKIP)",
+                         g_mpa, P_sat, XH2O_f)
             continue
 
-        logger.debug(
-            "[SulfurX] satP guess %d MPa → P_sat=%.1f bar, XH2O=%.4f",
-            g_mpa, P_sat, XH2O_f,
-        )
+        logger.debug("[SulfurX] guess %g MPa → %.0f bar XH2O=%.4f ✓", g_mpa, P_sat, XH2O_f)
         candidates.append((P_sat, XH2O_f, g_mpa))
 
     if not candidates:
-        # Nothing converged — last resort with a high-pressure fallback
-        logger.warning(
-            "[SulfurX] No satP guess converged. "
-            "Using 300 MPa fallback (result may be unreliable)."
-        )
-        coh = IaconoMarziano(
-            pressure=300, temperature_k=tk,
-            composition=composition,
-            a=slope_h2o, b=constant_h2o,
-        )
-        return coh.saturation_pressure(co2_ppm, h2o_wt)
+        logger.warning("[SulfurX] 0/%d guesses converged — no satP solution", len(guesses_mpa))
+        return np.nan, np.nan
 
-    # Sort by P_sat and take the median (most robust to outliers)
+    # --- Cluster candidates by proximity (200-bar window) ---
+    # True solutions attract many initial guesses; local minima attract
+    # only nearby guesses.  Pick the biggest cluster.
     candidates.sort(key=lambda c: c[0])
+    clusters: list[list[tuple[float, float, int]]] = [[candidates[0]]]
+    for cand in candidates[1:]:
+        if cand[0] - clusters[-1][-1][0] < 200:  # within 200 bar
+            clusters[-1].append(cand)
+        else:
+            clusters.append([cand])
 
-    # Log spread — large spread would indicate multiple local solutions
-    if len(candidates) > 1:
-        spread = candidates[-1][0] - candidates[0][0]
-        if spread > 100:  # bar
-            logger.warning(
-                "[SulfurX] satP spread across guesses: %.0f bar "
-                "(%.0f–%.0f bar); check convergence.",
-                spread, candidates[0][0], candidates[-1][0],
-            )
+    # For saturation pressure the physically meaningful answer is the
+    # *lowest* pressure at which the melt first saturates.  Higher-P
+    # clusters are typically numerical artifacts of the IM solver.
+    # Strategy: pick the lowest-pressure cluster that has ≥ 2 members
+    # (i.e. not a one-off fluke).  Fall back to the largest cluster if
+    # no low-P cluster meets the threshold.
+    viable = [cl for cl in clusters if len(cl) >= 2]
+    if viable:
+        best_cluster = viable[0]  # lowest-P cluster (already sorted)
+    else:
+        best_cluster = max(clusters, key=lambda cl: len(cl))
 
-    mid = len(candidates) // 2
-    P_sat, XH2O_f, g_mpa = candidates[mid]
+    cluster_summary = ", ".join(
+        f"~{cl[len(cl)//2][0]:.0f} bar ({len(cl)}x)" for cl in clusters
+    )
+    logger.debug(
+        "[SulfurX] %d cluster(s) from %d/%d converged guesses: %s",
+        len(clusters), len(candidates), len(guesses_mpa), cluster_summary,
+    )
+
+    # Within the winning cluster, take the median
+    mid = len(best_cluster) // 2
+    P_sat, XH2O_f, g_mpa = best_cluster[mid]
     logger.debug(
         "[SulfurX] Final satP: %.1f bar (from %d/%d converged guesses, "
         "best initial guess %d MPa)",
@@ -461,14 +473,15 @@ class Backend(ModelBackend):
         composition = _build_composition(comp)
 
         try:
-            with _quiet_sulfurx():
-                if cfg.coh_model == 0:
+            if cfg.coh_model == 0:
+                with _quiet_sulfurx():
                     P_sat, _ = _find_saturation_pressure_im(
                         composition, tk, co2_ppm, h2o_wt,
                         cfg.slope_h2o, cfg.constant_h2o,
                     )
-                    return float(P_sat)
-                else:
+                return float(P_sat)
+            else:
+                with _quiet_sulfurx():
                     from VC_COH import VolatileCalc
 
                     vc = VolatileCalc(
@@ -477,7 +490,8 @@ class Backend(ModelBackend):
                     )
                     result = vc.SatPress(WtH2O=h2o_wt, PPMCO2=co2_ppm)
                     return float(result[0])
-        except Exception:
+        except Exception as exc:
+            logger.warning("[SulfurX] satP failed for %s: %s", comp.sample, exc)
             return np.nan
 
     # ----------------------------------------------------------------

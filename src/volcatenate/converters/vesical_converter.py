@@ -1,13 +1,16 @@
 """Convert VESIcal output to the standardized column format.
 
-VESIcal outputs are mostly in standard form already, but the column
-names vary by solubility model:
+VESIcal's ``calculate_degassing_path()`` returns columns in VESIcal's
+own naming convention:
 
-* ``MagmaSat`` (MS) uses ``XH2O_fl`` / ``XCO2_fl`` for fluid fractions
-* Other models (Dixon, Iacono, Liu, Shishkina) use ``H2O_v_mf`` /
-  ``CO2_v_mf`` directly
+* ``Pressure_bars`` — pressure in bars
+* ``H2O_liq`` — dissolved H₂O in wt%
+* ``CO2_liq`` — dissolved CO₂ in **wt%** (must be converted to ppm)
+* ``FluidProportion_wt`` — exsolved fluid weight fraction
+* ``H2O_fl`` / ``CO2_fl`` — fluid mole fractions (most models)
+* ``XH2O_fl`` / ``XCO2_fl`` — fluid mole fractions (MagmaSat)
 
-VESIcal is an H2O–CO2 model and does not track sulfur species,
+VESIcal is an H₂O–CO₂ model and does not track sulfur species,
 so all S-related columns are filled with NaN.
 """
 
@@ -19,18 +22,25 @@ import pandas as pd
 from volcatenate import columns as col
 
 
-# Columns already in standard form (no rename needed)
-_STANDARD_PRESENT = {col.P_BARS, col.H2OT_M_WTPC, col.CO2T_M_PPMW, col.VAPOR_WT}
+# ── Column rename mapping ───────────────────────────────────────────
+# Raw VESIcal column → Standardized column
+_RENAME: dict[str, str] = {
+    "Pressure_bars":      col.P_BARS,
+    "H2O_liq":            col.H2OT_M_WTPC,       # already wt%
+    "FluidProportion_wt": col.VAPOR_WT,           # already weight fraction
+}
 
 
 def is_raw(df: pd.DataFrame) -> bool:
     """Return *True* if *df* uses VESIcal-specific column names.
 
-    Detects the ``XCO2_fl`` / ``XH2O_fl`` naming used by MagmaSat
-    output, which needs conversion.  Files with standard ``H2O_v_mf``
-    / ``CO2_v_mf`` names are considered already-converted.
+    Detects columns like ``Pressure_bars``, ``H2O_liq``, ``CO2_liq``
+    that come from VESIcal's native output.  Files already using
+    volcatenate standard names (``P_bars``, ``H2OT_m_wtpc``) are
+    considered already-converted.
     """
-    return "XCO2_fl" in df.columns or "XH2O_fl" in df.columns
+    vesical_markers = {"Pressure_bars", "H2O_liq", "CO2_liq"}
+    return bool(vesical_markers & set(df.columns))
 
 
 def convert(df: pd.DataFrame, model_variant: str = "") -> pd.DataFrame:
@@ -51,13 +61,24 @@ def convert(df: pd.DataFrame, model_variant: str = "") -> pd.DataFrame:
     """
     out = df.copy()
 
+    # --- Rename VESIcal columns to standard names ---
+    out.rename(columns=_RENAME, inplace=True)
+
+    # --- CO2: VESIcal outputs wt% → convert to ppm ---
+    if "CO2_liq" in out.columns:
+        out[col.CO2T_M_PPMW] = out["CO2_liq"] * 10_000.0
+
     # --- Map fluid mole fractions ---
-    # MagmaSat uses XCO2_fl / XH2O_fl; other models may already have
-    # H2O_v_mf / CO2_v_mf.
+    # MagmaSat uses XCO2_fl / XH2O_fl; other models use CO2_fl / H2O_fl.
     if "XCO2_fl" in out.columns:
         out[col.CO2_V_MF] = out["XCO2_fl"]
+    elif "CO2_fl" in out.columns:
+        out[col.CO2_V_MF] = out["CO2_fl"]
+
     if "XH2O_fl" in out.columns:
         out[col.H2O_V_MF] = out["XH2O_fl"]
+    elif "H2O_fl" in out.columns:
+        out[col.H2O_V_MF] = out["H2O_fl"]
 
     # --- Fill sulfur-related columns with NaN ---
     # VESIcal is an H2O–CO2 model; sulfur is not modeled

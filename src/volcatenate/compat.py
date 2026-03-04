@@ -103,8 +103,6 @@ def load_model_csv(
     elif model_name in _VESICAL_VARIANTS or model_name.startswith("VESIcal"):
         if is_raw_vesical(df):
             df = convert_vesical(df, model_variant=model_name)
-        else:
-            df = convert_vesical(df, model_variant=model_name)
 
     # Post-processing: CS_v_mf fallback + normalization
     df = compute_cs_v_mf(df)
@@ -365,6 +363,8 @@ def loadData(
                 if model == "VESIcal_MS":
                     continue
                 if vol not in data[model].columns:
+                    continue
+                if len(data[model]) == 0:
                     continue
                 vol_init = data[model][vol].iloc[0]
                 if vol_init != 0 and not np.isnan(vol_init):

@@ -92,7 +92,11 @@ class Backend(ModelBackend):
         _run_magec_matlab(in_xlsx, out_xlsx, cfg)
 
         if not os.path.isfile(out_xlsx):
-            warnings.warn(f"MAGEC produced no output for {comp.sample}")
+            warnings.warn(
+                f"MAGEC produced no output for {comp.sample}. "
+                f"This may indicate a MATLAB timeout or solver failure. "
+                f"Check timeout={cfg.timeout}s and p_start_kbar={cfg.p_start_kbar}."
+            )
             return np.nan
 
         try:
@@ -100,6 +104,15 @@ class Backend(ModelBackend):
         except Exception as exc:
             warnings.warn(f"MAGEC output parse failed for {comp.sample}: {exc}")
             result = np.nan
+
+        if np.isnan(result):
+            logger.warning(
+                "MAGEC: no saturation found for %s in "
+                "%.1f–%.3f kbar range (%d steps, timeout=%ds). "
+                "Try increasing magec.p_start_kbar.",
+                comp.sample, cfg.p_start_kbar, cfg.p_final_kbar,
+                cfg.n_steps, cfg.timeout,
+            )
 
         # Clean up intermediate files if requested
         if not config.keep_intermediates:

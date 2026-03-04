@@ -34,8 +34,8 @@ _RENAME: dict[str, str] = {
     "Fe3+/FeT":       col.FE3FET_M,
     "S6+/ST":         col.S6ST_M,
     "fO2_DFMQ":      col.DFMQ,
-    "wt_g_wtpc":     col.VAPOR_WT,
 }
+# Note: wt_g_wtpc is NOT in _RENAME because it needs a division (wt% → fraction)
 
 
 def is_raw(df: pd.DataFrame) -> bool:
@@ -77,7 +77,11 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     # 1. Rename columns
     out.rename(columns=_RENAME, inplace=True)
 
-    # 2. Compute logfO2 = log10(fO2) from the raw linear column
+    # 2. vapor_wt: wt_g_wtpc is a percentage → convert to mass fraction
+    if "wt_g_wtpc" in out.columns:
+        out[col.VAPOR_WT] = out["wt_g_wtpc"] / 100.0
+
+    # 3. Compute logfO2 = log10(fO2) from the raw linear column
     #    fO2 can be 0 at the tail of a degassing path → log10(0) = -inf.
     #    Suppress the numpy warning; rows with 0 get NaN.
     if "fO2_bar" in out.columns:
@@ -89,7 +93,7 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
             vals = np.log10(out["fO2"])
         out[col.LOGFO2] = vals.replace(-np.inf, np.nan)
 
-    # 3. Recompute CS_v_mf if species are present but ratio is missing/zero
+    # 4. Recompute CS_v_mf if species are present but ratio is missing/zero
     if (all(c in out.columns for c in col.C_SPECIES) and
             all(s in out.columns for s in col.S_SPECIES)):
         needs_cs = (col.CS_V_MF not in out.columns or
