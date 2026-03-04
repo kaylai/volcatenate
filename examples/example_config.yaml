@@ -1,0 +1,41 @@
+# Example volcatenate configuration
+#
+# This file was generated with:  volcatenate init-config -o example_config.yaml
+# For a full template with ALL settings, run that command yourself.
+#
+# You only need to include the settings you want to change.
+# Everything else uses paper defaults automatically.
+# See the full default config:  python -c "print(volcatenate.default_config_path())"
+
+output_dir: volcatenate_output
+keep_intermediates: false  # set True to inspect intermediate files
+
+# ── EVo ──────────────────────────────────────────────────────────
+evo:
+  p_start: 3000              # starting pressure (bar)
+  p_stop: 1                  # final pressure (bar)
+  gas_system: cohs            # 'cohs', 'coh', 'cos', etc.
+  fo2_buffer: FMQ             # 'FMQ', 'NNO', etc.
+
+# ── VolFe ────────────────────────────────────────────────────────
+volfe:
+  fo2_column: Fe3FeT          # 'DNNO', 'Fe3FeT', or 'DFMQ'
+  gassing_style: closed       # 'closed' or 'open'
+
+# ── MAGEC ────────────────────────────────────────────────────────
+# Paths are auto-detected. Override here if needed.
+magec:
+  # solver_dir: /path/to/MAGEC24/Supplement   # auto-detected
+  # matlab_bin: /path/to/matlab               # auto-detected
+  fe_redox: 2                 # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+  s_redox: 2                  # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010; ...
+
+# ── VESIcal ──────────────────────────────────────────────────────
+vesical:
+  model: IaconoMarziano
+  fractionate_vapor: 0.0      # 0 = closed-system, 1 = open-system
+
+# ── SulfurX ──────────────────────────────────────────────────────
+sulfurx:
+  # path: /path/to/Sulfur_X                   # auto-detected
+  coh_model: 0                # 0 = Iacono-Marziano, 1 = VolatileCalc

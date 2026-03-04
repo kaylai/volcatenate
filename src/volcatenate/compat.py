@@ -1,0 +1,429 @@
+"""Compatibility layer — bridges volcatenate output to existing plotting code.
+
+The existing plotting scripts (``generate_paper_plots.py``,
+``plot_CS_with_gas_data.py``) expect data in the ``loadData()`` dict
+format::
+
+    {"Name": "Kilauea", "EVo": DataFrame, "VolFe": DataFrame, ...}
+
+This module provides helpers to convert volcatenate's output into
+that format, and to load pre-existing model CSV files into
+standardized DataFrames.
+
+Drop-in replacement for ``model_handling.py``
+---------------------------------------------
+The :func:`loadData` function is a drop-in replacement for the old
+``model_handling.loadData()``.  In your plotting scripts, change::
+
+    import model_handling as mh
+    data_morb, data_kil, data_fuego, data_fogo = mh.loadData(...)
+
+to::
+
+    import volcatenate.compat as mh
+    data_morb, data_kil, data_fuego, data_fogo = mh.loadData(...)
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from typing import Optional
+
+import numpy as np
+import pandas as pd
+
+from volcatenate import columns as col
+from volcatenate.converters import (
+    convert_evo, is_raw_evo,
+    convert_volfe, is_raw_volfe,
+    convert_magec, is_raw_magec,
+    convert_vesical, is_raw_vesical,
+    convert_sulfurx, is_raw_sulfurx,
+    convert_dcompress, is_raw_dcompress,
+)
+from volcatenate.convert import compute_cs_v_mf, normalize_volatiles
+
+
+# Model name → (is_raw_func, convert_func)
+_AUTO_CONVERTERS = {
+    "EVo":       (is_raw_evo, convert_evo),
+    "VolFe":     (is_raw_volfe, convert_volfe),
+    "MAGEC":     (is_raw_magec, convert_magec),
+    "SulfurX":   (is_raw_sulfurx, convert_sulfurx),
+    "DCompress": (is_raw_dcompress, convert_dcompress),
+}
+
+# VESIcal variants that need the VESIcal converter
+_VESICAL_VARIANTS = {
+    "VESIcal_MS", "VESIcal_Dixon", "VESIcal_Iacono",
+    "VESIcal_Liu", "VESIcal_ShishkinaIdealMixing",
+}
+
+
+def load_model_csv(
+    csv_path: str,
+    model_name: str,
+    composition: Optional[dict] = None,
+    T_K: Optional[float] = None,
+) -> pd.DataFrame:
+    """Load a single model output CSV and standardize it.
+
+    Automatically detects whether the file is in raw or already-
+    converted format and applies the appropriate converter.
+
+    Parameters
+    ----------
+    csv_path : str
+        Path to the model output CSV file.
+    model_name : str
+        Model name (e.g. ``"EVo"``, ``"VolFe"``, ``"VESIcal_Iacono"``).
+    composition : dict, optional
+        Starting composition (needed for EVo Fe3+/FeT calculation).
+    T_K : float, optional
+        Temperature in Kelvin (needed for EVo Fe3+/FeT).
+
+    Returns
+    -------
+    pd.DataFrame
+        Standardized DataFrame.
+    """
+    df = pd.read_csv(csv_path).fillna(0)
+
+    # Auto-detect and convert
+    if model_name in _AUTO_CONVERTERS:
+        is_raw_fn, convert_fn = _AUTO_CONVERTERS[model_name]
+        if is_raw_fn(df):
+            if model_name == "EVo":
+                df = convert_fn(df, composition=composition, T_K=T_K)
+            else:
+                df = convert_fn(df)
+    elif model_name in _VESICAL_VARIANTS or model_name.startswith("VESIcal"):
+        if is_raw_vesical(df):
+            df = convert_vesical(df, model_variant=model_name)
+        else:
+            df = convert_vesical(df, model_variant=model_name)
+
+    # Post-processing: CS_v_mf fallback + normalization
+    df = compute_cs_v_mf(df)
+    df = normalize_volatiles(df)
+
+    return df
+
+
+def load_data(
+    model_names: list[str],
+    top_directory: str,
+    volcano_names: Optional[list[str]] = None,
+    compositions: Optional[dict[str, dict]] = None,
+) -> dict[str, dict]:
+    """Load all model run data, mirroring the old ``loadData()`` interface.
+
+    Parameters
+    ----------
+    model_names : list[str]
+        Model names to load, e.g. ``["EVo", "VolFe", "VESIcal_Iacono"]``.
+    top_directory : str
+        Top-level directory containing model subdirectories.
+    volcano_names : list[str], optional
+        Volcano names to look for (default: morb, kilauea, fuego, fogo).
+    compositions : dict, optional
+        Dict mapping volcano name → composition dict (for EVo Fe3+/FeT).
+
+    Returns
+    -------
+    dict[str, dict]
+        Keyed by volcano name.  Each value is a dict with
+        ``{"Name": str, "ModelName": DataFrame, ...}``.
+    """
+    if volcano_names is None:
+        volcano_names = ["morb", "kilauea", "fuego", "fogo"]
+
+    # Display names
+    display_names = {
+        "morb": "MORB", "kilauea": "Kilauea",
+        "fuego": "Fuego", "fogo": "Fogo",
+    }
+
+    results = {}
+    for vname in volcano_names:
+        results[vname] = {"Name": display_names.get(vname, vname)}
+
+    for model in model_names:
+        # Determine directory
+        if "VESIcal" in model:
+            model_dir = os.path.join(top_directory, "VESIcal", model)
+        else:
+            model_dir = os.path.join(top_directory, model)
+
+        if not os.path.isdir(model_dir):
+            continue
+
+        for filename in os.listdir(model_dir):
+            if not filename.endswith(".csv"):
+                continue
+            filepath = os.path.join(model_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+
+            name_lower = os.path.splitext(filename)[0].lower()
+
+            for vname in volcano_names:
+                if vname in name_lower:
+                    # Get composition for EVo converter if available
+                    comp = None
+                    t_k = None
+                    if compositions and vname in compositions:
+                        comp = compositions[vname]
+                        t_k = comp.get("T_C", 0) + 273.15 if comp else None
+
+                    try:
+                        df = load_model_csv(
+                            filepath, model,
+                            composition=comp, T_K=t_k,
+                        )
+                        results[vname][model] = df
+                    except Exception as exc:
+                        print(f"Warning: Failed to load {filepath}: {exc}")
+
+    return results
+
+
+def degassing_results_to_compat(
+    results: dict[str, pd.DataFrame],
+    volcano_name: str,
+) -> dict:
+    """Convert ``calculate_degassing()`` output to ``loadData()`` format.
+
+    Parameters
+    ----------
+    results : dict[str, pd.DataFrame]
+        Output from :func:`volcatenate.calculate_degassing`.
+    volcano_name : str
+        Name to set in the ``"Name"`` key.
+
+    Returns
+    -------
+    dict
+        ``{"Name": "Kilauea", "EVo": DataFrame, ...}``
+    """
+    d = {"Name": volcano_name}
+    d.update(results)
+    return d
+
+
+# ------------------------------------------------------------------
+# Drop-in replacement for model_handling.loadData()
+# ------------------------------------------------------------------
+
+# Starting compositions (for EVo Fe3+/FeT via KC91).
+# Matches starting_compositions.py in the paper repo.
+_STARTING_COMPOSITIONS = {
+    "kilauea": {
+        "Sample": "Kilauea", "T_C": 1200.0,
+        "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
+        "FeO": 11.34, "MnO": 0.18, "MgO": 9.23, "CaO": 10.44,
+        "Na2O": 2.39, "K2O": 0.43, "P2O5": 0.27,
+        "H2O": 0.30, "CO2": 0.0800, "S": 0.1500,
+        "Fe3FeT": 0.18, "dNNO": -0.23,
+    },
+    "fogo": {
+        "Sample": "Fogo", "T_C": 1200.0,
+        "SiO2": 42.40, "TiO2": 3.26, "Al2O3": 11.17,
+        "FeO": 12.00, "MnO": 0.14, "MgO": 9.55, "CaO": 13.31,
+        "Na2O": 3.36, "K2O": 1.57, "P2O5": 0.75,
+        "H2O": 2.11, "CO2": 1.1520, "S": 0.4690,
+        "dNNO": 0.7,
+    },
+    "fuego": {
+        "Sample": "Fuego", "T_C": 1030.0,
+        "SiO2": 51.46, "TiO2": 1.06, "Al2O3": 17.43,
+        "FeO": 9.42, "MnO": 0.19, "MgO": 3.78, "CaO": 7.99,
+        "Na2O": 3.47, "K2O": 0.78, "P2O5": 0.24,
+        "H2O": 4.5, "CO2": 0.3300, "S": 0.2650,
+        "Fe3FeT": 0.235, "dNNO": 0.25,
+    },
+    "morb": {
+        "Sample": "MORB", "T_C": 1100.0,
+        "SiO2": 47.40, "TiO2": 1.01, "Al2O3": 17.64,
+        "FeO": 7.98, "MnO": 0.00, "MgO": 7.63, "CaO": 12.44,
+        "Na2O": 2.65, "K2O": 0.03, "P2O5": 0.08,
+        "H2O": 0.20, "CO2": 0.1100, "S": 0.1420,
+        "Fe3FeT": 0.10, "dNNO": -2.07,
+    },
+}
+
+_VAPOR_MF_COLS = [
+    "O2_v_mf", "CO2_v_mf", "CO_v_mf", "H2O_v_mf", "H2_v_mf",
+    "S2_v_mf", "SO2_v_mf", "H2S_v_mf", "CH4_v_mf", "OCS_v_mf",
+]
+
+
+def loadData(
+    model_names: list[str],
+    topdirectory_name: str = "../Model_Runs/",
+    subdirectory_name: str = "",
+    models_w_special_subdirectory: str | list[str] = "",
+    O2_mass_bal: bool = False,
+    simplify: bool = False,
+    save_simplified: bool = False,
+) -> tuple[dict, dict, dict, dict]:
+    """Drop-in replacement for ``model_handling.loadData()``.
+
+    Returns ``(data_morb, data_kil, data_fuego, data_fogo)`` — four
+    dicts, each ``{"Name": str, "ModelName": DataFrame, ...}``.
+
+    Uses volcatenate's converters for auto-detection and standardization
+    instead of the ad-hoc ``convert_evo.py`` / ``convert_volfe.py``.
+
+    Parameters
+    ----------
+    model_names : list[str]
+        Model names to load.
+    topdirectory_name : str
+        Top-level directory containing model subdirectories.
+    subdirectory_name : str
+        Optional sub-path appended for models in
+        *models_w_special_subdirectory*.
+    models_w_special_subdirectory : str or list[str]
+        Model(s) that live in ``topdirectory_name/model/subdirectory_name``.
+    O2_mass_bal : bool
+        If True, compute SUM_v_mf and XO2_BYDIFF_v_mf columns.
+    simplify : bool
+        If True, keep only the standard column set.
+    save_simplified : bool
+        If True (and simplify is True), save simplified CSVs.
+    """
+    if isinstance(models_w_special_subdirectory, str):
+        models_w_special_subdirectory = [models_w_special_subdirectory]
+
+    data_morb = {"Name": "MORB"}
+    data_kil = {"Name": "Kilauea"}
+    data_fuego = {"Name": "Fuego"}
+    data_fogo = {"Name": "Fogo"}
+
+    _volcano_map = {
+        "morb": data_morb, "kilauea": data_kil,
+        "fuego": data_fuego, "fogo": data_fogo,
+    }
+
+    # ---- Load CSV files ----
+    for model in model_names:
+        subdir = (subdirectory_name
+                  if model in models_w_special_subdirectory else "")
+        if "VESIcal" in model:
+            directory = os.path.join(topdirectory_name, "VESIcal", model + subdir)
+        else:
+            directory = os.path.join(topdirectory_name, model + subdir)
+
+        if not os.path.isdir(directory):
+            continue
+
+        for filename in os.listdir(directory):
+            if not filename.endswith(".csv"):
+                continue
+            filepath = os.path.join(directory, filename)
+            if not os.path.isfile(filepath):
+                continue
+
+            name_lower = os.path.splitext(filename)[0].lower()
+            for vkey, data_dict in _volcano_map.items():
+                if vkey in name_lower:
+                    comp = _STARTING_COMPOSITIONS.get(vkey)
+                    t_k = (comp["T_C"] + 273.15) if comp and "T_C" in comp else None
+                    try:
+                        df = load_model_csv(
+                            filepath, model,
+                            composition=comp, T_K=t_k,
+                        )
+                        data_dict[model] = df
+                    except Exception as exc:
+                        print(f"Warning: Failed to load {filepath}: {exc}")
+
+    datasets = [data_morb, data_kil, data_fuego, data_fogo]
+
+    # ---- VESIcal: map XCO2_fl/XH2O_fl if still present ----
+    for data in datasets:
+        for key in list(data.keys()):
+            if not isinstance(data.get(key), pd.DataFrame):
+                continue
+            if "VESIcal" in key:
+                df = data[key]
+                if "XCO2_fl" in df.columns:
+                    df["CO2_v_mf"] = df["XCO2_fl"]
+                    df["H2O_v_mf"] = df["XH2O_fl"]
+                df["ST_m_ppmw"] = np.nan
+
+    # ---- Normalized volatile columns ----
+    for data in datasets:
+        for vol in ["H2OT_m_wtpc", "CO2T_m_ppmw", "ST_m_ppmw"]:
+            for model in model_names:
+                if model not in data or not isinstance(data[model], pd.DataFrame):
+                    continue
+                if model == "VESIcal_MS":
+                    continue
+                if vol not in data[model].columns:
+                    continue
+                vol_init = data[model][vol].iloc[0]
+                if vol_init != 0 and not np.isnan(vol_init):
+                    data[model][vol + "_norm"] = data[model][vol] / vol_init
+                else:
+                    data[model][vol + "_norm"] = np.nan
+
+    # ---- O2 mass balance ----
+    if O2_mass_bal:
+        non_o2_cols = [c for c in _VAPOR_MF_COLS if c != "O2_v_mf"]
+        for data in datasets:
+            for model in model_names:
+                if model not in data or not isinstance(data[model], pd.DataFrame):
+                    continue
+                df = data[model]
+                has_all = all(c in df.columns for c in _VAPOR_MF_COLS)
+                if has_all:
+                    all_vals = df[_VAPOR_MF_COLS].values
+                    non_o2_vals = df[non_o2_cols].values
+                    df["SUM_v_mf"] = [math.fsum(row) for row in all_vals]
+                    df["XO2_BYDIFF_v_mf"] = [
+                        1.0 - math.fsum(row) for row in non_o2_vals
+                    ]
+                else:
+                    for vcol in _VAPOR_MF_COLS:
+                        if vcol not in df.columns:
+                            print(f"{vcol} not found in columns for "
+                                  f"{model} in {data['Name']}")
+                            break
+                    df["SUM_v_mf"] = 0
+                    df["XO2_BYDIFF_v_mf"] = 0
+
+        # ---- Simplify ----
+        if simplify:
+            other_cols = [
+                "P_bars", "H2OT_m_wtpc", "CO2T_m_ppmw", "ST_m_ppmw",
+                "Fe3Fet_m", "S6St_m", "logfO2", "dFMQ", "vapor_wt",
+                "CS_v_mf", "SUM_v_mf", "XO2_BYDIFF_v_mf",
+            ]
+            cols_to_keep = [*_VAPOR_MF_COLS, *other_cols]
+            for data in datasets:
+                for model in model_names:
+                    if model not in data or not isinstance(data[model], pd.DataFrame):
+                        continue
+                    try:
+                        data[model] = data[model][cols_to_keep]
+                    except Exception:
+                        print(f"Issue simplifying {model}")
+
+            if save_simplified:
+                for data in datasets:
+                    vname = data["Name"].lower()
+                    for model in model_names:
+                        if model not in data or not isinstance(data[model], pd.DataFrame):
+                            continue
+                        subdir = (subdirectory_name
+                                  if model in models_w_special_subdirectory else "")
+                        save_dir = os.path.join(
+                            topdirectory_name, model + subdir, "simplified")
+                        os.makedirs(save_dir, exist_ok=True)
+                        data[model].to_csv(
+                            os.path.join(save_dir, f"{vname}.csv"), index=False)
+
+    return data_morb, data_kil, data_fuego, data_fogo

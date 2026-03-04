@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "volcatenate"
+version = "0.1.0"
+description = "Unified volcanic degassing model comparison toolkit"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyyaml",
+    "click",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov"]
+plotting = ["matplotlib", "scipy"]
+
+[project.scripts]
+volcatenate = "volcatenate.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+volcatenate = ["default_config.yaml"]

@@ -1,0 +1,101 @@
+# volcatenate configuration
+#
+# All settings below show their DEFAULT values (matching the Sulfur
+# Comparison Paper).  Edit only the fields you need to change —
+# missing keys will use these defaults automatically.
+#
+# ── Getting started ──────────────────────────────────────────────
+# Using a YAML config file is OPTIONAL.  You can also set everything
+# in Python:
+#
+#   from volcatenate.config import RunConfig, EVoConfig
+#   config = RunConfig(evo=EVoConfig(p_stop=10))
+#
+# To use a YAML file instead:
+#
+#   1. Generate your own copy (DO NOT edit the bundled original —
+#      it lives inside the installed package and will be overwritten
+#      on reinstall):
+#
+#        volcatenate init-config                   # → ./volcatenate_config.yaml
+#        volcatenate init-config -o my_config.yaml # → custom path
+#
+#   2. Open the copy and change only what you need.
+#      You can safely delete entire sections you don't need.
+#
+#   3. Load it in Python or from the CLI:
+#
+#        config = volcatenate.load_config("volcatenate_config.yaml")
+#
+#        volcatenate saturation-pressure input.csv --config my_config.yaml
+
+output_dir: volcatenate_output  # Directory for intermediate model output files
+keep_intermediates: true  # Keep intermediate files (EVo YAML dirs, MAGEC scripts, etc.)
+
+vesical:
+  model: IaconoMarziano  # Solubility model name
+  steps: 101  # Number of degassing steps
+  final_pressure: 1.0  # bar
+  fractionate_vapor: 0.0  # 0 = closed-system, 1 = open-system
+
+volfe:
+  sulfur_saturation: false
+  graphite_saturation: false
+  fo2_column: Fe3FeT  # 'DNNO', 'Fe3FeT', or 'DFMQ'
+  gassing_style: closed  # 'closed' or 'open'
+
+evo:
+  gas_system: cohs  # 'cohs', 'coh', 'cos', etc.
+  fo2_buffer: FMQ  # 'FMQ', 'NNO', etc.
+  fe_system: true  # Include Fe redox equilibrium
+  find_saturation: true  # Find saturation pressure automatically
+  atomic_mass_set: false
+  dp_min: 1  # Minimum pressure step (bar)
+  dp_max: 100  # Maximum pressure step (bar)
+  mass: 100  # System mass (g)
+  p_start: 3000  # Starting pressure (bar)
+  p_stop: 1  # Final pressure (bar)
+  h2o_model: burguisser2015
+  h2_model: gaillard2003
+  c_model: burguisser2015
+  co_model: armstrong2015
+  ch4_model: ardia2013
+  sulfide_capacity: oneill2020
+  sulfate_capacity: nash2019
+  scss: liu2007
+  n_model: libourel2003
+  density_model: spera2000
+  fo2_model: kc1991
+  fmq_model: frost1991
+
+magec:
+  # Paths are auto-detected. Set here to override, or use env vars
+  # MAGEC_SOLVER_DIR and MATLAB_BIN.
+  solver_dir: ""  # Path to directory containing MAGEC_Solver_v1b.p (auto-detected)
+  matlab_bin: ""  # Path to MATLAB binary (auto-detected)
+  sulfide_sat: 0  # (1) Yes; (0) No
+  sulfate_sat: 0  # (1) Yes; (0) No
+  graphite_sat: 0  # (1) Yes; (0) No
+  fe_redox: 2  # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+  s_redox: 2  # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010; (4) O'Neill 2022; (5) Boulliung 2023
+  scss: 1  # (1) Blanchard 2021; (2) Fortin 2015; (3) Smythe 2017; (4) O'Neill 2021
+  sulfide_cap: 1  # (1) Nzotta 1999; (2) O'Neill 2021; (3) Boulliung 2023
+  co2_sol: 1  # (1) IM2012; (2) Liu 2005; (3.x) Burgisser 2015
+  h2o_sol: 1  # (1) IM2012; (2) Liu 2005; (3.x) Burgisser 2015
+  co_sol: 1  # (1) Armstrong 2015; (2.x) Yoshioka 2019
+  adiabatic: 0  # 0 = isothermal
+  solver: 2  # (1) lsqnonlin; (2) fsolve
+  gas_behavior: 1  # (1) real gas; (2) ideal
+  o2_balance: 0  # (0) Total O balanced; (1) fixed fO2 buffer
+  redox_option: Fe3+/FeT  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
+  p_start_kbar: 3.0  # SatP search start pressure (kbar)
+  p_final_kbar: 0.001  # SatP search end pressure (kbar)
+  n_steps: 100  # Number of pressure steps for SatP search
+  timeout: 3600  # MATLAB subprocess timeout (seconds)
+
+sulfurx:
+  # Path is auto-detected. Set here to override, or use env var SULFURX_PATH.
+  path: ""  # Path to SulfurX installation (auto-detected)
+  coh_model: 0  # 0 = Iacono-Marziano, 1 = VolatileCalc
+  slope_h2o: -0.3396  # K2O-H2O relationship slope: K2O = a*H2O + b
+  constant_h2o: 2.7  # K2O-H2O relationship intercept
