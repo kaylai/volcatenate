@@ -135,10 +135,12 @@ class Backend(ModelBackend):
         try:
             with _quiet_evo():
                 evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
-        except Exception:
-            return np.nan
+        except Exception as exc:
+            # EVo may write valid output before raising — check for it
+            logger.warning("EVo raised during satP: %s — checking for partial output", exc)
 
-        csv_files = glob.glob(os.path.join(evo_output_folder, "dgs_output_*.csv"))
+        # EVo prefixes crashed-but-valid output with "_CRASHED_"
+        csv_files = glob.glob(os.path.join(evo_output_folder, "*dgs_output_*.csv"))
         if not csv_files:
             return np.nan
 
@@ -173,10 +175,19 @@ class Backend(ModelBackend):
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
-        with _quiet_evo():
-            evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
+        try:
+            with _quiet_evo():
+                evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
+        except Exception as exc:
+            # EVo sometimes writes valid output *before* raising
+            # (e.g. "Model failed to converge at lowest pressure step.
+            #  Data has been written out.").  Log the warning and try
+            # to read whatever was written.
+            logger.warning("EVo raised during degassing: %s — checking for partial output", exc)
 
-        csv_files = glob.glob(os.path.join(evo_output_folder, "dgs_output_*.csv"))
+        # EVo prefixes crashed-but-valid output with "_CRASHED_", so match both
+        # normal ("dgs_output_*.csv") and crashed ("_CRASHED_dgs_output_*.csv").
+        csv_files = glob.glob(os.path.join(evo_output_folder, "*dgs_output_*.csv"))
         if not csv_files:
             raise FileNotFoundError(
                 f"EVo did not produce output CSV in {evo_output_folder}"
