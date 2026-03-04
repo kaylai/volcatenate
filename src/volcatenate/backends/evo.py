@@ -214,6 +214,38 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
+def _pick_evo_buffer(comp: MeltComposition, cfg) -> dict:
+    """Choose the fO2 buffer and offset that match the composition data.
+
+    EVo accepts ``"FMQ"``, ``"NNO"``, or ``"IW"`` as the buffer name.
+    The offset (``FO2_buffer_START``) must be relative to *that* buffer.
+
+    If the composition provides dNNO we use ``"NNO"`` so the offset is
+    applied correctly.  If it provides dFMQ we use ``"FMQ"``.  If neither
+    is available we fall back to the config default with an offset of 0.
+    """
+    if comp.dNNO is not None:
+        return {
+            "FO2_buffer": "NNO",
+            "FO2_buffer_START": float(comp.dNNO),
+        }
+    if comp.dFMQ is not None:
+        return {
+            "FO2_buffer": "FMQ",
+            "FO2_buffer_START": float(comp.dFMQ),
+        }
+    # No explicit buffer offset — use config default
+    logger.warning(
+        "[EVo] No dNNO or dFMQ for %s; using %s buffer with offset 0",
+        comp.sample, cfg.fo2_buffer,
+    )
+    return {
+        "FO2_buffer": cfg.fo2_buffer,
+        "FO2_buffer_START": 0.0,
+    }
+
+
 def _write_yaml_configs(
     comp: MeltComposition,
     cfg,
@@ -292,10 +324,12 @@ def _write_yaml_configs(
         "SCSS": cfg.scss,
         "N_MODEL": cfg.n_model,
 
-        # fO2 buffer: use buffer if no Fe3FeT split
+        # fO2 buffer: use buffer if no Fe3FeT split.
+        # Match the buffer to the available redox indicator so the
+        # offset is interpreted correctly.  EVo supports "FMQ", "NNO",
+        # and "IW" — we pick the one that matches the composition data.
         "FO2_buffer_SET": not has_fe3fet,
-        "FO2_buffer": cfg.fo2_buffer,
-        "FO2_buffer_START": float(comp.dNNO) if comp.dNNO is not None else 0.0,
+        **_pick_evo_buffer(comp, cfg),
 
         "FO2_SET": False,
         "FO2_START": 0.0,

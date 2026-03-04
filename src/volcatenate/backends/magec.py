@@ -186,17 +186,70 @@ def _create_magec_input_xlsx(
 
     fe3fet = comp.fe3fet_computed
 
-    # Determine redox option string and value
+    # Determine redox option string and value.
+    # The config specifies the preferred input (e.g. "Fe3+/FeT"), but
+    # not all compositions provide that indicator.  Use a fallback chain
+    # so we never send NaN to MATLAB.
     redox_option = cfg.redox_option   # e.g. "Fe3+/FeT"
     redox_value = np.nan
+
     if redox_option == "Fe3+/FeT" and not np.isnan(fe3fet):
         redox_value = fe3fet
     elif redox_option == "dFMQ" and comp.dFMQ is not None:
         redox_value = comp.dFMQ
-    elif redox_option == "Fe3+/FeT":
-        # Fallback: use Fe3FeT if available regardless of config
+    elif redox_option == "logfO2":
+        pass  # no generic source — leave NaN, will warn below
+
+    # Fallback chain: try every available indicator.
+    # MAGEC's internal dFMQ→logfO2 conversion can fail for certain
+    # compositions, so we prefer computing Fe3+/FeT via KC91 when
+    # only a buffer offset (dNNO or dFMQ) is available.
+    if np.isnan(redox_value):
         if not np.isnan(fe3fet):
+            redox_option = "Fe3+/FeT"
             redox_value = fe3fet
+        elif comp.dNNO is not None or comp.dFMQ is not None:
+            # Compute logfO2 from the available buffer offset, then
+            # use Kress & Carmichael (1991) to get Fe3+/FeT.  This is
+            # the most reliable pathway because MAGEC uses KC91
+            # internally (fe_redox=2) and handles Fe3+/FeT natively.
+            from volcatenate.iron import fe3fet_kc91
+
+            T_K = comp.T_C + 273.15
+            if comp.dNNO is not None:
+                # NNO buffer (Frost 1991, at 1 bar):
+                nno_1bar = -24930.0 / T_K + 9.36
+                log_fo2 = nno_1bar + comp.dNNO
+                src = f"dNNO={comp.dNNO}"
+            else:
+                # FMQ buffer (Frost 1991, at 1 bar):
+                fmq_1bar = -25096.3 / T_K + 8.735
+                log_fo2 = fmq_1bar + comp.dFMQ
+                src = f"dFMQ={comp.dFMQ}"
+
+            computed = fe3fet_kc91(
+                log_fo2, T_K, comp.oxide_dict, P_bar=1.0,
+            )
+            if not np.isnan(computed):
+                redox_option = "Fe3+/FeT"
+                redox_value = computed
+                logger.warning(
+                    "[MAGEC] No Fe3+/FeT for %s; computed %.4f via KC91 "
+                    "from %s (logfO2=%.3f at %s K)",
+                    comp.sample, computed, src, log_fo2, T_K,
+                )
+            else:
+                logger.warning(
+                    "[MAGEC] KC91 failed for %s (logfO2=%.3f); "
+                    "cannot determine Fe3+/FeT",
+                    comp.sample, log_fo2,
+                )
+
+    if np.isnan(redox_value):
+        raise ValueError(
+            f"No usable redox indicator for {comp.sample}. "
+            f"MAGEC needs Fe3+/FeT, dFMQ, or dNNO."
+        )
 
     # ── Convert volatile wt% → elemental wt% for MAGEC ──
     # MAGEC expects Bulk_H, Bulk_C, Bulk_S as ELEMENTAL weight percent,

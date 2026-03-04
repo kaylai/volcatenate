@@ -91,40 +91,74 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
         ``(P_sat_bar, XH2O_f)``
     """
     from Iacono_Marziano_COH import IaconoMarziano
+    from scipy.optimize import root as scipy_root
 
-    # Wide range of initial guesses (MPa).
+    # Wide range of initial guesses (MPa) × XH2O_f starting values.
+    # The IM solver is extremely sensitive to the fluid mole-fraction
+    # initial guess — upstream SulfurX has oscillated between 0.01, 0.5,
+    # and 0.9 across versions.  We try all three to maximise robustness.
     guesses_mpa = [10, 20, 30, 50, 75, 100, 150, 200, 250, 300, 400]
+    xh2o_guesses = [0.01, 0.5, 0.9]
 
     candidates: list[tuple[float, float, int]] = []
     for g_mpa in guesses_mpa:
         guess_bar = g_mpa * 10
+
+        # Build the IM object once per pressure — it computes derived
+        # quantities (mole fractions, NBO) in __init__.
         coh = IaconoMarziano(
             pressure=g_mpa, temperature_k=tk,
             composition=composition,
             a=slope_h2o, b=constant_h2o,
         )
-        try:
-            P_sat, XH2O_f = coh.saturation_pressure(co2_ppm, h2o_wt)
-        except Exception:
-            logger.debug("[SulfurX] guess %g MPa → FAIL", g_mpa)
-            continue
 
-        # Non-convergence: result ≈ initial guess (solver didn't move)
-        if abs(P_sat - guess_bar) < 5.0:
-            logger.debug("[SulfurX] guess %g MPa → %.0f bar (≈ init, SKIP)", g_mpa, P_sat)
-            continue
+        # Pre-compute the args that saturation_pressure() normally
+        # builds, so we can call scipy root() with varying XH2O_f.
+        # func_initial expects: h2o_0 in wt%, co2_0 in ppm
+        h2o_0 = h2o_wt
+        co2_0 = co2_ppm  # ppm — NOT divided by 10000
+        nh2o = h2o_0 / (15.999 + 2 * 1.0079)
+        ntot_h = coh.ntot + nh2o
+        xfeo = coh.nfeo / ntot_h
+        xmgo = coh.nmgo / ntot_h
+        xna2o = coh.nna2o / ntot_h
+        xk2o = coh.nk2o / ntot_h
+        xh2o = nh2o / ntot_h
+        xsio2 = coh.nsio2 / ntot_h
+        xtio2 = coh.ntio2 / ntot_h
+        xal2o3 = coh.nal2o3 / ntot_h
+        xcao = coh.ncao / ntot_h
+        denom = xcao + xna2o + xk2o
+        AI = xal2o3 / denom if denom > 0 else 0.0
+        NBO = (2 * (xh2o + xk2o + xna2o + xcao + xmgo + xfeo - xal2o3)
+               / (2 * xsio2 + 2 * xtio2 + 3 * xal2o3
+                  + xmgo + xfeo + xcao + xna2o + xk2o + xh2o))
+        args = (h2o_0, co2_0, AI, xfeo + xmgo, xna2o + xk2o,
+                NBO, coh.ntot, coh.Tkc)
 
-        # Physical bounds
-        if P_sat <= 0 or XH2O_f <= 0 or XH2O_f >= 1:
-            logger.debug("[SulfurX] guess %g MPa → %.0f bar XH2O=%.4f (unphysical, SKIP)",
-                         g_mpa, P_sat, XH2O_f)
-            continue
+        for xh2o_g in xh2o_guesses:
+            u0 = np.array([guess_bar, xh2o_g])
+            try:
+                result = scipy_root(coh.func_initial, u0, args=args)
+                P_sat, XH2O_f = float(result.x[0]), float(result.x[1])
+            except Exception:
+                continue
 
-        logger.debug("[SulfurX] guess %g MPa → %.0f bar XH2O=%.4f ✓", g_mpa, P_sat, XH2O_f)
-        candidates.append((P_sat, XH2O_f, g_mpa))
+            # Non-convergence: result ≈ initial guess (solver didn't move)
+            if abs(P_sat - guess_bar) < 5.0 and abs(XH2O_f - xh2o_g) < 0.01:
+                continue
 
+            # Physical bounds
+            if P_sat <= 0 or XH2O_f <= 0 or XH2O_f >= 1:
+                continue
+
+            logger.debug("[SulfurX] guess %g MPa xh2o=%.2f → %.0f bar XH2O=%.4f ✓",
+                         g_mpa, xh2o_g, P_sat, XH2O_f)
+            candidates.append((P_sat, XH2O_f, g_mpa))
+
+    n_total = len(guesses_mpa) * len(xh2o_guesses)
     if not candidates:
-        logger.warning("[SulfurX] 0/%d guesses converged — no satP solution", len(guesses_mpa))
+        logger.warning("[SulfurX] 0/%d guesses converged — no satP solution", n_total)
         return np.nan, np.nan
 
     # --- Cluster candidates by proximity (200-bar window) ---
@@ -155,7 +189,7 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     )
     logger.debug(
         "[SulfurX] %d cluster(s) from %d/%d converged guesses: %s",
-        len(clusters), len(candidates), len(guesses_mpa), cluster_summary,
+        len(clusters), len(candidates), n_total, cluster_summary,
     )
 
     # Within the winning cluster, take the median
@@ -164,7 +198,7 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     logger.debug(
         "[SulfurX] Final satP: %.1f bar (from %d/%d converged guesses, "
         "best initial guess %d MPa)",
-        P_sat, len(candidates), len(guesses_mpa), g_mpa,
+        P_sat, len(candidates), n_total, g_mpa,
     )
     return P_sat, XH2O_f
 
