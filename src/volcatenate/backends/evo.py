@@ -222,8 +222,12 @@ def _write_yaml_configs(
     chem_data = {}
     for src_key, evo_key in oxide_map.items():
         val = getattr(comp, src_key, 0.0)
-        if val > 0:
-            chem_data[evo_key] = float(val)
+        # Always include every oxide — even when 0.  EVo's single_cat()
+        # silently drops keys with value 0, which makes downstream
+        # functions (oneill2020, eguchi2018) crash with KeyError on
+        # missing species like "mno".  Writing a tiny epsilon instead of
+        # true zero keeps the key alive without affecting chemistry.
+        chem_data[evo_key] = float(val) if val > 0 else 1e-10
 
     # Iron handling: split FeOT into FeO + Fe2O3 using Fe3FeT
     fe3fet = comp.fe3fet_computed
