@@ -261,7 +261,7 @@ _VAPOR_MF_COLS = [
 
 def loadData(
     model_names: list[str],
-    topdirectory_name: str = "../Model_Runs/",
+    topdirectory_name: str = "",
     subdirectory_name: str = "",
     models_w_special_subdirectory: str | list[str] = "",
     O2_mass_bal: bool = False,
@@ -281,7 +281,8 @@ def loadData(
     model_names : list[str]
         Model names to load.
     topdirectory_name : str
-        Top-level directory containing model subdirectories.
+        Top-level directory containing model subdirectories. Degassing CSVs are
+        expected at ``data_dir/MODEL/sample.csv``.
     subdirectory_name : str
         Optional sub-path appended for models in
         *models_w_special_subdirectory*.
@@ -438,9 +439,9 @@ def loadData(
 # ------------------------------------------------------------------
 
 def load_results(
-    output_dir: str = "volcatenate_output",
+    data_dir: str,
     model_names: Optional[list[str]] = None,
-    O2_mass_bal: bool = False,
+    O2_mass_bal: bool = True,
 ) -> tuple[dict, dict, dict, dict]:
     """Load degassing results written by :func:`~volcatenate.core.run_comparison`.
 
@@ -449,10 +450,8 @@ def load_results(
 
     Parameters
     ----------
-    output_dir : str
-        The ``output_dir`` that was used for the volcatenate run
-        (same as ``RunConfig.output_dir``).  Degassing CSVs are
-        expected at ``output_dir/MODEL/sample.csv``.
+    data_dir : str
+        Degassing CSVs are expected at ``data_dir/MODEL/sample.csv``. 
     model_names : list[str], optional
         Model names to load.  If *None*, uses all registered backends.
     O2_mass_bal : bool
@@ -486,6 +485,6 @@ def load_results(
 
     return loadData(
         model_names,
-        topdirectory_name=output_dir,
+        topdirectory_name=data_dir,
         O2_mass_bal=O2_mass_bal,
     )
