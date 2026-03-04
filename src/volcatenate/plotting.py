@@ -214,6 +214,13 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
     """
     import plotly.graph_objects as go
 
+    if data is None or not isinstance(data, pd.DataFrame) or len(data) == 0:
+        logger.warning("%s: empty DataFrame — skipping %s trace", model, y_variable)
+        return
+    if "P_bars" not in data.columns:
+        logger.warning("%s: missing P_bars column — skipping %s trace", model, y_variable)
+        return
+
     if p_norm:
         x_pressure = data["P_bars"] / data["P_bars"].iloc[0]
     else:
@@ -1112,10 +1119,18 @@ def plot_satp_deviation(
             xs.append(x_val)
             ys.append(100.0 * (p_model - p_ref) / p_ref)
 
-        ax.scatter(
-            xs, ys, marker=mkr, s=ms, color=color,
-            edgecolors="k", linewidths=0.5, label=lbl, zorder=3,
-        )
+        # Unfilled markers (x, +, |, _) ignore edgecolors — omit to
+        # avoid a matplotlib UserWarning.
+        if mkr in ("x", "+", "|", "_"):
+            ax.scatter(
+                xs, ys, marker=mkr, s=ms, color=color,
+                linewidths=0.5, label=lbl, zorder=3,
+            )
+        else:
+            ax.scatter(
+                xs, ys, marker=mkr, s=ms, color=color,
+                edgecolors="k", linewidths=0.5, label=lbl, zorder=3,
+            )
 
     # Reference line
     ref_label = style.get(ref_model, (ref_model,))[0] if ref_model in style else ref_model
@@ -1484,7 +1499,11 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
     axes : ndarray of Axes or None
     """
     _ensure_mpl()
-    o2_models = _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
+    exclude_o2 = kwargs.pop("exclude_models", ["SulfurX"])
+    o2_models = [
+        m for m in _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
+        if m not in exclude_o2
+    ]
     if not o2_models:
         warnings.warn("No models with O2 mass balance data for Figure 9.")
         return None, None
