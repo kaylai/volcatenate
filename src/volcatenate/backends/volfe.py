@@ -5,14 +5,51 @@ Wraps the VolFe library (https://github.com/eryhughes/VolFe).
 
 from __future__ import annotations
 
+import contextlib
+import io
+import os
+import sys
+
 import numpy as np
 import pandas as pd
+
+from volcatenate.log import logger
 
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
 from volcatenate.converters.volfe_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+
+
+@contextlib.contextmanager
+def _quiet_volfe():
+    """Suppress VolFe's tqdm progress bars and stdout, increase recursion limit.
+
+    VolFe uses ``tqdm.tqdm`` for pressure-step progress (writes to stderr)
+    and its degassing solver can exceed Python's default 1000-recursion limit
+    on compositions with many pressure steps.
+    """
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    old_tqdm = os.environ.get("TQDM_DISABLE")
+    old_limit = sys.getrecursionlimit()
+    os.environ["TQDM_DISABLE"] = "1"
+    sys.setrecursionlimit(max(old_limit, 10_000))
+    try:
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            yield
+    finally:
+        if old_tqdm is None:
+            os.environ.pop("TQDM_DISABLE", None)
+        else:
+            os.environ["TQDM_DISABLE"] = old_tqdm
+        sys.setrecursionlimit(old_limit)
+    for buf in (buf_out, buf_err):
+        captured = buf.getvalue()
+        if captured.strip():
+            for line in captured.strip().splitlines():
+                logger.debug("[VolFe] %s", line)
 
 
 class Backend(ModelBackend):
@@ -43,7 +80,8 @@ class Backend(ModelBackend):
         models_df = _build_models_df(cfg)
 
         try:
-            result = vf.calc_Pvsat(setup_df, models=models_df)
+            with _quiet_volfe():
+                result = vf.calc_Pvsat(setup_df, models=models_df)
             # Result is a DataFrame; extract pressure from first row
             if "P_bar" in result.columns:
                 return float(result["P_bar"].iloc[0])
@@ -71,7 +109,8 @@ class Backend(ModelBackend):
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
 
-        result = vf.calc_gassing(setup_df, models=models_df, suppress_warnings=True)
+        with _quiet_volfe():
+            result = vf.calc_gassing(setup_df, models=models_df, suppress_warnings=True)
 
         # Standardize output
         result = convert(result)
