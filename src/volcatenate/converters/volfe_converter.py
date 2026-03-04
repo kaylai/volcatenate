@@ -58,6 +58,14 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     """
     out = df.copy()
 
+    # 0. Coerce numeric columns from object → float64.
+    #    VolFe uses gmpy2 internally and stores results as Python-native
+    #    floats (dtype=object).  numpy ufuncs (log10, etc.) choke on
+    #    object-dtype Series, so convert everything numeric up front.
+    for c in out.columns:
+        if out[c].dtype == object:
+            out[c] = pd.to_numeric(out[c], errors="ignore")
+
     # 1. Rename columns
     out.rename(columns=_RENAME, inplace=True)
 
