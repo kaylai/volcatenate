@@ -114,7 +114,7 @@ def calculate_saturation_pressure(
         config = RunConfig()
 
     setup_logging(config.verbose, config.log_file)
-    os.makedirs(config.output_dir, exist_ok=True)
+    os.makedirs(config.output_dir or ".", exist_ok=True)
 
     comps = _resolve_compositions(compositions)
     model_names = _resolve_models(models)
@@ -195,7 +195,7 @@ def calculate_degassing(
         config = RunConfig()
 
     setup_logging(config.verbose, config.log_file)
-    os.makedirs(config.output_dir, exist_ok=True)
+    os.makedirs(config.output_dir or ".", exist_ok=True)
 
     comps = _resolve_compositions(composition)
     if len(comps) > 1:
@@ -300,7 +300,7 @@ def export_degassing_paths(
     list[str]
         Paths of the CSV files written.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir or ".", exist_ok=True)
     name = sample_name or "degassing"
     written = []
     for model, df in results.items():
@@ -385,7 +385,7 @@ def run_comparison(
         config = RunConfig()
 
     if degassing_output_dir is None:
-        degassing_output_dir = config.output_dir
+        degassing_output_dir = config.output_dir or "."
 
     setup_logging(config.verbose, config.log_file)
     output = {"satp_df": None, "degassing": None}

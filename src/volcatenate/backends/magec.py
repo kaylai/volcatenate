@@ -251,23 +251,50 @@ def _create_magec_input_xlsx(
             f"MAGEC needs Fe3+/FeT, dFMQ, or dNNO."
         )
 
-    # ── Convert volatile wt% → elemental wt% for MAGEC ──
-    # MAGEC expects Bulk_H, Bulk_C, Bulk_S as ELEMENTAL weight percent,
-    # not as H2O, CO2, S.  See MAGEC example files (example1.xlsx) and
-    # the output column "melt-gas_H (wt%)" which tracks elemental H.
-    #   H2O → H:  multiply by 2*M_H / M_H2O = 2*1.008 / 18.015
-    #   CO2 → C:  multiply by M_C / M_CO2    = 12.011 / 44.01
-    #   S:         already elemental, no conversion
-    _H2O_TO_H = 2 * 1.008 / 18.015   # ≈ 0.1119
-    _CO2_TO_C = 12.011 / 44.01       # ≈ 0.2729
+    # ── Normalize oxides to 100% anhydrous for MAGEC ──
+    # MAGEC expects oxide columns on a volatile-free basis summing to
+    # 100 wt% (confirmed by MAGEC supplement example1.xlsx).  Typical
+    # petrological input data includes volatiles in the ~100% total, so
+    # oxides sum to ~96%.  We normalize here.
+    anhydrous_sum = (comp.SiO2 + comp.TiO2 + comp.Al2O3 + comp.FeOT
+                     + comp.MnO + comp.MgO + comp.CaO + comp.Na2O
+                     + comp.K2O + comp.P2O5)
+    norm = 100.0 / anhydrous_sum
 
-    bulk_h = comp.H2O * _H2O_TO_H
-    bulk_c = comp.CO2 * _CO2_TO_C
-    bulk_s = comp.S  # already elemental
+    sio2  = comp.SiO2  * norm
+    tio2  = comp.TiO2  * norm
+    al2o3 = comp.Al2O3 * norm
+    feot  = comp.FeOT  * norm
+    mno   = comp.MnO   * norm
+    mgo   = comp.MgO   * norm
+    cao   = comp.CaO   * norm
+    na2o  = comp.Na2O  * norm
+    k2o   = comp.K2O   * norm
+    p2o5  = comp.P2O5  * norm
+
+    # ── Convert volatile wt% → elemental wt% for MAGEC ──
+    # MAGEC expects Bulk_H, Bulk_C, Bulk_S as ELEMENTAL weight percent
+    # per 100 g of anhydrous melt.  Volatile wt% in the input CSV is
+    # on a hydrous basis (part of the ~100% total), so we first
+    # re-express it per 100 g anhydrous (multiply by `norm`), then
+    # convert molecular → elemental using rounded molecular weights
+    # (matching the MAGEC author convention: 2/18 for H2O→H, 12/44
+    # for CO2→C).
+    #   H2O → H:  multiply by 2*M_H / M_H2O = 2.0 / 18 = 1/9
+    #   CO2 → C:  multiply by M_C / M_CO2    = 12 / 44  = 3/11
+    #   S:         already elemental, just renormalize
+    _H2O_TO_H = 2.0 / 18   # ≈ 0.1111
+    _CO2_TO_C = 12. / 44    # ≈ 0.2727
+
+    bulk_h = comp.H2O * norm * _H2O_TO_H
+    bulk_c = comp.CO2 * norm * _CO2_TO_C
+    bulk_s = comp.S   * norm  # already elemental
 
     # Pressure grid (log-spaced, high -> low)
+    # Allow per-sample override of the starting pressure.
+    p_start = cfg.p_start_overrides.get(comp.sample, cfg.p_start_kbar)
     p_grid = np.logspace(
-        np.log10(cfg.p_start_kbar),
+        np.log10(p_start),
         np.log10(cfg.p_final_kbar),
         cfg.n_steps,
     )
@@ -284,20 +311,20 @@ def _create_magec_input_xlsx(
             "Initial redox options":    redox_option,
             "Initial redox values":     redox_value,
             "Reference P (kbar)":       np.nan,
-            "melt_SiO2 (wt%)":         comp.SiO2,
-            "melt_TiO2 (wt%)":         comp.TiO2,
-            "melt_Al2O3 (wt%)":        comp.Al2O3,
+            "melt_SiO2 (wt%)":         sio2,
+            "melt_TiO2 (wt%)":         tio2,
+            "melt_Al2O3 (wt%)":        al2o3,
             "melt_Cr2O3 (wt%)":        0.0,
-            "melt_FeOT (wt%)":         comp.FeOT,
-            "melt_MgO (wt%)":          comp.MgO,
-            "melt_MnO (wt%)":          comp.MnO,
-            "melt_CaO (wt%)":          comp.CaO,
-            "melt_Na2O (wt%)":         comp.Na2O,
-            "melt_K2O (wt%)":          comp.K2O,
-            "melt_P2O5 (wt%)":         comp.P2O5,
-            "Bulk_H (wt%)":            bulk_h,    # elemental H (converted from H2O)
-            "Bulk_C (wt%)":            bulk_c,    # elemental C (converted from CO2)
-            "Bulk_S (wt%)":            bulk_s,    # elemental S (no conversion needed)
+            "melt_FeOT (wt%)":         feot,
+            "melt_MgO (wt%)":          mgo,
+            "melt_MnO (wt%)":          mno,
+            "melt_CaO (wt%)":          cao,
+            "melt_Na2O (wt%)":         na2o,
+            "melt_K2O (wt%)":          k2o,
+            "melt_P2O5 (wt%)":         p2o5,
+            "Bulk_H (wt%)":            bulk_h,
+            "Bulk_C (wt%)":            bulk_c,
+            "Bulk_S (wt%)":            bulk_s,
             "Reference":               "auto_satP",
         })
 

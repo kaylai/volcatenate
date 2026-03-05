@@ -315,8 +315,8 @@ class MAGECConfig:
     sulfide_sat: int = 0       # (1) Yes; (0) No
     sulfate_sat: int = 0       # (1) Yes; (0) No
     graphite_sat: int = 0      # (1) Yes; (0) No
-    fe_redox: int = 2          # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
-    s_redox: int = 2           # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010;
+    fe_redox: int = 1          # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+    s_redox: int = 1           # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010;
                                #   (4) O'Neill 2022; (5) Boulliung 2023
     scss: int = 1              # (1) Blanchard 2021; (2) Fortin 2015;
                                #   (3) Smythe 2017; (4) O'Neill 2021
@@ -334,6 +334,11 @@ class MAGECConfig:
     p_start_kbar: float = 3.0
     p_final_kbar: float = 0.001
     n_steps: int = 100
+
+    # Per-sample pressure overrides — keys are sample names, values are
+    # starting pressures in kbar.  Samples not listed here use ``p_start_kbar``.
+    # Example:  {"Fogo": 8.0, "Fuego": 5.0}
+    p_start_overrides: dict = field(default_factory=dict)
 
     # Subprocess timeout (seconds) — if MAGEC hangs (e.g. saturation
     # pressure outside search range), it will be killed after this.
@@ -387,7 +392,7 @@ class RunConfig:
         the final result DataFrames in memory.
     """
 
-    output_dir: str = ""
+    output_dir: str = "."
     raw_output_dir: str = "raw_tool_output"
     keep_raw_output: bool = True
     verbose: bool = False
@@ -537,6 +542,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("magec", "p_start_kbar"):       "SatP search start pressure (kbar)",
     ("magec", "p_final_kbar"):       "SatP search end pressure (kbar)",
     ("magec", "n_steps"):            "Number of pressure steps for SatP search",
+    ("magec", "p_start_overrides"):  "Per-sample start pressure overrides (kbar), e.g. {Fogo: 8.0}",
     ("magec", "timeout"):            "MATLAB subprocess timeout (seconds)",
     # SulfurX
     ("sulfurx", "path"):             "Path to SulfurX installation",
@@ -582,6 +588,14 @@ def _format_value(val: object) -> str:
         if "e" in s and "." not in s:
             s = s.replace("e", ".0e", 1)
         return s
+    if isinstance(val, dict):
+        if not val:
+            return "{}"
+        # Inline YAML mapping: {key1: val1, key2: val2}
+        items = ", ".join(
+            f"{_format_value(k)}: {_format_value(v)}" for k, v in val.items()
+        )
+        return "{" + items + "}"
     return str(val)
 
 

@@ -2024,7 +2024,8 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
     axes : ndarray of Axes or None
     """
     _ensure_mpl()
-    exclude_o2 = kwargs.pop("exclude_models", ["SulfurX"])
+    exclude_o2 = kwargs.pop("exclude_models", ["SulfurX", "VESIcal_Iacono",
+                                               "VESIcal_MS", "VESIcal_Dixon"])
     o2_models = [
         m for m in _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
         if m not in exclude_o2

@@ -29,7 +29,7 @@
 #
 #        volcatenate saturation-pressure input.csv --config my_config.yaml
 
-output_dir: ""  # Root directory for all output (default: working directory)
+output_dir: "."  # Root directory for all output (default: working directory)
 raw_output_dir: raw_tool_output  # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
 keep_raw_output: true  # Keep raw tool output files after run
 verbose: false  # Print progress to terminal
@@ -124,8 +124,8 @@ magec:
   sulfide_sat: 0  # (1) Yes; (0) No
   sulfate_sat: 0  # (1) Yes; (0) No
   graphite_sat: 0  # (1) Yes; (0) No
-  fe_redox: 2  # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
-  s_redox: 2  # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010; (4) O'Neill 2022; (5) Boulliung 2023
+  fe_redox: 1  # (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+  s_redox: 1  # (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010; (4) O'Neill 2022; (5) Boulliung 2023
   scss: 1  # (1) Blanchard 2021; (2) Fortin 2015; (3) Smythe 2017; (4) O'Neill 2021
   sulfide_cap: 1  # (1) Nzotta 1999; (2) O'Neill 2021; (3) Boulliung 2023
   co2_sol: 1  # (1) IM2012; (2) Liu 2005; (3.x) Burgisser 2015
@@ -139,6 +139,7 @@ magec:
   p_start_kbar: 3.0  # SatP search start pressure (kbar)
   p_final_kbar: 0.001  # SatP search end pressure (kbar)
   n_steps: 100  # Number of pressure steps for SatP search
+  p_start_overrides: {}  # Per-sample start pressure overrides (kbar), e.g. {Fogo: 8.0}
   timeout: 300  # MATLAB subprocess timeout (seconds)
 
 sulfurx:

@@ -177,9 +177,9 @@ def degassing_cmd(input_file, models, output_dir, config_path, no_progress):
     results = calculate_degassing(comp, models=model_list, config=config)
 
     # Save each model's output
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(output_dir or ".", exist_ok=True)
     for model_name, df in results.items():
-        out_path = os.path.join(output_dir, f"{comp.sample}_{model_name}.csv")
+        out_path = os.path.join(output_dir or ".", f"{comp.sample}_{model_name}.csv")
         df.to_csv(out_path, index=False)
         click.echo(f"  Saved {model_name}: {out_path} ({len(df)} steps)")
 

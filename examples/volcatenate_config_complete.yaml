@@ -60,7 +60,7 @@
 
 # ── Global settings ─────────────────────────────────────────────
 
-output_dir: ""                    # Root directory for all output (default: working directory)
+output_dir: "."                   # Root directory for all output (default: working directory)
 raw_output_dir: raw_tool_output   # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
 keep_raw_output: true             # Keep raw tool output files after run (false = auto-cleanup)
 verbose: false                    # Print detailed log messages to terminal
@@ -210,8 +210,8 @@ magec:
   sulfide_sat: 0                  # Sulfide saturation:   (1) Yes; (0) No
   sulfate_sat: 0                  # Sulfate saturation:   (1) Yes; (0) No
   graphite_sat: 0                 # Graphite saturation:  (1) Yes; (0) No
-  fe_redox: 2                     # Fe redox model:       (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
-  s_redox: 2                      # S redox model:        (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010;
+  fe_redox: 1                     # Fe redox model:       (1) Sun & Yao 2024; (2) KC91; (3) Hirschmann 2022
+  s_redox: 1                      # S redox model:        (1) Sun & Yao 2024; (2) Nash 2019; (3) Jugo 2010;
                                   #                       (4) O'Neill 2022; (5) Boulliung 2023
   scss: 1                         # SCSS model:           (1) Blanchard 2021; (2) Fortin 2015;
                                   #                       (3) Smythe 2017; (4) O'Neill 2021
@@ -229,6 +229,7 @@ magec:
   p_start_kbar: 3.0               # SatP search start pressure (kbar)
   p_final_kbar: 0.001             # SatP search end pressure (kbar)
   n_steps: 100                    # Number of pressure steps for SatP search
+  p_start_overrides: {}           # Per-sample overrides for p_start_kbar, e.g. {Fogo: 8.0, Fuego: 5.0}
 
   # Subprocess control
   timeout: 300                    # MATLAB subprocess timeout (seconds)
