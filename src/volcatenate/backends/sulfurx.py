@@ -558,6 +558,120 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     return df_results
 
 
+def _compute_saturation_state(
+    comp: MeltComposition,
+    cfg,
+    P_sat: float,
+    XH2O_f: float,
+) -> pd.Series:
+    """Compute full equilibrium state at the saturation pressure.
+
+    Reuses the initialization logic from ``_run_degassing`` (steps 1-4)
+    to compute redox state, sulfur speciation, and vapor composition at
+    the found saturation pressure.
+
+    Parameters
+    ----------
+    comp : MeltComposition
+        Starting melt composition.
+    cfg : SulfurXConfig
+        SulfurX sub-configuration.
+    P_sat : float
+        Saturation pressure in bars.
+    XH2O_f : float
+        H₂O mole fraction in the fluid phase at saturation.
+    """
+    from volcatenate import columns as col
+    from oxygen_fugacity import OxygenFugacity
+    from fugacity import Fugacity
+    from sulfur_partition_coefficients import PartitionCoefficient
+    from S_Fe import Sulfur_Iron
+
+    composition = _build_composition(comp)
+    tk = comp.T_C + 273.15
+    temperature = comp.T_C
+    h2o_wt = comp.H2O
+    co2_ppm = comp.CO2 * 10_000
+    s_ppm = comp.S * 10_000
+
+    delta_FMQ = _compute_delta_fmq(comp)
+
+    # Compute fO2 and Fe3+/FeT at saturation P
+    fo2_calc = OxygenFugacity(P_sat / 10, tk, composition)
+    ferric_ratio = fo2_calc.fe_ratio(fo2_calc.fmq() + delta_FMQ)
+    logfo2 = fo2_calc.fo2(ferric_ratio)
+    fmq_val = fo2_calc.fmq()
+
+    # Compute S6+/ST via Sulfur_Iron
+    rs = Sulfur_Iron(
+        ferric_iron=ferric_ratio,
+        temperature=temperature,
+        model_choice=cfg.s_fe_choice,
+        composition=composition,
+        o2=fmq_val + delta_FMQ,
+    )
+
+    # Compute fugacity coefficients for vapor composition
+    phi = Fugacity(P_sat / 10, temperature)
+
+    # Compute partition coefficients for sulfur vapor species
+    re = PartitionCoefficient(
+        P_sat / 10, tk, composition, h2o_wt,
+        phi.phiH2O, phi.phiH2S, phi.phiSO2, monte=0,
+    )
+
+    # --- Sulfur vapor species at saturation ---
+    # Sulfur mole fraction in melt (same formula as degassing init)
+    s_moles = s_ppm / (10_000 * 32.065)
+    co2_moles = co2_ppm / (10_000 * 44.01)
+    XS_melt = s_moles / (re.ntot + s_moles + re.nh + co2_moles)
+
+    # Partition coefficients for H2S (RxnI) and SO2 (RxnII)
+    kd1 = re.kd_rxn1(XH2O_f)               # H2S Kd
+    fO2_linear = 10.0 ** logfo2             # linear fO2 in bars
+    kd2 = re.kd_rxn2(fO2_linear)            # SO2 Kd
+
+    # SO2 / (SO2 + H2S) ratio in vapor from gas equilibrium
+    fH2O = XH2O_f * P_sat * phi.phiH2O     # H2O fugacity in bars
+    SO2_ST_vapor = re.gas_quilibrium(
+        fo2=fO2_linear, fh2o=fH2O,
+        phiso2=phi.phiSO2, phih2s=phi.phiH2S,
+    )
+
+    # Combined molar Kd weighted by S6+/ST in melt
+    S6ST = rs.sulfate
+    kd_combined = kd1 * (1.0 - S6ST) + kd2 * S6ST
+
+    # Total sulfur mole fraction in vapor, split into SO2 and H2S
+    XS_fluid = XS_melt * kd_combined
+    XSO2_fluid = XS_fluid * SO2_ST_vapor
+    XH2S_fluid = XS_fluid * (1.0 - SO2_ST_vapor)
+
+    # Adjust CO2 vapor fraction to account for sulfur
+    XCO2_f = max(0.0, 1.0 - XH2O_f - XS_fluid)
+
+    # Build the equilibrium state Series
+    # Include all vapor species so compute_cs_v_mf can calculate C/S ratio
+    return pd.Series({
+        col.P_BARS: P_sat,
+        col.H2OT_M_WTPC: h2o_wt,
+        col.CO2T_M_PPMW: co2_ppm,
+        col.ST_M_PPMW: s_ppm,
+        col.FE3FET_M: ferric_ratio,
+        col.S6ST_M: S6ST,
+        col.LOGFO2: logfo2,
+        col.DFMQ: delta_FMQ,
+        col.VAPOR_WT: 0.0,          # at saturation onset
+        col.H2O_V_MF: XH2O_f,
+        col.CO2_V_MF: XCO2_f,
+        col.SO2_V_MF: XSO2_fluid,
+        col.H2S_V_MF: XH2S_fluid,
+        col.S2_V_MF: np.nan,        # not modeled by SulfurX
+        col.CO_V_MF: np.nan,        # not modeled by SulfurX
+        col.CH4_V_MF: np.nan,       # not modeled by SulfurX
+    })
+
+
 class Backend(ModelBackend):
 
     @property
@@ -590,7 +704,7 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         self._ensure_on_path(config)
         cfg = config.sulfurx
 
@@ -602,11 +716,10 @@ class Backend(ModelBackend):
         try:
             if cfg.coh_model == 0:
                 with _quiet_sulfurx():
-                    P_sat, _ = _find_saturation_pressure_im(
+                    P_sat, XH2O_f = _find_saturation_pressure_im(
                         composition, tk, co2_ppm, h2o_wt,
                         cfg.slope_h2o, cfg.constant_h2o,
                     )
-                return float(P_sat)
             else:
                 with _quiet_sulfurx():
                     from VC_COH import VolatileCalc
@@ -616,10 +729,25 @@ class Backend(ModelBackend):
                         a=cfg.slope_h2o, b=cfg.constant_h2o,
                     )
                     result = vc.SatPress(WtH2O=h2o_wt, PPMCO2=co2_ppm)
-                    return float(result[0])
+                    P_sat = float(result[0])
+                    XH2O_f = float(result[5])
+
+            if np.isnan(P_sat) or P_sat <= 0:
+                return None
+
+            # Compute full equilibrium state at saturation
+            with _quiet_sulfurx():
+                state = _compute_saturation_state(comp, cfg, P_sat, XH2O_f)
+
+            # Ensure all standard columns present
+            state_df = pd.DataFrame([state])
+            state_df = compute_cs_v_mf(state_df)
+            state_df = ensure_standard_columns(state_df)
+            return state_df.iloc[0].copy()
+
         except Exception as exc:
             logger.warning("[SulfurX] satP failed for %s: %s", comp.sample, exc)
-            return np.nan
+            return None
 
     # ----------------------------------------------------------------
     # Degassing path
