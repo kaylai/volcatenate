@@ -40,11 +40,24 @@ CH4_V_MF = "CH4_v_mf"
 OCS_V_MF = "OCS_v_mf"
 
 # --- Derived ---
-CS_V_MF = "CS_v_mf"               # C/S vapor mole fraction ratio
+CS_V_MF = "CS_v_mf"               # Elemental C/S ratio in vapor (atom-weighted)
 
-# --- Species groupings for CS_v_mf ---
-C_SPECIES = [CO2_V_MF, CO_V_MF, CH4_V_MF]
-S_SPECIES = [SO2_V_MF, H2S_V_MF, S2_V_MF]
+# --- Species groupings for elemental C/S ratio ---
+# Maps vapor mole-fraction column → number of C (or S) atoms per molecule.
+# OCS contains 1 C and 1 S, so it appears in both dicts.
+# S2 contains 2 S atoms per molecule.
+C_SPECIES: dict[str, float] = {
+    CO2_V_MF: 1.0,
+    CO_V_MF:  1.0,
+    CH4_V_MF: 1.0,
+    OCS_V_MF: 1.0,
+}
+S_SPECIES: dict[str, float] = {
+    SO2_V_MF: 1.0,
+    H2S_V_MF: 1.0,
+    S2_V_MF:  2.0,
+    OCS_V_MF: 1.0,
+}
 
 # --- All vapor mole fraction columns ---
 VAPOR_MF_COLUMNS = [

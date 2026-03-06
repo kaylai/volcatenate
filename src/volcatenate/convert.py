@@ -13,29 +13,34 @@ from volcatenate import columns as col
 
 
 def compute_cs_v_mf(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute C/S vapor mole fraction ratio.
+    """Compute elemental C/S ratio in the vapor phase.
 
-    CS_v_mf = (CO2_v_mf + CO_v_mf + CH4_v_mf) /
-              (SO2_v_mf + H2S_v_mf + S2_v_mf)
+    Uses stoichiometric coefficients from :data:`columns.C_SPECIES` and
+    :data:`columns.S_SPECIES` to count carbon and sulfur **atoms**::
 
-    Sets CS_v_mf = NaN where the sulfur denominator is zero.
+        C/S = (1·X_CO₂ + 1·X_CO + 1·X_CH₄ + 1·X_OCS)
+            / (1·X_SO₂ + 1·X_H₂S + 2·X_S₂ + 1·X_OCS)
+
+    Species columns missing from *df* or containing NaN are treated as
+    zero.  Sets ``CS_v_mf = NaN`` where the sulfur denominator is zero.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Must contain the 6 vapor species columns (C and S groups).
+        Must contain at least some of the vapor species columns
+        (gas-phase mole fractions).
 
     Returns
     -------
     pd.DataFrame
-        Same DataFrame with CS_v_mf column added/overwritten.
+        Same DataFrame with ``CS_v_mf`` column added or overwritten.
     """
-    has_c = all(c in df.columns for c in col.C_SPECIES)
-    has_s = all(s in df.columns for s in col.S_SPECIES)
+    c_cols = {c: coeff for c, coeff in col.C_SPECIES.items() if c in df.columns}
+    s_cols = {s: coeff for s, coeff in col.S_SPECIES.items() if s in df.columns}
 
-    if has_c and has_s:
-        c_sum = df[col.C_SPECIES].sum(axis=1)
-        s_sum = df[col.S_SPECIES].sum(axis=1)
+    if c_cols and s_cols:
+        c_sum = sum(df[c].fillna(0.0) * coeff for c, coeff in c_cols.items())
+        s_sum = sum(df[s].fillna(0.0) * coeff for s, coeff in s_cols.items())
         df[col.CS_V_MF] = np.where(s_sum > 0, c_sum / s_sum, np.nan)
     elif col.CS_V_MF not in df.columns:
         df[col.CS_V_MF] = np.nan
