@@ -1386,6 +1386,17 @@ def plot_cs_depth_profile(
     inferred : dict
         ``{gas_label: {model: {"P_bars": float, "depth_km": float}}}``.
     """
+    # Guard: catch the common mistake of passing the top-level systems dict
+    # (e.g. systems) instead of a single system (e.g. systems["Kilauea"]).
+    if any(isinstance(v, dict) for v in system_data.values()):
+        nested_keys = [k for k, v in system_data.items() if isinstance(v, dict)]
+        raise TypeError(
+            f"system_data should be a single system dict "
+            f"({{model_name: DataFrame}}), but got nested dicts for "
+            f"keys {nested_keys}. Did you mean "
+            f"systems[\"YourSystem\"] instead of systems?"
+        )
+
     _ensure_mpl()
 
     if ax is None:
