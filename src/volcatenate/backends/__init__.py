@@ -44,11 +44,16 @@ def _discover() -> None:
             cls = getattr(mod, cls_name)
             instance = cls()
             _REGISTRY[instance.name] = instance
-        except Exception as exc:
-            # Silently skip — the backend's is_available() would also
-            # return False, but we can't even instantiate it.
+        except (ImportError, AttributeError) as exc:
+            # Expected: missing external dependency or misconfigured module.
             warnings.warn(
                 f"Could not load backend {module_path}: {exc}",
+                stacklevel=2,
+            )
+        except Exception as exc:
+            # Unexpected error during backend initialization.
+            warnings.warn(
+                f"Unexpected error loading backend {module_path}: {exc!r}",
                 stacklevel=2,
             )
 

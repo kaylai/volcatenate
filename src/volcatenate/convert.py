@@ -51,6 +51,8 @@ def compute_cs_v_mf(df: pd.DataFrame) -> pd.DataFrame:
 def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
     """Add *_norm columns for H2O, CO2, S relative to initial (row 0) values.
 
+    Modifies *df* in place and returns it for chaining.
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -59,35 +61,28 @@ def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Same DataFrame with _norm columns added.
+        Same DataFrame (mutated) with ``_norm`` columns added.
     """
     pairs = [
         (col.H2OT_M_WTPC, col.H2OT_M_WTPC_NORM),
         (col.CO2T_M_PPMW, col.CO2T_M_PPMW_NORM),
         (col.ST_M_PPMW, col.ST_M_PPMW_NORM),
     ]
-    # Collect new columns in a dict and add all at once to avoid
-    # DataFrame fragmentation (PerformanceWarning on repeated insert).
-    new_cols: dict[str, pd.Series | float] = {}
     for src, dst in pairs:
         if src in df.columns and len(df) > 0:
             init_val = df[src].iloc[0]
             if init_val != 0 and not np.isnan(init_val):
-                new_cols[dst] = df[src] / init_val
+                df[dst] = (df[src] / init_val).values
             else:
-                new_cols[dst] = np.nan
-
-    if new_cols:
-        df = pd.concat(
-            [df, pd.DataFrame(new_cols, index=df.index)],
-            axis=1,
-        )
+                df[dst] = np.nan
 
     return df
 
 
 def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Ensure all standard columns exist, filling missing ones with NaN.
+
+    Modifies *df* in place and returns it for chaining.
 
     Parameters
     ----------
@@ -97,14 +92,9 @@ def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        DataFrame with all STANDARD_COLUMNS present.
+        Same DataFrame (mutated) with all ``STANDARD_COLUMNS`` present.
     """
-    missing = [c for c in col.STANDARD_COLUMNS if c not in df.columns]
-    if missing:
-        # Add all missing columns at once to avoid DataFrame fragmentation
-        # (repeated df[c] = val triggers PerformanceWarning).
-        df = pd.concat(
-            [df, pd.DataFrame({c: np.nan for c in missing}, index=df.index)],
-            axis=1,
-        )
+    for c in col.STANDARD_COLUMNS:
+        if c not in df.columns:
+            df[c] = np.nan
     return df

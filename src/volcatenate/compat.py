@@ -414,8 +414,8 @@ def loadData(
                         continue
                     try:
                         data[model] = data[model][cols_to_keep]
-                    except Exception:
-                        logger.warning("Issue simplifying %s", model)
+                    except KeyError as exc:
+                        logger.warning("Issue simplifying %s: %s", model, exc)
 
             if save_simplified:
                 for data in datasets:
@@ -455,7 +455,7 @@ def load_results(
     model_names : list[str], optional
         Model names to load.  If *None*, uses all registered backends.
     O2_mass_bal : bool
-        Compute O\ :sub:`2` by difference in the vapor phase.
+        Compute O\\ :sub:`2` by difference in the vapor phase.
 
     Returns
     -------

@@ -7,6 +7,7 @@ auto-discovers all concrete implementations.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
 import pandas as pd
@@ -17,6 +18,10 @@ from volcatenate.config import RunConfig
 
 class ModelBackend(ABC):
     """Interface that every model backend must implement."""
+
+    supports_batch_satp: bool = False
+    """Override to ``True`` in backends that provide a native
+    :meth:`calculate_saturation_pressure_batch` (e.g. MAGEC)."""
 
     @property
     @abstractmethod
@@ -38,8 +43,14 @@ class ModelBackend(ABC):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
-        """Return the volatile saturation pressure in **bars**.
+    ) -> pd.Series | None:
+        """Return the equilibrium state at volatile saturation.
+
+        The returned Series uses the canonical column names defined in
+        :mod:`volcatenate.columns` (``P_bars``, ``H2OT_m_wtpc``,
+        ``CO2T_m_ppmw``, ``Fe3Fet_m``, ``S6St_m``, ``CS_v_mf``,
+        vapor mole fractions, etc.).  Individual fields may be ``NaN``
+        if the model does not compute them.
 
         Parameters
         ----------
@@ -50,8 +61,9 @@ class ModelBackend(ABC):
 
         Returns
         -------
-        float
-            Saturation pressure in bars, or ``np.nan`` on failure.
+        pd.Series or None
+            Equilibrium state at saturation with standard column names,
+            or *None* on failure.
         """
         ...
 
@@ -80,6 +92,44 @@ class ModelBackend(ABC):
             Degassing path with standardized column names.
         """
         ...
+
+    def calculate_saturation_pressure_batch(
+        self,
+        comps: list[MeltComposition],
+        config: RunConfig,
+    ) -> list[pd.Series | None]:
+        """Run satP for a batch of compositions.
+
+        The default implementation loops over single-sample calls.
+        Backends that support true batching (e.g. MAGEC, which can
+        avoid repeated MATLAB startup) should override this method
+        and set ``supports_batch_satp = True``.
+
+        Parameters
+        ----------
+        comps : list[MeltComposition]
+            One or more melt compositions.
+        config : RunConfig
+            Full configuration.
+
+        Returns
+        -------
+        list[pd.Series | None]
+            One result per composition (same order as *comps*).
+        """
+        logger = logging.getLogger("volcatenate")
+        results: list[pd.Series | None] = []
+        for comp in comps:
+            try:
+                state = self.calculate_saturation_pressure(comp, config)
+            except Exception as exc:
+                logger.debug(
+                    "%s batch satP failed for %s: %s",
+                    self.name, comp.sample, exc,
+                )
+                state = None
+            results.append(state)
+        return results
 
     def __repr__(self) -> str:
         avail = "available" if self.is_available() else "not available"

@@ -394,7 +394,7 @@ def plot_results(
     return fig
 
 
-def update_axis_limits(fig, axis: str, rownum: int, colnum: int, range: list):
+def update_axis_limits(fig, axis: str, rownum: int, colnum: int, axis_range: list):
     """Update subplot axis limits.
 
     Parameters
@@ -402,12 +402,12 @@ def update_axis_limits(fig, axis: str, rownum: int, colnum: int, range: list):
     fig : Plotly figure
     axis : ``'x'`` or ``'y'``
     rownum, colnum : 1-based subplot indices
-    range : ``[min, max]`` — use ``None`` for auto
+    axis_range : ``[min, max]`` — use ``None`` for auto
     """
     if axis == "x":
-        return fig.update_xaxes(range=range, row=rownum, col=colnum)
+        return fig.update_xaxes(range=axis_range, row=rownum, col=colnum)
     if axis == "y":
-        return fig.update_yaxes(range=range, row=rownum, col=colnum)
+        return fig.update_yaxes(range=axis_range, row=rownum, col=colnum)
 
 
 def unify_legend(fig, axis_ID: int = 1):
@@ -1043,7 +1043,7 @@ def plot_satp_deviation(
         Reference model name.  A horizontal line at 0 % is drawn.
     compositions : list, optional
         ``MeltComposition`` objects or dicts with composition data.
-        Needed to provide x-axis values (e.g. starting CO\ :sub:`2`).
+        Needed to provide x-axis values (e.g. starting CO\\ :sub:`2`).
         Matched to *satp_df* rows by sample name.
     x_variable : str
         Composition key for the x-axis (e.g. ``"CO2"``).

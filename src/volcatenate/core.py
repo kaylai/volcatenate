@@ -19,11 +19,13 @@ import numpy as np
 import pandas as pd
 
 from volcatenate.backends import get_backend, list_backends
+from volcatenate import columns as col
 from volcatenate.composition import MeltComposition, read_compositions, composition_from_dict
 from volcatenate.config import RunConfig
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger, setup_logging
 from volcatenate.progress import VolcProgress
+from volcatenate.result import SaturationResult
 
 
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
@@ -88,7 +90,7 @@ def calculate_saturation_pressure(
     models: Optional[list[str]] = None,
     config: Optional[RunConfig] = None,
     _progress: Optional[VolcProgress] = None,
-) -> pd.DataFrame:
+) -> SaturationResult:
     """Calculate volatile saturation pressure for a batch of compositions.
 
     Parameters
@@ -106,9 +108,16 @@ def calculate_saturation_pressure(
 
     Returns
     -------
-    pd.DataFrame
-        One row per sample, columns ``Sample``, ``Reservoir``,
-        plus ``<Model>_SatP_bars`` for each requested model.
+    SaturationResult
+        Result object with two views:
+
+        * ``.pressure`` — flat DataFrame with columns ``Sample``,
+          ``Reservoir``, and ``<Model>_SatP_bars`` for each model
+          (backward-compatible with the old return type).
+        * ``.equilibrium_state`` — ``dict[str, pd.DataFrame]`` keyed by
+          model name, each containing one row per sample with the full
+          equilibrium state at saturation (standard column names from
+          :mod:`volcatenate.columns`).
     """
     if config is None:
         config = RunConfig()
@@ -125,43 +134,86 @@ def calculate_saturation_pressure(
         "\U0001f30b Saturation pressures",
     )
 
-    # Build results table
-    rows = []
-    for comp in comps:
-        row = {"Sample": comp.sample, "Reservoir": comp.reservoir}
-        rows.append(row)
+    # Per-model detail storage
+    detail_data: dict[str, list[dict]] = {}
 
-    for model_name in model_names:
-        try:
-            backend = get_backend(model_name)
-        except KeyError:
-            _progress.add_warning(f"Unknown model: {model_name}")
-            _progress.advance(len(comps))
-            continue
-
-        if not backend.is_available():
-            _progress.add_warning(f"{model_name}: skipped (not available)")
-            for row in rows:
-                row[f"{model_name}_SatP_bars"] = np.nan
-            _progress.advance(len(comps))
-            continue
-
-        _progress.update_model(model_name)
-        logger.info("  Running %s...", model_name)
-        for i, comp in enumerate(comps):
+    try:
+        for model_name in model_names:
             try:
-                p = backend.calculate_saturation_pressure(comp, config)
-                rows[i][f"{model_name}_SatP_bars"] = p
-                logger.info("    %s: %.1f bar", comp.sample, p)
-            except Exception as exc:
-                rows[i][f"{model_name}_SatP_bars"] = np.nan
-                _progress.add_warning(f"{model_name} satP failed for {comp.sample}: {exc}")
-            _progress.advance()
+                backend = get_backend(model_name)
+            except KeyError:
+                _progress.add_warning(f"Unknown model: {model_name}")
+                _progress.advance(len(comps))
+                continue
 
-    if owns_progress:
-        _progress.__exit__(None, None, None)
+            if not backend.is_available():
+                _progress.add_warning(f"{model_name}: skipped (not available)")
+                detail_data[model_name] = [
+                    {"Sample": c.sample, "Reservoir": c.reservoir}
+                    for c in comps
+                ]
+                _progress.advance(len(comps))
+                continue
 
-    return pd.DataFrame(rows)
+            _progress.update_model(model_name)
+            logger.info("  Running %s...", model_name)
+            model_rows: list[dict] = []
+
+            # Use batch processing for backends that support it (e.g. MAGEC
+            # avoids repeated MATLAB startup); otherwise loop per sample.
+            if getattr(backend, "supports_batch_satp", False):
+                try:
+                    states = backend.calculate_saturation_pressure_batch(
+                        comps, config,
+                    )
+                except Exception as exc:
+                    _progress.add_warning(
+                        f"{model_name} batch satP failed: {exc}"
+                    )
+                    states = [None] * len(comps)
+                # Advance progress for all samples at once
+                _progress.advance(len(comps))
+            else:
+                states = []
+                for comp in comps:
+                    try:
+                        state = backend.calculate_saturation_pressure(
+                            comp, config,
+                        )
+                    except Exception as exc:
+                        _progress.add_warning(
+                            f"{model_name} satP failed for {comp.sample}: {exc}"
+                        )
+                        state = None
+                    states.append(state)
+                    _progress.advance()
+
+            # Process results (unified for both paths)
+            for comp, state in zip(comps, states):
+                row: dict = {"Sample": comp.sample, "Reservoir": comp.reservoir}
+                if state is not None:
+                    row.update(state.to_dict())
+                    p = state.get(col.P_BARS, np.nan)
+                    logger.info("    %s: %.1f bar", comp.sample, p)
+                else:
+                    logger.info("    %s: failed (None)", comp.sample)
+                model_rows.append(row)
+
+            detail_data[model_name] = model_rows
+    finally:
+        if owns_progress:
+            _progress.__exit__(None, None, None)
+
+    # Build per-model DataFrames
+    equilibrium_state = {
+        name: pd.DataFrame(rows) for name, rows in detail_data.items()
+    }
+
+    return SaturationResult(
+        equilibrium_state=equilibrium_state,
+        samples=[c.sample for c in comps],
+        reservoirs=[c.reservoir for c in comps],
+    )
 
 
 # ------------------------------------------------------------------
@@ -213,31 +265,32 @@ def calculate_degassing(
         f"\U0001f30b Degassing \u2022 {comp.sample}",
     )
 
-    for model_name in model_names:
-        try:
-            backend = get_backend(model_name)
-        except KeyError:
-            _progress.add_warning(f"Unknown model: {model_name}")
+    try:
+        for model_name in model_names:
+            try:
+                backend = get_backend(model_name)
+            except KeyError:
+                _progress.add_warning(f"Unknown model: {model_name}")
+                _progress.advance()
+                continue
+
+            if not backend.is_available():
+                _progress.add_warning(f"{model_name}: skipped (not available)")
+                _progress.advance()
+                continue
+
+            _progress.update_model(model_name)
+            logger.info("  Running %s...", model_name)
+            try:
+                df = backend.calculate_degassing(comp, config)
+                results[model_name] = df
+                logger.info("    %s: OK (%d steps)", model_name, len(df))
+            except Exception as exc:
+                _progress.add_warning(f"{model_name} degassing failed: {exc}")
             _progress.advance()
-            continue
-
-        if not backend.is_available():
-            _progress.add_warning(f"{model_name}: skipped (not available)")
-            _progress.advance()
-            continue
-
-        _progress.update_model(model_name)
-        logger.info("  Running %s...", model_name)
-        try:
-            df = backend.calculate_degassing(comp, config)
-            results[model_name] = df
-            logger.info("    %s: OK (%d steps)", model_name, len(df))
-        except Exception as exc:
-            _progress.add_warning(f"{model_name} degassing failed: {exc}")
-        _progress.advance()
-
-    if owns_progress:
-        _progress.__exit__(None, None, None)
+    finally:
+        if owns_progress:
+            _progress.__exit__(None, None, None)
 
     return results
 
@@ -247,17 +300,19 @@ def calculate_degassing(
 # ------------------------------------------------------------------
 
 def export_saturation_pressure(
-    df: pd.DataFrame,
+    df: Union[SaturationResult, pd.DataFrame],
     path: str = "saturation_pressures.csv",
 ) -> str:
-    """Save a saturation-pressure DataFrame to CSV.
+    """Save saturation-pressure results to CSV.
 
     Parameters
     ----------
-    df : pd.DataFrame
+    df : SaturationResult or pd.DataFrame
         Output from :func:`calculate_saturation_pressure`.
     path : str
-        Output file path.
+        Output file path for the pressure-summary CSV.  If *df* is a
+        ``SaturationResult``, per-model equilibrium-state CSVs are also
+        written to a ``_details/`` subdirectory alongside the summary.
 
     Returns
     -------
@@ -265,8 +320,26 @@ def export_saturation_pressure(
         The path that was written to.
     """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    df.to_csv(path, index=False)
-    logger.info("  Saturation pressures saved to %s", path)
+
+    if isinstance(df, SaturationResult):
+        # Write backward-compatible summary CSV
+        df.pressure.to_csv(path, index=False)
+
+        # Write per-model equilibrium-state CSVs
+        detail_dir = path.replace(".csv", "_details")
+        os.makedirs(detail_dir, exist_ok=True)
+        for model, detail_df in df.equilibrium_state.items():
+            detail_path = os.path.join(detail_dir, f"{model}_satp.csv")
+            detail_df.to_csv(detail_path, index=False)
+        logger.info(
+            "  Saturation pressures saved to %s (details in %s/)",
+            path, detail_dir,
+        )
+    else:
+        # Plain DataFrame (backward compat)
+        df.to_csv(path, index=False)
+        logger.info("  Saturation pressures saved to %s", path)
+
     return path
 
 

@@ -10,7 +10,6 @@ raise ``NotImplementedError``.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from volcatenate.backends._base import ModelBackend
@@ -31,7 +30,7 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         raise NotImplementedError(
             "D-Compress cannot be run programmatically yet. "
             "Use the D-Compress web interface and load the output CSV "
