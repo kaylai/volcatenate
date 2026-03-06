@@ -109,7 +109,7 @@ MODEL_MARKER_STYLE = {
     "EVo":            ("EVo (D-C)",       "o",  150, "#E46C0A", "k", 0.5),
     "MAGEC":          ("MAGEC (IM)",      "s",  150, "#DD94BB", "k", 0.5),
     "SulfurX":        ("Sulfur_X (IM)",   "s",  150, "#009E73", "k", 0.5),
-    "VolFe":          ("VolFe (Allison)", "^",  150, "#FFC00D", "k", 0.5),
+    "VolFe":          ("VolFe (Hughes24)", "^",  150, "#FFC00D", "k", 0.5),
     "VESIcal_Iacono": ("VESIcal (IM)",   "s",  120, "none",    "k", 1.0),
     "VESIcal_Dixon":  ("VESIcal (VC)",   "x",  100, "k",       "k", 1.5),
     "VESIcal_MS":     ("VESIcal (MS)",   "*",  140, "k",       "k", 0.5),
