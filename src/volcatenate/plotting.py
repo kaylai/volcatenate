@@ -1321,6 +1321,7 @@ def plot_cs_depth_profile(
     xlim=(0.05, 2000),
     max_depth_km=20.0,
     mi_display="boxes",
+    mi_scatter_kw=None,
     ax=None,
 ):
     """C/S vapor ratio vs depth profile with gas & seismic constraints.
@@ -1376,6 +1377,10 @@ def plot_cs_depth_profile(
         How to display MI equilibrium data: ``"boxes"`` for
         box-and-whisker, ``"points"`` for individual MI scatter,
         or ``"both"`` for both overlaid.
+    mi_scatter_kw : dict, optional
+        Extra keyword arguments forwarded to ``ax.scatter()`` for MI
+        points.  Use to override marker shape, size, transparency, etc.
+        Example: ``{"marker": "^", "s": 30, "alpha": 0.8}``.
     ax : matplotlib Axes, optional
         Plot on an existing axis.
 
@@ -1495,6 +1500,7 @@ def plot_cs_depth_profile(
         _draw_satp_boxes(
             ax, equil_state_df, model_curves, model_style, rho,
             mi_display=mi_display,
+            mi_scatter_kw=mi_scatter_kw,
         )
 
     # -- Axis configuration --
@@ -1570,6 +1576,7 @@ def plot_cs_depth_profile(
 def _draw_satp_boxes(
     ax, equil_state_df, model_curves, model_style, rho,
     mi_display="boxes",
+    mi_scatter_kw=None,
 ):
     """Draw MI saturation data as boxes, scatter points, or both.
 
@@ -1593,7 +1600,13 @@ def _draw_satp_boxes(
     mi_display : str
         ``"boxes"`` for box-and-whisker only, ``"points"`` for
         individual MI scatter only, or ``"both"`` for both overlaid.
+    mi_scatter_kw : dict, optional
+        Extra keyword arguments forwarded to ``ax.scatter()`` for MI
+        points.  Overrides defaults (``marker``, ``s``, ``alpha``,
+        ``edgecolors``, ``linewidths``, ``zorder``).
     """
+    if mi_scatter_kw is None:
+        mi_scatter_kw = {}
     show_boxes = mi_display in ("boxes", "both")
     show_points = mi_display in ("points", "both")
     # Auto-detect satP columns → model keys, and matching CS columns
@@ -1666,12 +1679,13 @@ def _draw_satp_boxes(
             # ── Scatter points ──
             if show_points and len(cs_vals) > 0:
                 rmk = _reservoir_markers[j % len(_reservoir_markers)]
-                ax.scatter(
-                    cs_vals, pt_depths,
+                scatter_defaults = dict(
                     c=sty["color"], marker=rmk, s=18,
                     edgecolors="k", linewidths=0.4, alpha=0.55,
                     zorder=4,
                 )
+                scatter_defaults.update(mi_scatter_kw)
+                ax.scatter(cs_vals, pt_depths, **scatter_defaults)
 
             # ── Box-and-whisker ──
             if show_boxes:
@@ -2210,6 +2224,11 @@ def figure_10(
         Display name used in the title.
     save_path : str, optional
     dpi : int
+    **kwargs
+        Forwarded to :func:`plot_cs_depth_profile`.  Useful options
+        include ``mi_display`` (``"boxes"``, ``"points"``, ``"both"``),
+        ``mi_scatter_kw`` (dict of ``ax.scatter()`` overrides, e.g.
+        ``{"marker": "^", "s": 30}``), ``ax``, ``xlim``, ``max_depth_km``.
 
     Returns
     -------
