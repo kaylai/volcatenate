@@ -1,12 +1,15 @@
 """MAGEC backend — Magma And Gas Equilibrium Calculator (Sun & Yao, 2024).
 
-Runs MAGEC's compiled MATLAB solver via subprocess.  Requires:
-  1. MATLAB installed (with the fsolve shim if Optimization Toolbox
-     is not available)
+Runs MAGEC's compiled MATLAB solver (.p) via subprocess, using a bundled
+CSV wrapper for fast I/O.  Requires:
+  1. MATLAB installed (with the bundled fsolve/lsqnonlin shims if the
+     Optimization Toolbox is not available)
   2. MAGEC_Solver_v1b.p in the configured solver directory
 
-The backend generates Excel input files, writes a MATLAB batch script,
-runs MATLAB once via subprocess, and parses the output xlsx.
+The backend generates CSV input files, writes a MATLAB batch script that
+passes settings as a struct, and calls MAGEC_CSV_Wrapper.m which handles
+CSV↔xlsx conversion inside MATLAB before calling the .p solver.  Python-
+side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
 """
 
 from __future__ import annotations
@@ -20,14 +23,25 @@ import numpy as np
 import pandas as pd
 
 from volcatenate.backends._base import ModelBackend
+from volcatenate import columns as col
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
-from volcatenate.converters.magec_converter import convert, parse_saturation_pressure
+from volcatenate.converters.magec_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger
 
 
+# ── Resolve bundled data directories (computed once at import) ──────
+_DATA_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, "data")
+)
+_SOLVER_DIR = os.path.join(_DATA_DIR, "magec_solver")
+_SHIMS_DIR = os.path.join(_DATA_DIR, "magec_shims")
+
+
 class Backend(ModelBackend):
+
+    supports_batch_satp: bool = True
 
     @property
     def name(self) -> str:
@@ -51,7 +65,16 @@ class Backend(ModelBackend):
             )
 
     def _check_solver(self, config: RunConfig) -> None:
-        """Raise a clear error if the MAGEC solver directory is missing."""
+        """Raise a clear error if the MAGEC solver is missing."""
+        # Check bundled CSV wrapper
+        wrapper_m = os.path.join(_SOLVER_DIR, "MAGEC_CSV_Wrapper.m")
+        if not os.path.isfile(wrapper_m):
+            raise FileNotFoundError(
+                f"Bundled MAGEC CSV wrapper not found at '{wrapper_m}'.\n"
+                f"This file should have been installed with volcatenate.\n"
+                f"Try reinstalling: pip install -e ."
+            )
+        # Check that the compiled .p solver exists in the configured dir
         solver_dir = config.magec.solver_dir
         if not solver_dir or not os.path.isdir(solver_dir):
             raise FileNotFoundError(
@@ -73,52 +96,188 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         self._check_matlab(config)
         self._check_solver(config)
 
         cfg = config.magec
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
-        inp_dir = os.path.join(work_dir, "inputs")
-        out_dir = os.path.join(work_dir, "outputs")
-        os.makedirs(inp_dir, exist_ok=True)
-        os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(work_dir, exist_ok=True)
 
         safe_name = comp.sample.replace("/", "_").replace(" ", "_")
-        in_xlsx = os.path.abspath(os.path.join(inp_dir, f"{safe_name}_input.xlsx"))
-        out_xlsx = os.path.abspath(os.path.join(out_dir, f"{safe_name}_output.xlsx"))
+        in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
+        out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_xlsx(comp, cfg, in_xlsx)
-        _run_magec_matlab(in_xlsx, out_xlsx, cfg)
+        _create_magec_input_csv(comp, cfg, in_csv)
+        _run_magec_matlab(in_csv, out_csv, cfg)
 
-        if not os.path.isfile(out_xlsx):
+        if not os.path.isfile(out_csv):
             warnings.warn(
                 f"MAGEC produced no output for {comp.sample}. "
                 f"This may indicate a MATLAB timeout or solver failure. "
                 f"Check timeout={cfg.timeout}s and p_start_kbar={cfg.p_start_kbar}."
             )
-            return np.nan
+            return None
 
         try:
-            result = parse_saturation_pressure(out_xlsx)
+            df = pd.read_csv(out_csv)
+
+            # Run through the same converter pipeline as degassing
+            df = convert(df)
+            df = compute_cs_v_mf(df)
+            # Skip normalize_volatiles — meaningless for a single point
+            df = ensure_standard_columns(df)
+
+            # Find saturation row: first where vapor > 0
+            if col.VAPOR_WT not in df.columns:
+                warnings.warn(f"MAGEC output has no vapor_wt column for {comp.sample}")
+                return None
+
+            saturated = df[df[col.VAPOR_WT] > 0]
+            if saturated.empty:
+                logger.warning(
+                    "MAGEC: no saturation found for %s in "
+                    "%.1f–%.3f kbar range (%d steps, timeout=%ds). "
+                    "Try increasing magec.p_start_kbar.",
+                    comp.sample, cfg.p_start_kbar, cfg.p_final_kbar,
+                    cfg.n_steps, cfg.timeout,
+                )
+                return None
+
+            result = saturated.iloc[0].copy()
         except Exception as exc:
             warnings.warn(f"MAGEC output parse failed for {comp.sample}: {exc}")
-            result = np.nan
-
-        if np.isnan(result):
-            logger.warning(
-                "MAGEC: no saturation found for %s in "
-                "%.1f–%.3f kbar range (%d steps, timeout=%ds). "
-                "Try increasing magec.p_start_kbar.",
-                comp.sample, cfg.p_start_kbar, cfg.p_final_kbar,
-                cfg.n_steps, cfg.timeout,
-            )
+            return None
 
         # Clean up raw tool output if requested
         if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return result
+
+    # ----------------------------------------------------------------
+    # Saturation pressure — batch (single MATLAB launch)
+    # ----------------------------------------------------------------
+    def calculate_saturation_pressure_batch(
+        self,
+        comps: list[MeltComposition],
+        config: RunConfig,
+    ) -> list[pd.Series | None]:
+        """Run satP for all samples in a single MATLAB launch.
+
+        Stacks all samples into one input CSV, runs MAGEC once, then
+        splits the output back per sample.  This avoids the ~5–15 s
+        MATLAB startup cost per sample.
+        """
+        self._check_matlab(config)
+        self._check_solver(config)
+
+        cfg = config.magec
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, "magec", "_batch_satp",
+        )
+        os.makedirs(work_dir, exist_ok=True)
+
+        in_csv = os.path.abspath(os.path.join(work_dir, "batch_input.csv"))
+        out_csv = os.path.abspath(os.path.join(work_dir, "batch_output.csv"))
+
+        # Build input rows for each sample; skip comps that fail
+        # (e.g. no usable redox indicator).
+        results: list[pd.Series | None] = [None] * len(comps)
+        all_rows: list[dict] = []
+        comp_index: dict[str, int] = {}  # sample name → index in comps
+
+        for i, comp in enumerate(comps):
+            try:
+                rows = _build_sample_input_rows(comp, cfg)
+                all_rows.extend(rows)
+                comp_index[comp.sample] = i
+            except Exception as exc:
+                logger.warning(
+                    "[MAGEC] Skipping %s in batch: %s", comp.sample, exc,
+                )
+
+        if not all_rows:
+            return results
+
+        # Write combined CSV and run MATLAB once
+        _write_magec_csv(all_rows, cfg, in_csv)
+
+        # Scale timeout: base timeout (covers MATLAB startup) plus
+        # ~10 s per sample for the solver.
+        batch_timeout = cfg.timeout + len(comp_index) * 10
+        logger.info(
+            "  MAGEC batch: %d samples, %d total rows, timeout=%ds",
+            len(comp_index), len(all_rows), batch_timeout,
+        )
+        _run_magec_matlab(in_csv, out_csv, cfg, timeout=batch_timeout)
+
+        if not os.path.isfile(out_csv):
+            warnings.warn(
+                "MAGEC batch produced no output. "
+                f"Check MATLAB logs in {work_dir}."
+            )
+            return results
+
+        # Read and convert output
+        try:
+            df = pd.read_csv(out_csv)
+        except Exception as exc:
+            warnings.warn(f"MAGEC batch output parse failed: {exc}")
+            return results
+
+        df = convert(df)
+        df = compute_cs_v_mf(df)
+        df = ensure_standard_columns(df)
+
+        # Split output by sample using Run_ID column
+        if "Run_ID" in df.columns:
+            df["_sample"] = (
+                df["Run_ID"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
+            )
+        else:
+            # Fallback: assign by row count (n_steps per sample, in order)
+            sample_labels: list[str] = []
+            for comp in comps:
+                if comp.sample in comp_index:
+                    sample_labels.extend([comp.sample] * cfg.n_steps)
+            if len(sample_labels) == len(df):
+                df["_sample"] = sample_labels
+            else:
+                warnings.warn(
+                    f"MAGEC batch: {len(df)} output rows vs "
+                    f"{len(sample_labels)} expected; cannot split by sample."
+                )
+                return results
+
+        # Extract saturation row per sample
+        for sample_name, group in df.groupby("_sample", sort=False):
+            if sample_name not in comp_index:
+                continue
+            idx = comp_index[sample_name]
+
+            if col.VAPOR_WT not in group.columns:
+                continue
+
+            saturated = group[group[col.VAPOR_WT] > 0]
+            if saturated.empty:
+                logger.warning(
+                    "MAGEC: no saturation found for %s in batch run. "
+                    "Try increasing magec.p_start_kbar.",
+                    sample_name,
+                )
+                continue
+
+            state = saturated.iloc[0].drop(
+                ["_sample", "Run_ID"], errors="ignore",
+            ).copy()
+            results[idx] = state
+
+        # Cleanup
+        if not config.keep_raw_output:
+            shutil.rmtree(work_dir, ignore_errors=True)
+
+        return results
 
     # ----------------------------------------------------------------
     # Degassing path
@@ -133,29 +292,22 @@ class Backend(ModelBackend):
 
         cfg = config.magec
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
-        inp_dir = os.path.join(work_dir, "inputs")
-        out_dir = os.path.join(work_dir, "outputs")
-        os.makedirs(inp_dir, exist_ok=True)
-        os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(work_dir, exist_ok=True)
 
         safe_name = comp.sample.replace("/", "_").replace(" ", "_")
-        in_xlsx = os.path.abspath(os.path.join(inp_dir, f"{safe_name}_input.xlsx"))
-        out_xlsx = os.path.abspath(os.path.join(out_dir, f"{safe_name}_output.xlsx"))
+        in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
+        out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_xlsx(comp, cfg, in_xlsx)
-        _run_magec_matlab(in_xlsx, out_xlsx, cfg)
+        _create_magec_input_csv(comp, cfg, in_csv)
+        _run_magec_matlab(in_csv, out_csv, cfg)
 
-        if not os.path.isfile(out_xlsx):
+        if not os.path.isfile(out_csv):
             raise FileNotFoundError(
                 f"MAGEC produced no output for {comp.sample}. "
                 f"Check MATLAB logs in {work_dir}."
             )
 
-        try:
-            df = pd.read_excel(out_xlsx)
-        except Exception:
-            csv_path = out_xlsx.replace(".xlsx", ".csv")
-            df = pd.read_csv(csv_path)
+        df = pd.read_csv(out_csv)
 
         # Standardize
         df = convert(df)
@@ -172,16 +324,14 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
-def _create_magec_input_xlsx(
+def _build_sample_input_rows(
     comp: MeltComposition,
     cfg,
-    xlsx_path: str,
-) -> None:
-    """Generate the MAGEC input Excel file (input + settings sheets).
+) -> list[dict]:
+    """Build MAGEC input rows for a single sample (one row per pressure step).
 
-    Column names and structure must match exactly what
-    MAGEC_Solver_v1b.p expects — see the original example files
-    distributed with the MAGEC supplement.
+    Returns a list of row dicts ready for ``pd.DataFrame(rows)``.
+    Raises ``ValueError`` if no usable redox indicator is available.
     """
 
     fe3fet = comp.fe3fet_computed
@@ -288,7 +438,7 @@ def _create_magec_input_xlsx(
 
     bulk_h = comp.H2O * norm * _H2O_TO_H
     bulk_c = comp.CO2 * norm * _CO2_TO_C
-    bulk_s = comp.S   * norm  # already elemental
+    bulk_s = comp.S   * norm
 
     # Pressure grid (log-spaced, high -> low)
     # Allow per-sample override of the starting pressure.
@@ -300,7 +450,7 @@ def _create_magec_input_xlsx(
     )
 
     # Build one row per pressure step — column names must match
-    # MAGEC_Solver_v1b.p expectations exactly.
+    # MAGEC solver expectations exactly.
     input_rows = []
     for i, p_kbar in enumerate(p_grid):
         input_rows.append({
@@ -328,119 +478,121 @@ def _create_magec_input_xlsx(
             "Reference":               "auto_satP",
         })
 
-    df_input = pd.DataFrame(input_rows)
+    return input_rows
 
-    # Settings sheet — option names must match MAGEC_Solver_v1b.p exactly
-    settings_rows = [
-        {"Option name": "Adjust for sulfide saturation:",
-         "Value": float(cfg.sulfide_sat),
-         "Instruction": "(1) Yes; (0) No"},
-        {"Option name": "Adjust for sulfate saturation:",
-         "Value": float(cfg.sulfate_sat),
-         "Instruction": "(1) Yes; (0) No"},
-        {"Option name": "Adjust for graphite saturation:",
-         "Value": float(cfg.graphite_sat),
-         "Instruction": "(1) Yes; (0) No"},
-        {"Option name": "Choose the Fe redox model:",
-         "Value": float(cfg.fe_redox),
-         "Instruction": "(1) New model from Sun & Yao (2024); "
-                        "(2) Kress & Carmicheal (1991) CMP; "
-                        "(3) Hirschmann (2022) GCA-Deng's EOS"},
-        {"Option name": "Choose the S redox model:",
-         "Value": float(cfg.s_redox),
-         "Instruction": "(1) New model from Sun & Yao (2024); "
-                        "(2) Nash et al. (2019) EPSL; "
-                        "(3) Jugo et al. (2010) GCA; "
-                        "(4) O'Neill & Mavrogenes (2022) GCA; "
-                        "(5) Boulliung & Wood (2023) CMP"},
-        {"Option name": "Choose the SCSS model:",
-         "Value": float(cfg.scss),
-         "Instruction": "(1) Blanchard et al. (2021) AM; "
-                        "(2) Fortin et al. (2015) GCA; "
-                        "(3) Smythe et al. (2017) AM; "
-                        "(4) O'Neill (2021) AGU Geophysical Monograph"},
-        {"Option name": "Choose the sulfide capacity model:",
-         "Value": float(cfg.sulfide_cap),
-         "Instruction": "(1) Nzotta et al. (1999) used in Sun & Lee (2022) GCA; "
-                        "(2) O'Neill (2021) AGU Geophysical Monograph; "
-                        "(3) Boulliung & Wood (2023) CMP"},
-        {"Option name": "Choose the CO2 solubility model:",
-         "Value": float(cfg.co2_sol),
-         "Instruction": "(1) Iacono-Marziano et al. (2012) GCA; "
-                        "(2) rhyolite - Liu et al. (2005); "
-                        "(3.1/3.2/3.3) rhyolite/basalt/phonolite - Burgisser et al. (2015)"},
-        {"Option name": "Choose the H2O solubility model:",
-         "Value": float(cfg.h2o_sol),
-         "Instruction": "(1) Iacono-Marziano et al. (2012) GCA; "
-                        "(2) rhyolite - Liu et al. (2005); "
-                        "(3.1/3.2/3.3) rhyolite/basalt/phonolite - Burgisser et al. (2015)"},
-        {"Option name": "Choose the CO solubility model:",
-         "Value": float(cfg.co_sol),
-         "Instruction": "(1) Armstrong et al. (2015) GCA; "
-                        "(2.1/2.2) rhyolite/basalt - Yoshioka et al. (2019) GCA"},
-        {"Option name": "Set eruption adiabatic factor (r):",
-         "Value": float(cfg.adiabatic),
-         "Instruction": "r = 0 (default): Isothermal; r = alpha*V/Cp: adiabatic; "
-                        "r in T = Tp*exp[r(P_GPa-0.0001)]"},
-        {"Option name": "Choose the numerical solver:",
-         "Value": float(cfg.solver),
-         "Instruction": "(1) lsqnonlin; (2) fsolve (default)"},
-        {"Option name": "Choose the vapor behavior:",
-         "Value": float(cfg.gas_behavior),
-         "Instruction": "(1) real gas behavior of individual species in an ideal mixture; "
-                        "(2) ideal gas behavior of individual species in an ideal mixture"},
-        {"Option name": "Set the oxygen mass balance:",
-         "Value": float(cfg.o2_balance),
-         "Instruction": "(0) Total oxygen mass balanced; (1) fixed fO2 buffer"},
+
+def _build_settings_matlab_struct(cfg) -> str:
+    """Build a MATLAB struct literal string from the MAGEC config.
+
+    This is passed as the 3rd argument to MAGEC_Solver_volcatenate(),
+    which uses it directly instead of reading a 'settings' sheet.
+    The field names must match MAGEC's internal field_keystr mapping.
+    """
+    fields = [
+        f"'solver_opt', {float(cfg.solver)}",
+        f"'sat_sulfide', {float(cfg.sulfide_sat)}",
+        f"'sat_sulfate', {float(cfg.sulfate_sat)}",
+        f"'sat_graphite', {float(cfg.graphite_sat)}",
+        f"'Fe32_opt', {float(cfg.fe_redox)}",
+        f"'S62_opt', {float(cfg.s_redox)}",
+        f"'SCSS_opt', {float(cfg.scss)}",
+        f"'S2max_opt', {float(cfg.sulfide_cap)}",
+        f"'CO2_opt', {float(cfg.co2_sol)}",
+        f"'H2O_opt', {float(cfg.h2o_sol)}",
+        f"'CO_opt', {float(cfg.co_sol)}",
+        f"'adiabat_r', {float(cfg.adiabatic)}",
+        f"'ideal', {float(cfg.gas_behavior)}",
+        f"'buffer', {float(cfg.o2_balance)}",
     ]
-    df_settings = pd.DataFrame(settings_rows)
+    return "struct(" + ", ".join(fields) + ")"
 
-    with pd.ExcelWriter(xlsx_path, engine="openpyxl") as writer:
-        df_input.to_excel(writer, sheet_name="input", index=False)
-        df_settings.to_excel(writer, sheet_name="settings", index=False)
+
+def _write_magec_csv(
+    input_rows: list[dict],
+    cfg,
+    csv_path: str,
+) -> None:
+    """Write a MAGEC input CSV from row dicts."""
+    df_input = pd.DataFrame(input_rows)
+    df_input.to_csv(csv_path, index=False)
+
+
+def _create_magec_input_csv(
+    comp: MeltComposition,
+    cfg,
+    csv_path: str,
+) -> None:
+    """Generate the MAGEC input CSV file.
+
+    Column names and structure must match exactly what the MAGEC
+    solver expects — see the original example files distributed
+    with the MAGEC supplement.
+    """
+    _write_magec_csv(_build_sample_input_rows(comp, cfg), cfg, csv_path)
 
 
 def _run_magec_matlab(
-    in_xlsx: str,
-    out_xlsx: str,
+    in_csv: str,
+    out_csv: str,
     cfg,
+    timeout: int | None = None,
 ) -> None:
-    """Run MAGEC_Solver_v1b via a MATLAB subprocess.
+    """Run MAGEC via the CSV wrapper + compiled .p solver.
 
     Writes a .m script file and executes it with
     ``matlab -batch "eval(fileread('/path/to/script.m'))"``.
 
-    We use ``eval(fileread(...))`` instead of ``run()`` because
-    MATLAB's ``run()`` first ``cd``'s to the script's parent directory
-    and scans every file there — which can trigger "Invalid text
-    character" errors if the directory contains .p files, quarantined
-    downloads, or any other non-ASCII content.  ``eval(fileread(...))``
-    reads the file as a plain string and evaluates it in place, with
-    no directory scanning.
-    """
-    solver_dir = os.path.abspath(cfg.solver_dir)
-    safe_name = os.path.splitext(os.path.basename(in_xlsx))[0]
-    local_in = f"_volcatenate_{safe_name}.xlsx"
-    local_out = f"_volcatenate_{safe_name}_out.xlsx"
+    The script:
+      1. ``cd``'s to the input file's directory (working directory)
+      2. Adds the bundled wrapper, original solver dir, and shims to
+         the MATLAB path
+      3. Builds a settings struct from the Python config
+      4. Calls ``MAGEC_CSV_Wrapper(input.csv, output.csv, settings)``
+         which internally converts CSV→xlsx, runs the .p solver,
+         then converts output xlsx→CSV
 
-    # Write .m script next to the output file
-    script_dir = os.path.join(os.path.dirname(out_xlsx), "_matlab_scripts")
+    Python-side I/O is pure CSV (fast).  The xlsx conversion happens
+    inside MATLAB where it is much faster than Python's openpyxl.
+
+    Parameters
+    ----------
+    timeout : int, optional
+        Subprocess timeout in seconds.  Defaults to ``cfg.timeout``.
+    """
+    effective_timeout = timeout if timeout is not None else cfg.timeout
+
+    in_basename = os.path.basename(in_csv)
+    out_basename = os.path.basename(out_csv)
+    work_dir = os.path.abspath(os.path.dirname(in_csv))
+    solver_dir = os.path.abspath(cfg.solver_dir)
+
+    # Build settings struct from Python config
+    settings_struct = _build_settings_matlab_struct(cfg)
+
+    # Write .m script in the working directory
+    script_dir = os.path.join(work_dir, "_matlab_scripts")
     os.makedirs(script_dir, exist_ok=True)
+    safe_name = os.path.splitext(in_basename)[0]
     script_name = f"_volcatenate_run_{safe_name}.m"
     script_path = os.path.abspath(os.path.join(script_dir, script_name))
 
     lines = [
-        f"cd('{solver_dir}');",
+        f"cd('{work_dir}');",
+        # Add bundled CSV wrapper to MATLAB path
+        f"addpath('{_SOLVER_DIR}');",
+        # Add original solver directory so MATLAB finds MAGEC_Solver_v1b.p
+        f"addpath('{solver_dir}');",
+        # Add bundled Optimization Toolbox shims to the END of the path
+        # so they serve as fallbacks for fsolve/lsqnonlin/optimoptions.
+        # If the Optimization Toolbox IS installed, its functions stay
+        # earlier on the path and take priority.
+        f"addpath('{_SHIMS_DIR}', '-end');",
         f"try",
-        f"    copyfile('{in_xlsx}', '{local_in}');",
-        f"    MAGEC_Solver_v1b('{local_in}', '{local_out}');",
-        f"    movefile('{local_out}', '{out_xlsx}');",
-        f"    delete('{local_in}');",
+        f"    settings = {settings_struct};",
+        f"    MAGEC_CSV_Wrapper('{in_basename}', '{out_basename}', settings);",
         f"    fprintf('MAGEC: OK\\n');",
         f"catch ME",
         f"    fprintf('MAGEC: FAILED - %s\\n', ME.message);",
-        f"    if exist('{local_in}','file'); delete('{local_in}'); end",
-        f"    if exist('{local_out}','file'); delete('{local_out}'); end",
         f"end",
         f"exit;",
     ]
@@ -455,24 +607,15 @@ def _run_magec_matlab(
             [cfg.matlab_bin, "-batch", f"eval(fileread('{script_path}'))"],
             capture_output=True,
             text=True,
-            timeout=cfg.timeout,
+            timeout=effective_timeout,
         )
     except subprocess.TimeoutExpired:
         warnings.warn(
-            f"MAGEC timed out after {cfg.timeout}s. This usually means the "
+            f"MAGEC timed out after {effective_timeout}s. This usually means the "
             f"saturation pressure is outside the search range "
             f"({cfg.p_start_kbar}–{cfg.p_final_kbar} kbar). "
             f"Try increasing magec.p_start_kbar in your config."
         )
-        # Clean up any files MAGEC left in the solver directory
-        for leftover in [
-            os.path.join(solver_dir, local_in),
-            os.path.join(solver_dir, local_out),
-        ]:
-            try:
-                os.remove(leftover)
-            except OSError:
-                pass
         return
 
     if result.stdout:

@@ -119,7 +119,7 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         import evo
         _patch_evo_prompts()
 
@@ -142,12 +142,21 @@ class Backend(ModelBackend):
         # EVo prefixes crashed-but-valid output with "_CRASHED_"
         csv_files = glob.glob(os.path.join(evo_output_folder, "*dgs_output_*.csv"))
         if not csv_files:
-            return np.nan
+            return None
 
         df = pd.read_csv(csv_files[0])
-        result = np.nan
-        if "P" in df.columns and len(df) > 0:
-            result = float(df["P"].iloc[0])
+        if "P" not in df.columns or len(df) == 0:
+            return None
+
+        # Run through the same converter pipeline as degassing
+        comp_dict = comp.oxide_dict
+        T_K = comp.T_C + 273.15
+        df = convert(df, composition=comp_dict, T_K=T_K)
+        df = compute_cs_v_mf(df)
+        # Skip normalize_volatiles — meaningless for a single point
+        df = ensure_standard_columns(df)
+
+        result = df.iloc[0].copy()
 
         # Clean up raw tool output if requested
         if not config.keep_raw_output:

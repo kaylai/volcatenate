@@ -70,8 +70,9 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         import VESIcal as v
+        from volcatenate import columns as col
 
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
@@ -87,13 +88,25 @@ class Backend(ModelBackend):
                 )
                 # VESIcal returns a dict with 'SaturationPressure_bars'
                 if isinstance(result, dict):
-                    return float(result.get("SaturationPressure_bars", np.nan))
-                # Or a DataFrame / scalar depending on version
-                return float(result)
+                    p = float(result.get("SaturationPressure_bars", np.nan))
+                else:
+                    # Or a DataFrame / scalar depending on version
+                    p = float(result)
+
+                if np.isnan(p):
+                    return None
+
+                # Wrap pressure in a Series; VESIcal is H2O-CO2 only so
+                # S and redox columns stay NaN for now.
+                state = pd.Series({col.P_BARS: p}, dtype=float)
+                state_df = pd.DataFrame([state])
+                state_df = ensure_standard_columns(state_df)
+                return state_df.iloc[0].copy()
+
             except Exception as exc:
                 from volcatenate.log import logger
                 logger.warning("[VESIcal] satP failed for %s: %s", comp.sample, exc)
-                return np.nan
+                return None
 
     # ----------------------------------------------------------------
     # Degassing path

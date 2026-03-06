@@ -83,7 +83,7 @@ class Backend(ModelBackend):
         self,
         comp: MeltComposition,
         config: RunConfig,
-    ) -> float:
+    ) -> pd.Series | None:
         import VolFe as vf
 
         cfg = config.volfe
@@ -94,26 +94,25 @@ class Backend(ModelBackend):
         try:
             with _quiet_volfe(work_dir):
                 result = vf.calc_Pvsat(setup_df, models=models_df)
-            # Result is a DataFrame; extract pressure from first row
-            if "P_bar" in result.columns:
-                p = float(result["P_bar"].iloc[0])
-            elif "P_bars" in result.columns:
-                p = float(result["P_bars"].iloc[0])
-            else:
-                # Fall back to first numeric column that looks like pressure
-                p = np.nan
-                for col_name in result.columns:
-                    if "p" in col_name.lower() and "bar" in col_name.lower():
-                        p = float(result[col_name].iloc[0])
-                        break
+
+            # Run through the same converter pipeline as degassing
+            result = convert(result)
+            result = compute_cs_v_mf(result)
+            # Skip normalize_volatiles — meaningless for a single point
+            result = ensure_standard_columns(result)
+
+            if len(result) == 0:
+                return None
+
+            state = result.iloc[0].copy()
         except Exception as exc:
             logger.warning("[VolFe] satP failed for %s: %s", comp.sample, exc)
-            p = np.nan
+            return None
 
         if not config.keep_raw_output:
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        return p
+        return state
 
     # ----------------------------------------------------------------
     # Degassing path
