@@ -162,12 +162,4 @@ def convert(
     if col.OCS_V_MF not in out.columns:
         out[col.OCS_V_MF] = 0.0
 
-    # 8. C/S vapor mole-fraction ratio
-    if (all(c in out.columns for c in col.C_SPECIES) and
-            all(s in out.columns for s in col.S_SPECIES)):
-        c_sum = out[col.C_SPECIES].sum(axis=1)
-        s_sum = out[col.S_SPECIES].sum(axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            out[col.CS_V_MF] = np.where(s_sum > 0, c_sum / s_sum, np.nan)
-
     return out

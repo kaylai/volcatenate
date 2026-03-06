@@ -53,16 +53,4 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
         if c not in out.columns:
             out[c] = np.nan
 
-    # Recompute CS_v_mf if species are present but ratio is missing/zero
-    if (all(c in out.columns for c in col.C_SPECIES) and
-            all(s in out.columns for s in col.S_SPECIES)):
-        needs_cs = (col.CS_V_MF not in out.columns or
-                    (out[col.CS_V_MF] == 0).all() or
-                    out[col.CS_V_MF].isna().all())
-        if needs_cs:
-            c_sum = out[col.C_SPECIES].sum(axis=1)
-            s_sum = out[col.S_SPECIES].sum(axis=1)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                out[col.CS_V_MF] = np.where(s_sum > 0, c_sum / s_sum, np.nan)
-
     return out
