@@ -1311,7 +1311,7 @@ def plot_cs_depth_profile(
     system_data,
     gas_data=None,
     depth_constraints=None,
-    satp_df=None,
+    equil_state_df=None,
     models=None,
     model_style=None,
     rho=RHO_BASALT,
@@ -1349,10 +1349,10 @@ def plot_cs_depth_profile(
              "source": str, "color": str}
 
         Horizontal shaded bands are drawn for each entry.
-    satp_df : pandas.DataFrame, optional
-        Saturation-pressure data with columns ``Sample``, ``Reservoir``,
-        and ``<Model>_SatP_bars``.  When provided, box-and-whisker
-        diagrams are drawn along each model curve.
+    equil_state_df : pandas.DataFrame, optional
+        Per-MI equilibrium state with columns ``Sample``, ``Reservoir``,
+        ``<Model>_SatP_bars``, and optionally ``<Model>_CS_v_mf``.
+        When provided, MI data are drawn along each model curve.
     models : list[str], optional
         Model names to plot (default: all keys in *system_data* that are
         DataFrames with ``CS_v_mf``).
@@ -1474,9 +1474,9 @@ def plot_cs_depth_profile(
                     "P_bars": pc, "depth_km": dc_val,
                 }
 
-    # -- Box-and-whisker plots from satP data --
-    if satp_df is not None and not satp_df.empty:
-        _draw_satp_boxes(ax, satp_df, model_curves, model_style, rho)
+    # -- MI equilibrium overlay --
+    if equil_state_df is not None and not equil_state_df.empty:
+        _draw_satp_boxes(ax, equil_state_df, model_curves, model_style, rho)
 
     # -- Axis configuration --
     ax.set_xscale("log")
@@ -1548,55 +1548,89 @@ def plot_cs_depth_profile(
     return fig, ax, inferred
 
 
-def _draw_satp_boxes(ax, satp_df, model_curves, model_style, rho):
+def _draw_satp_boxes(ax, equil_state_df, model_curves, model_style, rho):
     """Draw box-and-whisker plots of MI saturation pressures along curves.
+
+    Horizontal positioning (x) uses the actual ``*_CS_v_mf`` column when
+    available in *equil_state_df*, falling back to interpolation along
+    the degassing curve otherwise.
 
     Parameters
     ----------
     ax : matplotlib Axes
-    satp_df : DataFrame
+    equil_state_df : DataFrame
         Must have ``Sample``, ``Reservoir``, and ``*_SatP_bars`` columns.
+        If ``*_CS_v_mf`` columns are also present (one per model), those
+        values are used for horizontal positioning rather than
+        interpolating from the degassing curve.
     model_curves : dict
         ``{model: (p_bars, cs_values)}``.
     model_style : dict
     rho : float
     """
-    # Auto-detect satP columns → model keys
-    satp_cols = {}
-    for col in satp_df.columns:
+    # Auto-detect satP columns → model keys, and matching CS columns
+    satp_cols = {}          # {satp_col_name: model_key}
+    cs_col_map = {}         # {satp_col_name: cs_col_name}
+    all_model_keys = set(model_curves) | set(model_style)
+
+    for col in equil_state_df.columns:
         if col.endswith("_SatP_bars"):
             key = col.replace("_SatP_bars", "")
             # Try exact match first, then case-insensitive
-            for mk in model_curves:
+            for mk in all_model_keys:
                 if mk == key or mk.upper() == key.upper():
                     satp_cols[col] = mk
+                    # Check for a matching CS_v_mf column
+                    cs_col = f"{key}_CS_v_mf"
+                    if cs_col in equil_state_df.columns:
+                        cs_col_map[col] = cs_col
                     break
 
     if not satp_cols:
         return
 
-    reservoirs = [r for r in satp_df["Reservoir"].dropna().unique()]
+    reservoirs = [r for r in equil_state_df["Reservoir"].dropna().unique()]
     hatch_list = [None, "//", "\\\\", "xx"]
 
     for col, model_key in satp_cols.items():
-        if model_key not in model_curves:
+        has_curve = model_key in model_curves
+        has_cs = col in cs_col_map
+        # Need either a curve or direct C/S values to position the box
+        if not has_curve and not has_cs:
             continue
-        p_curve, cs_curve = model_curves[model_key]
+
+        p_curve, cs_curve = model_curves.get(model_key, (None, None))
         sty = model_style.get(model_key, {"color": "gray"})
 
         for j, reservoir in enumerate(reservoirs):
-            mask = satp_df["Reservoir"] == reservoir
-            vals = satp_df.loc[mask, col].dropna().values
+            mask = equil_state_df["Reservoir"] == reservoir
+            vals = equil_state_df.loc[mask, col].dropna().values
             if len(vals) == 0:
                 continue
             depths = p_to_depth(vals, rho=rho)
 
-            # Position box so median line sits on the model curve
-            median_p = np.median(vals)
-            try:
-                x_pos = find_cs_at_pressure(p_curve, cs_curve, median_p)
-            except Exception:
-                continue
+            # Position box at actual C/S if available, else interpolate
+            if has_cs:
+                cs_vals = equil_state_df.loc[mask, cs_col_map[col]].dropna().values
+                if len(cs_vals) > 0:
+                    x_pos = np.median(cs_vals)
+                elif has_curve:
+                    try:
+                        x_pos = find_cs_at_pressure(
+                            p_curve, cs_curve, np.median(vals),
+                        )
+                    except Exception:
+                        continue
+                else:
+                    continue
+            else:
+                try:
+                    x_pos = find_cs_at_pressure(
+                        p_curve, cs_curve, np.median(vals),
+                    )
+                except Exception:
+                    continue
+
             box_width = x_pos * 0.20
 
             bp = ax.boxplot(
@@ -1688,10 +1722,11 @@ _CS_MODEL_STYLE = {
 #
 #     fig, axes = vp.figure_1(compositions)
 #     fig       = vp.figure_4(systems)
-#     fig, ax, inferred = vp.figure_10(systems["Kilauea"])
+#     fig, ax, inferred = vp.figure_10(systems["Kilauea"], equil_state_df=df)
 #
 #     vp.generate_all_figures(
-#         systems, compositions=comps, satp_df=df, output_dir="figures/",
+#         systems, compositions=comps, satp_df=satp, equil_state_df=df,
+#         output_dir="figures/",
 #     )
 # ---------------------------------------------------------------------------
 
@@ -2105,7 +2140,7 @@ def figure_10(
     system_data,
     gas_data=None,
     depth_constraints=None,
-    satp_df=None,
+    equil_state_df=None,
     system_name="K\u012blauea",
     save_path=None,
     dpi=300,
@@ -2125,8 +2160,8 @@ def figure_10(
         Default: ``KILAUEA_GAS_DATA``.
     depth_constraints : dict, optional
         Default: ``KILAUEA_DEPTH_CONSTRAINTS``.
-    satp_df : pandas.DataFrame, optional
-        Saturation-pressure data for box-whisker overlays.
+    equil_state_df : pandas.DataFrame, optional
+        Per-MI equilibrium state (satP + C/S) for box-whisker overlays.
     system_name : str
         Display name used in the title.
     save_path : str, optional
@@ -2156,7 +2191,7 @@ def figure_10(
         system_data,
         gas_data=gas_data,
         depth_constraints=depth_constraints,
-        satp_df=satp_df,
+        equil_state_df=equil_state_df,
         model_style=model_style,
         title=title,
         **kwargs,
@@ -2172,6 +2207,7 @@ def generate_all_figures(
     systems,
     compositions=None,
     satp_df=None,
+    equil_state_df=None,
     output_dir=None,
     dpi=300,
     scale=4,
@@ -2186,7 +2222,10 @@ def generate_all_figures(
     compositions : list, optional
         ``MeltComposition`` objects for Figures 1 and 3.
     satp_df : pd.DataFrame, optional
-        Saturation-pressure DataFrame for Figures 2, 3, and 10.
+        Saturation-pressure DataFrame for Figures 2 and 3.
+    equil_state_df : pd.DataFrame, optional
+        Per-MI equilibrium state (satP + C/S) for Figure 10 box-whiskers.
+        Falls back to *satp_df* if not provided.
     output_dir : str, optional
         Directory for saved PNGs.  Defaults to ``"figures/"``.
     dpi : int
@@ -2299,9 +2338,10 @@ def generate_all_figures(
     # Figure 10: C/S depth profile (Kilauea by default)
     if "Kilauea" in systems:
         logger.info("Figure 10: C/S depth profile")
+        _fig10_df = equil_state_df if equil_state_df is not None else satp_df
         fig10, _, inferred = figure_10(
             systems["Kilauea"],
-            satp_df=satp_df,
+            equil_state_df=_fig10_df,
             save_path=_path("Fig10_CS_depth_profile.png"), dpi=dpi,
             **_kw("figure_10"),
         )
