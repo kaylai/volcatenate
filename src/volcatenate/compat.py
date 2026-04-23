@@ -26,7 +26,6 @@ to::
 
 from __future__ import annotations
 
-import math
 import os
 from typing import Optional
 
@@ -258,6 +257,46 @@ _VAPOR_MF_COLS = [
     "S2_v_mf", "SO2_v_mf", "H2S_v_mf", "CH4_v_mf", "OCS_v_mf",
 ]
 
+_VAPOR_MF_DERIVED = {"SUM_v_mf", "XO2_BYDIFF_v_mf", "CS_v_mf"}
+
+_SUM_VMF_TOL = 1e-3
+
+
+def _warn(msg: str) -> None:
+    """Emit a warning to both the volcatenate logger and the terminal.
+
+    ``loadData`` does not take a :class:`~volcatenate.config.RunConfig`,
+    so the logger may be silent.  We also ``print`` to stderr so
+    data-quality warnings are visible regardless of logger setup.
+    """
+    import sys
+    logger.warning(msg)
+    print(f"WARNING: {msg}", file=sys.stderr)
+
+
+def _resolve_vapor_species(
+    df: pd.DataFrame,
+    vapor_species: "str | list[str]",
+) -> tuple[list[str], list[str]]:
+    """Resolve ``vapor_species`` against ``df.columns``.
+
+    Returns ``(present, missing)``: ``present`` are species columns that
+    exist in ``df`` (derived aggregates excluded); ``missing`` are names
+    requested via an explicit list that are absent from ``df``.  When
+    ``vapor_species`` is a glob pattern, ``missing`` is always empty.
+    """
+    import fnmatch
+    if isinstance(vapor_species, str):
+        matches = [c for c in df.columns
+                   if fnmatch.fnmatchcase(c, vapor_species)]
+        present = [c for c in matches if c not in _VAPOR_MF_DERIVED]
+        return present, []
+    requested = list(vapor_species)
+    present = [c for c in requested
+               if c in df.columns and c not in _VAPOR_MF_DERIVED]
+    missing = [c for c in requested if c not in df.columns]
+    return present, missing
+
 
 def loadData(
     model_names: list[str],
@@ -265,6 +304,8 @@ def loadData(
     subdirectory_name: str = "",
     models_w_special_subdirectory: str | list[str] = "",
     O2_mass_bal: bool = False,
+    vapor_species: "str | list[str]" = "*_v_mf",
+    o2_column: str = "O2_v_mf",
     simplify: bool = False,
     save_simplified: bool = False,
 ) -> tuple[dict, dict, dict, dict]:
@@ -289,7 +330,20 @@ def loadData(
     models_w_special_subdirectory : str or list[str]
         Model(s) that live in ``topdirectory_name/model/subdirectory_name``.
     O2_mass_bal : bool
-        If True, compute SUM_v_mf and XO2_BYDIFF_v_mf columns.
+        If True, compute ``SUM_v_mf`` and ``XO2_BYDIFF_v_mf`` columns.
+    vapor_species : str or list[str]
+        Defines which DataFrame columns represent vapor species mole
+        fractions for the O\\ :sub:`2` mass balance.  Accepts either a
+        glob pattern (default ``"*_v_mf"``, matched via ``fnmatch``) or
+        an explicit list of column names (e.g.
+        ``["SO2_vapor", "H2S_vapor", ...]``).  Derived aggregates
+        (``SUM_v_mf``, ``XO2_BYDIFF_v_mf``, ``CS_v_mf``) are always
+        excluded from the species set.
+    o2_column : str
+        Name of the column representing O\\ :sub:`2` mole fraction under
+        the user's convention.  Default ``"O2_v_mf"``.  Used to split
+        species into "O\\ :sub:`2`" and "non-O\\ :sub:`2`" for the
+        by-difference calculation.
     simplify : bool
         If True, keep only the standard column set.
     save_simplified : bool
@@ -375,30 +429,92 @@ def loadData(
 
     # ---- O2 mass balance ----
     if O2_mass_bal:
-        non_o2_cols = [c for c in _VAPOR_MF_COLS if c != "O2_v_mf"]
         for data in datasets:
+            volcano = data["Name"]
             for model in model_names:
                 if model not in data or not isinstance(data[model], pd.DataFrame):
                     continue
                 df = data[model]
-                has_all = all(c in df.columns for c in _VAPOR_MF_COLS)
-                if has_all:
-                    all_vals = df[_VAPOR_MF_COLS].values
-                    non_o2_vals = df[non_o2_cols].values
-                    df["SUM_v_mf"] = [math.fsum(row) for row in all_vals]
-                    df["XO2_BYDIFF_v_mf"] = [
-                        1.0 - math.fsum(row) for row in non_o2_vals
-                    ]
+
+                species_cols, missing_requested = _resolve_vapor_species(
+                    df, vapor_species)
+
+                # Warn about expected species absent from the DataFrame.
+                # For an explicit list, "expected" = the user's list.
+                # For the default glob, also warn about any of the
+                # standard `_VAPOR_MF_COLS` that didn't show up — default
+                # users benefit from being told which species are missing.
+                absent_expected = list(missing_requested)
+                if isinstance(vapor_species, str) and vapor_species == "*_v_mf":
+                    absent_expected = [c for c in _VAPOR_MF_COLS
+                                       if c not in species_cols]
+
+                # Warn about species that are present but all-NaN or
+                # all-zero — most likely not calculated by this backend.
+                uncalculated = []
+                for c in species_cols:
+                    s = df[c]
+                    if s.isna().all() or (s.fillna(0) == 0).all():
+                        uncalculated.append(c)
+
+                if absent_expected:
+                    _warn(
+                        f"{model} ({volcano}): expected vapor columns not "
+                        f"present: {absent_expected}. Treating as 0 in "
+                        f"O2 mass balance."
+                    )
+                if uncalculated:
+                    _warn(
+                        f"{model} ({volcano}): vapor columns present but "
+                        f"all NaN or zero (likely not calculated by this "
+                        f"backend): {uncalculated}. Treating as 0 in O2 "
+                        f"mass balance."
+                    )
+
+                if not species_cols:
+                    _warn(
+                        f"{model} ({volcano}): no vapor species columns "
+                        f"resolved from vapor_species={vapor_species!r}. "
+                        f"SUM_v_mf and XO2_BYDIFF_v_mf set to NaN."
+                    )
+                    df["SUM_v_mf"] = np.nan
+                    df["XO2_BYDIFF_v_mf"] = np.nan
+                    continue
+
+                if o2_column not in species_cols:
+                    _warn(
+                        f"{model} ({volcano}): o2_column={o2_column!r} not "
+                        f"in resolved species set; XO2_BYDIFF_v_mf will be "
+                        f"computed from all resolved species (none treated "
+                        f"as O2)."
+                    )
+
+                non_o2_cols = [c for c in species_cols if c != o2_column]
+
+                # Treat NaN as 0 so partial results still produce a calc.
+                sum_all = df[species_cols].fillna(0.0).sum(axis=1)
+                if non_o2_cols:
+                    sum_non_o2 = df[non_o2_cols].fillna(0.0).sum(axis=1)
                 else:
-                    for vcol in _VAPOR_MF_COLS:
-                        if vcol not in df.columns:
-                            logger.warning(
-                                "%s not found in columns for %s in %s",
-                                vcol, model, data["Name"],
-                            )
-                            break
-                    df["SUM_v_mf"] = 0
-                    df["XO2_BYDIFF_v_mf"] = 0
+                    sum_non_o2 = pd.Series(0.0, index=df.index)
+
+                df["SUM_v_mf"] = sum_all
+                df["XO2_BYDIFF_v_mf"] = 1.0 - sum_non_o2
+
+                # Sanity check: SUM_v_mf should be ≈1 on rows with vapor.
+                has_vapor = sum_all > 0
+                if has_vapor.any():
+                    dev = (sum_all[has_vapor] - 1.0).abs()
+                    worst = float(dev.max())
+                    n_bad = int((dev > _SUM_VMF_TOL).sum())
+                    if n_bad:
+                        _warn(
+                            f"{model} ({volcano}): {n_bad} row(s) have "
+                            f"|SUM_v_mf - 1| > {_SUM_VMF_TOL} (max "
+                            f"deviation {worst:.3g}). Vapor mole "
+                            f"fractions do not close to 1 — O2 by "
+                            f"difference may be unreliable."
+                        )
 
         # ---- Simplify ----
         if simplify:
@@ -407,15 +523,22 @@ def loadData(
                 "Fe3Fet_m", "S6St_m", "logfO2", "dFMQ", "vapor_wt",
                 "CS_v_mf", "SUM_v_mf", "XO2_BYDIFF_v_mf",
             ]
-            cols_to_keep = [*_VAPOR_MF_COLS, *other_cols]
             for data in datasets:
+                volcano = data["Name"]
                 for model in model_names:
                     if model not in data or not isinstance(data[model], pd.DataFrame):
                         continue
-                    try:
-                        data[model] = data[model][cols_to_keep]
-                    except KeyError as exc:
-                        logger.warning("Issue simplifying %s: %s", model, exc)
+                    df = data[model]
+                    species_cols, _ = _resolve_vapor_species(df, vapor_species)
+                    desired = [*species_cols, *other_cols]
+                    present = [c for c in desired if c in df.columns]
+                    absent = [c for c in desired if c not in df.columns]
+                    if absent:
+                        _warn(
+                            f"{model} ({volcano}): simplify dropping absent "
+                            f"columns: {absent}."
+                        )
+                    data[model] = df[present]
 
             if save_simplified:
                 for data in datasets:
@@ -442,6 +565,8 @@ def load_results(
     data_dir: str,
     model_names: Optional[list[str]] = None,
     O2_mass_bal: bool = True,
+    vapor_species: "str | list[str]" = "*_v_mf",
+    o2_column: str = "O2_v_mf",
 ) -> tuple[dict, dict, dict, dict]:
     """Load degassing results written by :func:`~volcatenate.core.run_comparison`.
 
@@ -451,11 +576,17 @@ def load_results(
     Parameters
     ----------
     data_dir : str
-        Degassing CSVs are expected at ``data_dir/MODEL/sample.csv``. 
+        Degassing CSVs are expected at ``data_dir/MODEL/sample.csv``.
     model_names : list[str], optional
         Model names to load.  If *None*, uses all registered backends.
     O2_mass_bal : bool
         Compute O\\ :sub:`2` by difference in the vapor phase.
+    vapor_species : str or list[str]
+        Glob pattern or explicit list of vapor species columns used for
+        the O\\ :sub:`2` mass balance.  See :func:`loadData` for details.
+    o2_column : str
+        Name of the O\\ :sub:`2` mole-fraction column.  See
+        :func:`loadData` for details.
 
     Returns
     -------
@@ -487,4 +618,6 @@ def load_results(
         model_names,
         topdirectory_name=data_dir,
         O2_mass_bal=O2_mass_bal,
+        vapor_species=vapor_species,
+        o2_column=o2_column,
     )
