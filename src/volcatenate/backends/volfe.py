@@ -43,10 +43,10 @@ def _quiet_volfe(work_dir: str | None = None):
     old_cwd = os.getcwd()
     os.environ["TQDM_DISABLE"] = "1"
     sys.setrecursionlimit(max(old_limit, 10_000))
-    if work_dir:
-        os.makedirs(work_dir, exist_ok=True)
-        os.chdir(work_dir)
     try:
+        if work_dir:
+            os.makedirs(work_dir, exist_ok=True)
+            os.chdir(work_dir)
         with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
             yield
     finally:
@@ -56,11 +56,11 @@ def _quiet_volfe(work_dir: str | None = None):
         else:
             os.environ["TQDM_DISABLE"] = old_tqdm
         sys.setrecursionlimit(old_limit)
-    for buf in (buf_out, buf_err):
-        captured = buf.getvalue()
-        if captured.strip():
-            for line in captured.strip().splitlines():
-                logger.debug("[VolFe] %s", line)
+        for buf in (buf_out, buf_err):
+            captured = buf.getvalue()
+            if captured.strip():
+                for line in captured.strip().splitlines():
+                    logger.debug("[VolFe] %s", line)
 
 
 class Backend(ModelBackend):

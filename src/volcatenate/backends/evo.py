@@ -75,11 +75,11 @@ def _quiet_evo():
             os.environ.pop("TQDM_DISABLE", None)
         else:
             os.environ["TQDM_DISABLE"] = old_tqdm
-    for buf in (buf_out, buf_err):
-        captured = buf.getvalue()
-        if captured.strip():
-            for line in captured.strip().splitlines():
-                logger.debug("[EVo] %s", line)
+        for buf in (buf_out, buf_err):
+            captured = buf.getvalue()
+            if captured.strip():
+                for line in captured.strip().splitlines():
+                    logger.debug("[EVo] %s", line)
 
 
 # ── Custom YAML dumper (EVo expects True/False not true/false) ──────
@@ -180,7 +180,7 @@ class Backend(ModelBackend):
         os.makedirs(work_dir, exist_ok=True)
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
-            comp, cfg, work_dir, run_type="closed",
+            comp, cfg, work_dir, run_type=cfg.run_type,
         )
 
         evo_output_folder = os.path.join(work_dir, "output")

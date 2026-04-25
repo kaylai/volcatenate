@@ -192,7 +192,10 @@ def calculate_saturation_pressure(
             for comp, state in zip(comps, states):
                 row: dict = {"Sample": comp.sample, "Reservoir": comp.reservoir}
                 if state is not None:
-                    row.update(state.to_dict())
+                    state_dict = state.to_dict()
+                    state_dict.pop("Sample", None)
+                    state_dict.pop("Reservoir", None)
+                    row.update(state_dict)
                     p = state.get(col.P_BARS, np.nan)
                     logger.info("    %s: %.1f bar", comp.sample, p)
                 else:

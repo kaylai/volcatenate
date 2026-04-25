@@ -222,7 +222,16 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
         return
 
     if p_norm:
-        x_pressure = data["P_bars"] / data["P_bars"].iloc[0]
+        p_init = data["P_bars"].iloc[0]
+        if pd.isna(p_init) or p_init == 0:
+            logger.warning(
+                "%s: P_bars.iloc[0] is zero or NaN — "
+                "falling back to absolute pressure for %s trace",
+                model, y_variable,
+            )
+            x_pressure = data["P_bars"]
+        else:
+            x_pressure = data["P_bars"] / p_init
     else:
         x_pressure = data["P_bars"]
 

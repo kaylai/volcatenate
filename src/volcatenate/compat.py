@@ -404,7 +404,7 @@ def loadData(
                 continue
             if "VESIcal" in key:
                 df = data[key]
-                if "XCO2_fl" in df.columns:
+                if "XCO2_fl" in df.columns and "XH2O_fl" in df.columns:
                     df["CO2_v_mf"] = df["XCO2_fl"]
                     df["H2O_v_mf"] = df["XH2O_fl"]
                 df["ST_m_ppmw"] = np.nan
@@ -516,43 +516,43 @@ def loadData(
                             f"difference may be unreliable."
                         )
 
-        # ---- Simplify ----
-        if simplify:
-            other_cols = [
-                "P_bars", "H2OT_m_wtpc", "CO2T_m_ppmw", "ST_m_ppmw",
-                "Fe3Fet_m", "S6St_m", "logfO2", "dFMQ", "vapor_wt",
-                "CS_v_mf", "SUM_v_mf", "XO2_BYDIFF_v_mf",
-            ]
+    # ---- Simplify ----
+    if simplify:
+        other_cols = [
+            "P_bars", "H2OT_m_wtpc", "CO2T_m_ppmw", "ST_m_ppmw",
+            "Fe3Fet_m", "S6St_m", "logfO2", "dFMQ", "vapor_wt",
+            "CS_v_mf", "SUM_v_mf", "XO2_BYDIFF_v_mf",
+        ]
+        for data in datasets:
+            volcano = data["Name"]
+            for model in model_names:
+                if model not in data or not isinstance(data[model], pd.DataFrame):
+                    continue
+                df = data[model]
+                species_cols, _ = _resolve_vapor_species(df, vapor_species)
+                desired = [*species_cols, *other_cols]
+                present = [c for c in desired if c in df.columns]
+                absent = [c for c in desired if c not in df.columns]
+                if absent:
+                    _warn(
+                        f"{model} ({volcano}): simplify dropping absent "
+                        f"columns: {absent}."
+                    )
+                data[model] = df[present]
+
+        if save_simplified:
             for data in datasets:
-                volcano = data["Name"]
+                vname = data["Name"].lower()
                 for model in model_names:
                     if model not in data or not isinstance(data[model], pd.DataFrame):
                         continue
-                    df = data[model]
-                    species_cols, _ = _resolve_vapor_species(df, vapor_species)
-                    desired = [*species_cols, *other_cols]
-                    present = [c for c in desired if c in df.columns]
-                    absent = [c for c in desired if c not in df.columns]
-                    if absent:
-                        _warn(
-                            f"{model} ({volcano}): simplify dropping absent "
-                            f"columns: {absent}."
-                        )
-                    data[model] = df[present]
-
-            if save_simplified:
-                for data in datasets:
-                    vname = data["Name"].lower()
-                    for model in model_names:
-                        if model not in data or not isinstance(data[model], pd.DataFrame):
-                            continue
-                        subdir = (subdirectory_name
-                                  if model in models_w_special_subdirectory else "")
-                        save_dir = os.path.join(
-                            topdirectory_name, model + subdir, "simplified")
-                        os.makedirs(save_dir, exist_ok=True)
-                        data[model].to_csv(
-                            os.path.join(save_dir, f"{vname}.csv"), index=False)
+                    subdir = (subdirectory_name
+                              if model in models_w_special_subdirectory else "")
+                    save_dir = os.path.join(
+                        topdirectory_name, model + subdir, "simplified")
+                    os.makedirs(save_dir, exist_ok=True)
+                    data[model].to_csv(
+                        os.path.join(save_dir, f"{vname}.csv"), index=False)
 
     return data_morb, data_kil, data_fuego, data_fogo
 
