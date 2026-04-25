@@ -24,6 +24,11 @@ plotting = ["matplotlib", "plotly"]
 [project.scripts]
 volcatenate = "volcatenate.cli:main"
 
+[tool.pytest.ini_options]
+markers = [
+    "integration: requires external library (EVo, VolFe, VESIcal, SulfurX, or MAGEC)",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
