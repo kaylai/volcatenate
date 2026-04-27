@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import warnings
+from dataclasses import fields as _dc_fields
 from typing import Optional, Union
 
 import numpy as np
@@ -34,11 +35,16 @@ def _validate_override_sample_names(config, sample_names):
     """
     known = set(sample_names)
     bad = []
-    for backend_name in ("evo", "magec"):
-        backend_cfg = getattr(config, backend_name)
+    # Auto-discover backends that opt in by carrying an `overrides` dict.
+    # Today: evo, magec.  Future backends with `overrides` are picked up
+    # without changes here.
+    for f in _dc_fields(config):
+        backend_cfg = getattr(config, f.name)
+        if not hasattr(backend_cfg, "overrides"):
+            continue
         for sample in backend_cfg.overrides.keys():
             if sample not in known:
-                bad.append((backend_name, sample))
+                bad.append((f.name, sample))
     if bad:
         msg = "; ".join(
             f"{b}.overrides references unknown sample '{s}'"

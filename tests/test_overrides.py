@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 import yaml
 
+import volcatenate
 from volcatenate.composition import MeltComposition
 from volcatenate.config import EVoConfig, MAGECConfig, RunConfig, load_config, resolve_sample_config
 
@@ -248,9 +249,6 @@ def test_load_config_does_not_double_log_when_no_deprecation(tmp_path, caplog):
     assert "deprecated" not in caplog.text.lower()
 
 
-import volcatenate
-
-
 def test_run_comparison_raises_on_unknown_evo_override_sample(tmp_path, morb_comp):
     config = RunConfig(output_dir=str(tmp_path))
     config.evo.overrides = {"NotASample": {"dp_max": 25}}
@@ -285,25 +283,20 @@ def test_run_comparison_error_names_the_backend(tmp_path, morb_comp):
     assert "evo" in str(excinfo.value).lower()
 
 
-def test_run_comparison_accepts_valid_override_sample(tmp_path, morb_comp):
-    """Sanity check: a valid override sample name does NOT raise.
-    The actual backend run may fail (no evo/magec installed for live runs),
-    so we only assert that ValueError is not raised before backends are dispatched.
-    """
-    config = RunConfig(output_dir=str(tmp_path))
+def test_validate_override_sample_names_accepts_valid():
+    """Direct unit test of the validation helper — accepts a valid sample."""
+    from volcatenate.core import _validate_override_sample_names
+    config = RunConfig()
     config.evo.overrides = {"MORB": {"dp_max": 25}}
-    # We don't care whether the run succeeds — just that validation does NOT
-    # raise ValueError. Wrap in try/except and only re-raise ValueError if
-    # the message looks like our validation error.
-    try:
-        volcatenate.run_comparison(
-            degassing_compositions=[morb_comp],
-            models=["EVo"],
-            config=config,
-        )
-    except ValueError as exc:
-        if "overrides references unknown sample" in str(exc):
-            raise  # validation incorrectly fired
-        # Other ValueError causes (e.g. EVo runtime issue) are fine
-    except Exception:
-        pass  # any other exception is unrelated to validation
+    config.magec.overrides = {"MORB": {"p_start_kbar": 8.0}}
+    # Must not raise
+    _validate_override_sample_names(config, ["MORB"])
+
+
+def test_validate_override_sample_names_raises_on_unknown():
+    """Direct unit test — raises when a sample is not in the known list."""
+    from volcatenate.core import _validate_override_sample_names
+    config = RunConfig()
+    config.evo.overrides = {"NotASample": {"dp_max": 25}}
+    with pytest.raises(ValueError, match="NotASample"):
+        _validate_override_sample_names(config, ["MORB"])
