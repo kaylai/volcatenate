@@ -222,6 +222,7 @@ class Backend(ModelBackend):
         results: list[pd.Series | None] = [None] * len(comps)
         all_rows: list[dict] = []
         comp_index: dict[str, int] = {}  # sample name → index in comps
+        sample_cfgs: dict[str, Any] = {}  # sample name → resolved cfg
 
         for i, comp in enumerate(comps):
             try:
@@ -229,6 +230,7 @@ class Backend(ModelBackend):
                 rows = _build_sample_input_rows(comp, sample_cfg)
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
+                sample_cfgs[comp.sample] = sample_cfg
             except Exception as exc:
                 logger.warning(
                     "[MAGEC] Skipping %s in batch: %s", comp.sample, exc,
@@ -273,11 +275,13 @@ class Backend(ModelBackend):
                 df["Run_ID"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
             )
         else:
-            # Fallback: assign by row count (n_steps per sample, in order)
+            # Fallback: assign by row count (n_steps per sample, in order).
+            # Each sample's row count uses its resolved config so per-sample
+            # n_steps overrides line up correctly.
             sample_labels: list[str] = []
             for comp in comps:
                 if comp.sample in comp_index:
-                    sample_labels.extend([comp.sample] * cfg.n_steps)
+                    sample_labels.extend([comp.sample] * sample_cfgs[comp.sample].n_steps)
             if len(sample_labels) == len(df):
                 df["_sample"] = sample_labels
             else:
