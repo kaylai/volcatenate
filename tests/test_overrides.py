@@ -246,3 +246,64 @@ def test_load_config_does_not_double_log_when_no_deprecation(tmp_path, caplog):
         cfg = load_config(str(yaml_path))
     assert cfg.magec.overrides == {"Fogo": {"p_start_kbar": 8.0}}
     assert "deprecated" not in caplog.text.lower()
+
+
+import volcatenate
+
+
+def test_run_comparison_raises_on_unknown_evo_override_sample(tmp_path, morb_comp):
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"NotASample": {"dp_max": 25}}
+    with pytest.raises(ValueError, match="NotASample"):
+        volcatenate.run_comparison(
+            degassing_compositions=[morb_comp],
+            models=["EVo"],
+            config=config,
+        )
+
+
+def test_run_comparison_raises_on_unknown_magec_override_sample(tmp_path, morb_comp):
+    config = RunConfig(output_dir=str(tmp_path))
+    config.magec.overrides = {"NotASample": {"p_start_kbar": 8.0}}
+    with pytest.raises(ValueError, match="NotASample"):
+        volcatenate.run_comparison(
+            degassing_compositions=[morb_comp],
+            models=["MAGEC"],
+            config=config,
+        )
+
+
+def test_run_comparison_error_names_the_backend(tmp_path, morb_comp):
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"Bogus": {"dp_max": 25}}
+    with pytest.raises(ValueError) as excinfo:
+        volcatenate.run_comparison(
+            degassing_compositions=[morb_comp],
+            models=["EVo"],
+            config=config,
+        )
+    assert "evo" in str(excinfo.value).lower()
+
+
+def test_run_comparison_accepts_valid_override_sample(tmp_path, morb_comp):
+    """Sanity check: a valid override sample name does NOT raise.
+    The actual backend run may fail (no evo/magec installed for live runs),
+    so we only assert that ValueError is not raised before backends are dispatched.
+    """
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"MORB": {"dp_max": 25}}
+    # We don't care whether the run succeeds — just that validation does NOT
+    # raise ValueError. Wrap in try/except and only re-raise ValueError if
+    # the message looks like our validation error.
+    try:
+        volcatenate.run_comparison(
+            degassing_compositions=[morb_comp],
+            models=["EVo"],
+            config=config,
+        )
+    except ValueError as exc:
+        if "overrides references unknown sample" in str(exc):
+            raise  # validation incorrectly fired
+        # Other ValueError causes (e.g. EVo runtime issue) are fine
+    except Exception:
+        pass  # any other exception is unrelated to validation

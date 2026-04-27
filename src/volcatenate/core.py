@@ -28,6 +28,27 @@ from volcatenate.progress import VolcProgress
 from volcatenate.result import SaturationResult
 
 
+def _validate_override_sample_names(config, sample_names):
+    """Raise ValueError if any backend overrides reference a sample
+    name not in ``sample_names``.
+    """
+    known = set(sample_names)
+    bad = []
+    for backend_name in ("evo", "magec"):
+        backend_cfg = getattr(config, backend_name)
+        for sample in backend_cfg.overrides.keys():
+            if sample not in known:
+                bad.append((backend_name, sample))
+    if bad:
+        msg = "; ".join(
+            f"{b}.overrides references unknown sample '{s}'"
+            for b, s in bad
+        )
+        raise ValueError(
+            f"{msg}. Known samples: {sorted(known)}"
+        )
+
+
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
     """Resolve model list, expanding 'all' and validating names."""
     if models is None or models == ["all"] or models == "all":
@@ -502,6 +523,9 @@ def run_comparison(
         _resolve_compositions(degassing_compositions)
         if degassing_compositions is not None else []
     )
+
+    all_sample_names = [c.sample for c in satp_comps] + [c.sample for c in degas_comps]
+    _validate_override_sample_names(config, all_sample_names)
 
     # Save reproducible bundle if requested
     if config.save_bundle:
