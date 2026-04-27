@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 from volcatenate.composition import MeltComposition
-from volcatenate.config import EVoConfig, MAGECConfig, RunConfig, resolve_sample_config
+from volcatenate.config import EVoConfig, MAGECConfig, RunConfig, load_config, resolve_sample_config
 
 
 def test_evo_config_has_overrides_field():
@@ -204,3 +204,45 @@ def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
 
     env = _written_env(tmp_path, "MORB")
     assert env["DP_MAX"] == 25
+
+
+def test_load_config_folds_deprecated_p_start_overrides(tmp_path, caplog):
+    yaml_path = tmp_path / "cfg.yaml"
+    yaml_path.write_text(
+        "magec:\n"
+        "  p_start_overrides: {Fogo: 8.0, Fuego: 5.0}\n"
+    )
+    with caplog.at_level(logging.WARNING, logger="volcatenate"):
+        cfg = load_config(str(yaml_path))
+    assert cfg.magec.overrides == {
+        "Fogo": {"p_start_kbar": 8.0},
+        "Fuego": {"p_start_kbar": 5.0},
+    }
+    assert "p_start_overrides" in caplog.text
+    assert "deprecated" in caplog.text.lower()
+
+
+def test_load_config_new_overrides_win_on_conflict(tmp_path, caplog):
+    yaml_path = tmp_path / "cfg.yaml"
+    yaml_path.write_text(
+        "magec:\n"
+        "  p_start_overrides: {Fogo: 8.0}\n"
+        "  overrides: {Fogo: {p_start_kbar: 4.0, n_steps: 50}}\n"
+    )
+    with caplog.at_level(logging.WARNING, logger="volcatenate"):
+        cfg = load_config(str(yaml_path))
+    # New shape wins — does NOT get clobbered by the deprecated value.
+    assert cfg.magec.overrides["Fogo"]["p_start_kbar"] == 4.0
+    assert cfg.magec.overrides["Fogo"]["n_steps"] == 50
+
+
+def test_load_config_does_not_double_log_when_no_deprecation(tmp_path, caplog):
+    yaml_path = tmp_path / "cfg.yaml"
+    yaml_path.write_text(
+        "magec:\n"
+        "  overrides: {Fogo: {p_start_kbar: 8.0}}\n"
+    )
+    with caplog.at_level(logging.WARNING, logger="volcatenate"):
+        cfg = load_config(str(yaml_path))
+    assert cfg.magec.overrides == {"Fogo": {"p_start_kbar": 8.0}}
+    assert "deprecated" not in caplog.text.lower()
