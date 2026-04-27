@@ -195,6 +195,10 @@ evo:
   fo2_model: kc1991               # fO2 model
   fmq_model: frost1991            # FMQ buffer calibration
 
+  # Per-sample overrides — any field above can be varied per sample.
+  # Example:  {MORB: {dp_max: 25}, Fogo: {p_start: 5000, gas_system: coh}}
+  overrides: {}
+
 
 # ── MAGEC ───────────────────────────────────────────────────────
 # MAGEC runs via a MATLAB subprocess.  Requires a local MATLAB
@@ -229,10 +233,13 @@ magec:
   p_start_kbar: 3.0               # SatP search start pressure (kbar)
   p_final_kbar: 0.001             # SatP search end pressure (kbar)
   n_steps: 100                    # Number of pressure steps for SatP search
-  p_start_overrides: {}           # Per-sample overrides for p_start_kbar, e.g. {Fogo: 8.0, Fuego: 5.0}
 
   # Subprocess control
   timeout: 300                    # MATLAB subprocess timeout (seconds)
+
+  # Per-sample overrides — any field above can be varied per sample.
+  # Example:  {Fogo: {p_start_kbar: 8.0}, Fuego: {p_start_kbar: 5.0}}
+  overrides: {}
 
 
 # ── SulfurX ─────────────────────────────────────────────────────

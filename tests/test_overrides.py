@@ -10,7 +10,15 @@ import yaml
 
 import volcatenate
 from volcatenate.composition import MeltComposition
-from volcatenate.config import EVoConfig, MAGECConfig, RunConfig, load_config, resolve_sample_config
+from volcatenate.config import (
+    EVoConfig,
+    MAGECConfig,
+    RunConfig,
+    default_config_path,
+    load_config,
+    resolve_sample_config,
+    save_config,
+)
 
 
 def test_evo_config_has_overrides_field():
@@ -300,3 +308,26 @@ def test_validate_override_sample_names_raises_on_unknown():
     config.evo.overrides = {"NotASample": {"dp_max": 25}}
     with pytest.raises(ValueError, match="NotASample"):
         _validate_override_sample_names(config, ["MORB"])
+
+
+def test_overrides_round_trip(tmp_path):
+    """save_config + load_config preserves nested overrides on both backends."""
+    cfg = RunConfig()
+    cfg.evo.overrides = {"MORB": {"dp_max": 25}}
+    cfg.magec.overrides = {"Fogo": {"p_start_kbar": 8.0}}
+
+    out = tmp_path / "round_trip.yaml"
+    save_config(cfg, str(out))
+    reloaded = load_config(str(out))
+
+    assert reloaded.evo.overrides == {"MORB": {"dp_max": 25}}
+    assert reloaded.magec.overrides == {"Fogo": {"p_start_kbar": 8.0}}
+
+
+def test_default_yaml_loads_clean(caplog):
+    """Bundled default_config.yaml loads with empty overrides and no deprecation warning."""
+    with caplog.at_level(logging.WARNING, logger="volcatenate"):
+        cfg = load_config(default_config_path())
+    assert cfg.evo.overrides == {}
+    assert cfg.magec.overrides == {}
+    assert "deprecated" not in caplog.text.lower()
