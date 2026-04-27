@@ -187,11 +187,12 @@ class Backend(ModelBackend):
         try:
             with _quiet_evo():
                 evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             # EVo sometimes writes valid output *before* raising
             # (e.g. "Model failed to converge at lowest pressure step.
-            #  Data has been written out.").  Log the warning and try
-            # to read whatever was written.
+            #  Data has been written out.").  It also calls exit() on
+            # mass-conservation failure in open-system runs, which raises
+            # SystemExit — catch both so we can salvage partial output.
             logger.warning("EVo raised during degassing: %s — checking for partial output", exc)
 
         # EVo prefixes crashed-but-valid output with "_CRASHED_", so match both

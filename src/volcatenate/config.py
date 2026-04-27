@@ -206,7 +206,7 @@ class VolFeConfig:
     h2s_sol: str = "Basalt_Hughes24"     # H2S solubility constant
     ch4_sol: str = "Basalt_Ardia13"      # CH4 solubility constant
     co_sol: str = "Basalt_Hughes24"      # CO solubility constant
-    x_sol: str = "Ar_Basalt_HughesIP"    # Species X solubility constant
+    x_sol: str = "Ar_Basalt_Hughes25"    # Species X solubility constant
     c_spec_comp: str = "Basalt"          # CO2mol/CO32- speciation model
     h_spec_comp: str = "MORB_HughesIP"   # H2Omol/OH- speciation model
 
