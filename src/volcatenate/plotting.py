@@ -1574,7 +1574,7 @@ def plot_cs_depth_profile(
 
     # Legend
     ax.legend(
-        loc="lower right", fontsize=9, edgecolor="k",
+        loc="lower left", fontsize=9, edgecolor="k",
         framealpha=0.9, title="Models", title_fontsize=10,
     )
 
@@ -1713,7 +1713,7 @@ def _draw_satp_boxes(
                 hatch = hatch_list[j % len(hatch_list)]
                 for box in bp["boxes"]:
                     box.set_facecolor(sty["color"])
-                    box.set_alpha(0.45)
+                    # box.set_alpha(0.45)
                     box.set_edgecolor("k")
                     box.set_linewidth(0.8)
                     if hatch:

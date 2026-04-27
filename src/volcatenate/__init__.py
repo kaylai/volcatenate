@@ -69,7 +69,19 @@ from volcatenate.compat import (
 )
 from volcatenate.log import setup_logging
 from volcatenate.plotting import generate_all_figures
+from volcatenate.reproducible import (
+    RunBundle,
+    create_bundle,
+    save_bundle,
+    load_bundle,
+    replay,
+)
 from volcatenate.result import SaturationResult
+from volcatenate.versions import (
+    backend_version,
+    backend_version_info,
+    all_backend_versions,
+)
 
 
 def list_models(available_only: bool = False) -> list[str]:
@@ -110,6 +122,16 @@ __all__ = [
     "degassing_results_to_compat",
     # Plotting
     "generate_all_figures",
+    # Reproducible bundles
+    "RunBundle",
+    "create_bundle",
+    "save_bundle",
+    "load_bundle",
+    "replay",
     # Result containers
     "SaturationResult",
+    # Backend version detection
+    "backend_version",
+    "backend_version_info",
+    "all_backend_versions",
 ]
