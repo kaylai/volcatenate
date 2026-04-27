@@ -177,6 +177,11 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
     out.drop(columns=[c for c in _SECTION_HEADERS if c in out.columns],
              inplace=True, errors="ignore")
 
+    # --- Drop non-standard columns (e.g. MAGEC metadata: T_initial, P_initial, etc.) ---
+    _keep = set(col.STANDARD_COLUMNS) | {"Run_ID"}
+    out.drop(columns=[c for c in out.columns if c not in _keep],
+             inplace=True, errors="ignore")
+
     return out
 
 
