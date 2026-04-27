@@ -233,6 +233,10 @@ config = RunConfig(
 
 When set to `False`, raw tool output files (EVo YAML directories, MAGEC Excel/MATLAB scripts, VolFe solver debug files, etc.) are automatically cleaned up after each model run, keeping only the result DataFrames in memory. Set to `True` (default) to retain all files in the `raw_tool_output/` subdirectory for debugging or inspection.
 
+### Reproducible run bundles
+
+Set `RunConfig.save_bundle = "path/to/run_bundle.json"` to write a single JSON file capturing the resolved config, every input composition, model list, backend versions, caller git state, `pip freeze`, platform info, and free-text notes (`bundle_comments`). Replay with `volcatenate.replay("run_bundle.json")`. See [docs/run_bundles.md](docs/run_bundles.md) for full details and migration guidance for projects replacing a hand-rolled `manifest.txt`.
+
 ## Plotting
 
 The `volcatenate.plotting` module provides functions for generating publication-quality figures:

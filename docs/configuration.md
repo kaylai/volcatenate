@@ -47,7 +47,8 @@ magec:
 | `verbose` | `False` | Print progress to terminal. |
 | `log_file` | `""` | Write all output to this file. |
 | `show_progress` | `True` | Show rich progress bars. |
-| `save_bundle` | `""` | Path to save reproducible JSON bundle. |
+| `save_bundle` | `""` | Path to save reproducible JSON bundle. See [run_bundles.md](run_bundles.md). |
+| `bundle_comments` | `""` | Free-text notes recorded in the bundle's `comments` field (provenance only — ignored on replay). |
 
 ## Backend sections
 

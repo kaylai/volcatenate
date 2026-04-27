@@ -37,8 +37,9 @@ from __future__ import annotations
 import json
 import os
 import platform
+import subprocess
 import sys
-from dataclasses import dataclass, fields, asdict
+from dataclasses import dataclass, field, fields, asdict
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
@@ -82,6 +83,20 @@ class RunBundle:
         Per-backend version info captured at bundle creation — keys are
         backend names (e.g. ``"sulfurx"``) and values are the dicts
         returned by ``volcatenate.backend_version_info``.
+    caller_git_state : dict or None
+        Git state of the *caller's* working directory at bundle creation.
+        Keys: ``repo_path``, ``sha``, ``dirty``, ``branch``.  ``None`` if
+        the caller is not inside a git repository (or detection failed).
+    pip_freeze : str or None
+        Full ``pip freeze`` output as a single string at bundle creation.
+        ``None`` if pip freeze failed to run.
+    comments : str
+        Free-text user notes describing this run.  Set via
+        ``RunConfig.bundle_comments`` or the ``comments`` kwarg on
+        :func:`create_bundle`.  Defaults to empty string.
+    platform_info : dict
+        OS and Python implementation info (``system``, ``release``,
+        ``machine``, ``python_implementation``).
     """
 
     volcatenate_version: str
@@ -94,10 +109,16 @@ class RunBundle:
     satp_output: Optional[str] = None
     degassing_output_dir: Optional[str] = None
     backend_versions: dict = None  # type: ignore[assignment]
+    caller_git_state: Optional[dict] = None
+    pip_freeze: Optional[str] = None
+    comments: str = ""
+    platform_info: dict = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.backend_versions is None:
             self.backend_versions = {}
+        if self.platform_info is None:
+            self.platform_info = {}
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +221,88 @@ def _restore_nan(val: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Provenance helpers
+# ---------------------------------------------------------------------------
+
+def _detect_caller_git_state(start_dir: Optional[str] = None) -> Optional[dict]:
+    """Return ``{repo_path, sha, dirty, branch}`` for the git repo containing
+    ``start_dir`` (default: current working directory).
+
+    Returns ``None`` if not inside a git repo or if anything goes wrong.
+    Never raises.
+    """
+    cwd = start_dir or os.getcwd()
+    try:
+        # Walk up to find a .git directory or file (worktrees use a file)
+        repo_path: Optional[str] = None
+        d = os.path.abspath(cwd)
+        while True:
+            if os.path.exists(os.path.join(d, ".git")):
+                repo_path = d
+                break
+            parent = os.path.dirname(d)
+            if parent == d:
+                break
+            d = parent
+
+        if repo_path is None:
+            return None
+
+        def _git(*args: str) -> Optional[str]:
+            try:
+                out = subprocess.check_output(
+                    ["git", "-C", repo_path, *args],
+                    stderr=subprocess.DEVNULL,
+                )
+                return out.decode("utf-8", errors="replace").strip()
+            except (OSError, subprocess.CalledProcessError):
+                return None
+
+        sha = _git("rev-parse", "HEAD")
+        if sha is None:
+            return None
+
+        status = _git("status", "--porcelain")
+        dirty = bool(status)  # any output means dirty
+
+        branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+        if branch == "HEAD":
+            # Detached HEAD
+            branch = None
+
+        return {
+            "repo_path": repo_path,
+            "sha": sha,
+            "dirty": dirty,
+            "branch": branch,
+        }
+    except Exception:
+        return None
+
+
+def _capture_pip_freeze() -> Optional[str]:
+    """Return ``pip freeze`` output as a string, or ``None`` on failure."""
+    try:
+        out = subprocess.check_output(
+            [sys.executable, "-m", "pip", "freeze"],
+            stderr=subprocess.DEVNULL,
+        )
+        return out.decode("utf-8", errors="replace")
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _capture_platform_info() -> dict:
+    """Return basic OS / Python implementation info."""
+    return {
+        "system": platform.system(),
+        "release": platform.release(),
+        "machine": platform.machine(),
+        "python_implementation": platform.python_implementation(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Bundle creation
 # ---------------------------------------------------------------------------
 
@@ -210,6 +313,7 @@ def create_bundle(
     config: RunConfig,
     satp_output: Optional[str] = None,
     degassing_output_dir: Optional[str] = None,
+    comments: Optional[str] = None,
 ) -> RunBundle:
     """Create a RunBundle from run inputs.
 
@@ -236,6 +340,10 @@ def create_bundle(
     from volcatenate import __version__
     from volcatenate.versions import all_backend_versions
 
+    # Comments precedence: explicit kwarg > config.bundle_comments > "".
+    if comments is None:
+        comments = getattr(config, "bundle_comments", "") or ""
+
     return RunBundle(
         volcatenate_version=__version__,
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -247,6 +355,10 @@ def create_bundle(
         satp_output=satp_output,
         degassing_output_dir=degassing_output_dir,
         backend_versions=_sanitize_value(all_backend_versions()),
+        caller_git_state=_detect_caller_git_state(),
+        pip_freeze=_capture_pip_freeze(),
+        comments=comments,
+        platform_info=_capture_platform_info(),
     )
 
 
@@ -282,6 +394,10 @@ def save_bundle(bundle: RunBundle, path: str) -> str:
         "satp_output": bundle.satp_output,
         "degassing_output_dir": bundle.degassing_output_dir,
         "backend_versions": bundle.backend_versions,
+        "caller_git_state": bundle.caller_git_state,
+        "pip_freeze": bundle.pip_freeze,
+        "comments": bundle.comments,
+        "platform_info": bundle.platform_info,
     }
 
     with open(path, "w", encoding="utf-8") as fh:
@@ -317,6 +433,10 @@ def load_bundle(path: str) -> RunBundle:
         satp_output=data.get("satp_output"),
         degassing_output_dir=data.get("degassing_output_dir"),
         backend_versions=data.get("backend_versions") or {},
+        caller_git_state=data.get("caller_git_state"),
+        pip_freeze=data.get("pip_freeze"),
+        comments=data.get("comments", "") or "",
+        platform_info=data.get("platform_info") or {},
     )
 
 
