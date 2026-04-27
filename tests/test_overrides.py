@@ -1,6 +1,5 @@
 """Tests for per-sample config overrides."""
 
-import pytest
 from volcatenate.config import EVoConfig, MAGECConfig
 
 

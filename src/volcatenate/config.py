@@ -21,7 +21,7 @@ import os
 import platform
 import shutil
 from dataclasses import dataclass, field, fields, MISSING as dataclass_field_missing
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar
 
 
 # ── Auto-detection helpers ───────────────────────────────────────
@@ -302,7 +302,7 @@ class EVoConfig:
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"MORB": {"dp_max": 25}, "Fogo": {"p_start": 5000, "gas_system": "coh"}}
     # Unknown field names are warned and skipped at resolution time.
-    overrides: dict = field(default_factory=dict)
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -341,14 +341,14 @@ class MAGECConfig:
     p_final_kbar: float = 0.001
     n_steps: int = 100
 
-    # Per-sample overrides: {sample_name: {field_name: value}}
-    # Example: {"Fogo": {"p_start_kbar": 8.0}}
-    # Unknown field names are warned and skipped at resolution time.
-    overrides: dict = field(default_factory=dict)
-
     # Subprocess timeout (seconds) — if MAGEC hangs (e.g. saturation
     # pressure outside search range), it will be killed after this.
     timeout: int = 300
+
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"p_start_kbar": 8.0}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
