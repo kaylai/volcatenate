@@ -62,7 +62,7 @@ volfe:
   h2s_sol: Basalt_Hughes24  # H2S solubility constant
   ch4_sol: Basalt_Ardia13  # CH4 solubility constant
   co_sol: Basalt_Hughes24  # CO solubility constant
-  x_sol: Ar_Basalt_HughesIP  # Species X solubility constant
+  x_sol: Ar_Basalt_Hughes25  # Species X solubility constant
   c_spec_comp: Basalt  # CO2mol/CO32- speciation model
   h_spec_comp: MORB_HughesIP  # H2Omol/OH- speciation model
   scss: ONeill21hyd  # SCSS model
@@ -138,7 +138,7 @@ magec:
   o2_balance: 0  # (0) Total O balanced; (1) fixed fO2 buffer
   redox_option: Fe3+/FeT  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
   p_start_kbar: 3.0  # SatP search start pressure (kbar)
-  p_final_kbar: 0.001  # SatP search end pressure (kbar)
+  p_final_kbar: 0.01  # SatP search end pressure (kbar)
   n_steps: 100  # Number of pressure steps for SatP search
   timeout: 300  # MATLAB subprocess timeout (seconds)
   overrides: {}  # Per-sample overrides, e.g. {Fogo: {p_start_kbar: 8.0}}
