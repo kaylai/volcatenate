@@ -42,6 +42,35 @@ def _config(tmp_path: str) -> RunConfig:
     return RunConfig(output_dir=tmp_path, keep_raw_output=False, show_progress=False)
 
 
+def _fast_magec_config(tmp_path: str) -> RunConfig:
+    """MAGEC config with reduced n_steps and tighter pressure search.
+
+    Smoke tests just verify shape/sanity of output, not physics fidelity,
+    so a coarser pressure grid is fine here.
+    """
+    from volcatenate.config import MAGECConfig
+    return RunConfig(
+        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        magec=MAGECConfig(n_steps=20, p_start_kbar=3.0, p_final_kbar=0.001),
+    )
+
+
+def _fast_vesical_config(tmp_path: str) -> RunConfig:
+    from volcatenate.config import VESIcalConfig
+    return RunConfig(
+        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        vesical=VESIcalConfig(steps=21),
+    )
+
+
+def _fast_sulfurx_config(tmp_path: str) -> RunConfig:
+    from volcatenate.config import SulfurXConfig
+    return RunConfig(
+        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        sulfurx=SulfurXConfig(n_steps=100),
+    )
+
+
 def _assert_satp_sane(state: "pd.Series | None", model: str) -> None:
     assert state is not None, f"{model} returned None"
     assert isinstance(state, pd.Series), f"{model} must return pd.Series"
@@ -88,7 +117,7 @@ def test_vesical_degassing_smoke(tmp_path):
         pytest.skip("VESIcal backend not available")
 
     comp = composition_from_dict(KILAUEA)
-    df = backend.calculate_degassing(comp, _config(str(tmp_path)))
+    df = backend.calculate_degassing(comp, _fast_vesical_config(str(tmp_path)))
     _assert_degassing_sane(df, "VESIcal")
 
 
@@ -272,7 +301,7 @@ def test_sulfurx_degassing_smoke(tmp_path):
         pytest.skip("SulfurX not available")
 
     comp = composition_from_dict(_KILAUEA_SX)
-    df = backend.calculate_degassing(comp, _config(str(tmp_path)))
+    df = backend.calculate_degassing(comp, _fast_sulfurx_config(str(tmp_path)))
     _assert_degassing_sane(df, "SulfurX")
 
 
@@ -287,7 +316,7 @@ def test_magec_satp_smoke(tmp_path):
         pytest.skip("MAGEC not available (MATLAB or solver not found)")
 
     comp = composition_from_dict(KILAUEA)
-    state = backend.calculate_saturation_pressure(comp, _config(str(tmp_path)))
+    state = backend.calculate_saturation_pressure(comp, _fast_magec_config(str(tmp_path)))
     _assert_satp_sane(state, "MAGEC")
 
 
@@ -300,5 +329,5 @@ def test_magec_degassing_smoke(tmp_path):
         pytest.skip("MAGEC not available")
 
     comp = composition_from_dict(KILAUEA)
-    df = backend.calculate_degassing(comp, _config(str(tmp_path)))
+    df = backend.calculate_degassing(comp, _fast_magec_config(str(tmp_path)))
     _assert_degassing_sane(df, "MAGEC")
