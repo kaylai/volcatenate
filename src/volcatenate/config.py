@@ -20,8 +20,10 @@ import glob
 import os
 import platform
 import shutil
-from dataclasses import dataclass, field, fields, MISSING as dataclass_field_missing
+from dataclasses import dataclass, field, fields, replace, MISSING as dataclass_field_missing
 from typing import Any, Type, TypeVar
+
+from volcatenate.log import logger
 
 
 # ── Auto-detection helpers ───────────────────────────────────────
@@ -575,6 +577,33 @@ _SECTION_CLASSES: dict[str, Type] = {
     "sulfurx": SulfurXConfig,
     "dcompress": DCompressConfig,
 }
+
+
+def resolve_sample_config(cfg, sample: str):
+    """Return a copy of ``cfg`` with per-sample overrides applied.
+
+    Looks up ``cfg.overrides[sample]``; if absent or empty, returns the
+    original ``cfg`` unchanged. Otherwise returns a shallow
+    ``dataclasses.replace`` copy with each listed field set.
+
+    Unknown field names emit a warning via the volcatenate logger and
+    are skipped (the original value is kept). The ``overrides`` field
+    itself cannot be overridden — attempts are warned and skipped.
+    """
+    sample_overrides = cfg.overrides.get(sample, {})
+    if not sample_overrides:
+        return cfg
+    valid = {f.name for f in fields(type(cfg))}
+    resolved = replace(cfg)
+    for k, v in sample_overrides.items():
+        if k not in valid or k == "overrides":
+            logger.warning(
+                "[%s] Unknown override field '%s' for sample '%s' — ignored",
+                type(cfg).__name__, k, sample,
+            )
+            continue
+        setattr(resolved, k, v)
+    return resolved
 
 
 # ── YAML I/O ─────────────────────────────────────────────────────────
