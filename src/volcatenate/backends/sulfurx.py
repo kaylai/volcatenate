@@ -696,6 +696,43 @@ class Backend(ModelBackend):
             )
         if sx_path not in sys.path:
             sys.path.insert(0, sx_path)
+            self._log_version(sx_path)
+
+    @staticmethod
+    def _log_version(sx_path: str) -> None:
+        """Log the detected SulfurX version; advisory warnings for dirty/unknown/untested."""
+        from volcatenate.versions import backend_version_info
+
+        info = backend_version_info("sulfurx", path=sx_path)
+        if info["status"] == "no_version_info":
+            logger.warning(
+                "[SulfurX] Source at %s is not a git checkout — "
+                "version cannot be identified.", sx_path,
+            )
+            return
+
+        tag = info.get("tag") or "unknown"
+        suffix = " (uncommitted changes)" if info["dirty"] else ""
+        logger.info(
+            "[SulfurX] Using %s (%s)%s at %s",
+            tag, info["id"], suffix, sx_path,
+        )
+        if info["dirty"]:
+            logger.warning(
+                "[SulfurX] Working tree at %s has uncommitted changes — "
+                "results may not be reproducible.", sx_path,
+            )
+        if info["tag"] is None:
+            logger.warning(
+                "[SulfurX] Commit %s does not match any known release tag. "
+                "Results produced with this version have not been validated "
+                "against volcatenate's SulfurX wrapper.", info["id"],
+            )
+        elif not info["tested"]:
+            logger.warning(
+                "[SulfurX] %s has not been validated against volcatenate's "
+                "SulfurX wrapper. Proceeding anyway.", tag,
+            )
 
     # ----------------------------------------------------------------
     # Saturation pressure
