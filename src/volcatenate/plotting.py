@@ -222,7 +222,16 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
         return
 
     if p_norm:
-        x_pressure = data["P_bars"] / data["P_bars"].iloc[0]
+        p_init = data["P_bars"].iloc[0]
+        if pd.isna(p_init) or p_init == 0:
+            logger.warning(
+                "%s: P_bars.iloc[0] is zero or NaN — "
+                "falling back to absolute pressure for %s trace",
+                model, y_variable,
+            )
+            x_pressure = data["P_bars"]
+        else:
+            x_pressure = data["P_bars"] / p_init
     else:
         x_pressure = data["P_bars"]
 
@@ -1565,7 +1574,7 @@ def plot_cs_depth_profile(
 
     # Legend
     ax.legend(
-        loc="lower right", fontsize=9, edgecolor="k",
+        loc="lower left", fontsize=9, edgecolor="k",
         framealpha=0.9, title="Models", title_fontsize=10,
     )
 
@@ -1704,7 +1713,7 @@ def _draw_satp_boxes(
                 hatch = hatch_list[j % len(hatch_list)]
                 for box in bp["boxes"]:
                     box.set_facecolor(sty["color"])
-                    box.set_alpha(0.45)
+                    # box.set_alpha(0.45)
                     box.set_edgecolor("k")
                     box.set_linewidth(0.8)
                     if hatch:

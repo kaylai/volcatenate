@@ -42,6 +42,7 @@ _SHIMS_DIR = os.path.join(_DATA_DIR, "magec_shims")
 class Backend(ModelBackend):
 
     supports_batch_satp: bool = True
+    _logged_version_for: set[str] = set()
 
     @property
     def name(self) -> str:
@@ -87,6 +88,41 @@ class Backend(ModelBackend):
             raise FileNotFoundError(
                 f"MAGEC_Solver_v1b.p not found in '{solver_dir}'.\n"
                 f"Ensure the MAGEC solver .p file is in the configured directory."
+            )
+
+        if solver_dir not in self._logged_version_for:
+            self._log_version(solver_dir)
+            self._logged_version_for.add(solver_dir)
+
+    @staticmethod
+    def _log_version(solver_dir: str) -> None:
+        """Log the detected MAGEC version; advisory warnings for unknown/untested."""
+        from volcatenate.versions import backend_version_info
+
+        info = backend_version_info("magec", path=solver_dir)
+        if info["status"] == "no_version_info":
+            logger.warning(
+                "[MAGEC] No MAGEC_Solver_v*.p file found under %s — "
+                "version cannot be identified.", solver_dir,
+            )
+            return
+
+        tag = info.get("tag") or "unknown"
+        logger.info(
+            "[MAGEC] Using %s (sha256 %s, source=%s) at %s",
+            tag, info["id"], info["source"], solver_dir,
+        )
+        if info["source"] == "filename":
+            logger.warning(
+                "[MAGEC] Solver hash %s does not match any known release. "
+                "Filename suggests %s but results with this version have "
+                "not been validated against volcatenate's MAGEC wrapper.",
+                info["id"], tag,
+            )
+        elif not info["tested"]:
+            logger.warning(
+                "[MAGEC] %s has not been validated against volcatenate's "
+                "MAGEC wrapper. Proceeding anyway.", tag,
             )
 
     # ----------------------------------------------------------------

@@ -128,6 +128,18 @@ def calculate_saturation_pressure(
     comps = _resolve_compositions(compositions)
     model_names = _resolve_models(models)
 
+    # Save reproducible bundle if requested (only when called directly,
+    # not when called from run_comparison which saves its own bundle)
+    if config.save_bundle and _progress is None:
+        from volcatenate.reproducible import create_bundle, save_bundle
+        bundle = create_bundle(
+            run_type="saturation_pressure",
+            compositions=comps,
+            models=model_names,
+            config=config,
+        )
+        save_bundle(bundle, config.save_bundle)
+
     total_iters = len(model_names) * len(comps)
     _progress, owns_progress = _init_progress(
         config, _progress, total_iters,
@@ -192,7 +204,10 @@ def calculate_saturation_pressure(
             for comp, state in zip(comps, states):
                 row: dict = {"Sample": comp.sample, "Reservoir": comp.reservoir}
                 if state is not None:
-                    row.update(state.to_dict())
+                    state_dict = state.to_dict()
+                    state_dict.pop("Sample", None)
+                    state_dict.pop("Reservoir", None)
+                    row.update(state_dict)
                     p = state.get(col.P_BARS, np.nan)
                     logger.info("    %s: %.1f bar", comp.sample, p)
                 else:
@@ -258,6 +273,18 @@ def calculate_degassing(
     comp = comps[0]
 
     model_names = _resolve_models(models)
+
+    # Save reproducible bundle if requested (only when called directly)
+    if config.save_bundle and _progress is None:
+        from volcatenate.reproducible import create_bundle, save_bundle
+        bundle = create_bundle(
+            run_type="degassing",
+            compositions=[comp],
+            models=model_names,
+            config=config,
+        )
+        save_bundle(bundle, config.save_bundle)
+
     results: dict[str, pd.DataFrame] = {}
 
     _progress, owns_progress = _init_progress(
@@ -475,6 +502,22 @@ def run_comparison(
         _resolve_compositions(degassing_compositions)
         if degassing_compositions is not None else []
     )
+
+    # Save reproducible bundle if requested
+    if config.save_bundle:
+        from volcatenate.reproducible import create_bundle, save_bundle
+        # Use the union of all compositions for the bundle
+        all_comps = satp_comps if satp_comps else degas_comps
+        bundle = create_bundle(
+            run_type="comparison",
+            compositions=all_comps,
+            models=model_names,
+            config=config,
+            satp_output=satp_output,
+            degassing_output_dir=degassing_output_dir,
+        )
+        save_bundle(bundle, config.save_bundle)
+
     total_work = n_models * len(satp_comps) + n_models * len(degas_comps)
 
     with VolcProgress(

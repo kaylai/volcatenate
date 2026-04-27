@@ -272,6 +272,7 @@ class EVoConfig:
     p_stop: int = 1                  # bar
     wgt: float = 0.00001             # Initial gas weight fraction
     loss_frac: float = 0.9999        # Gas loss fraction per step (open-system)
+    run_type: str = "closed"           # 'closed' or 'open' (open requires loss_frac < 1)
 
     # Volatile initialization as atomic mass fractions (ppm).
     # Only used when atomic_mass_set = True.
@@ -398,6 +399,7 @@ class RunConfig:
     verbose: bool = False
     log_file: str = ""
     show_progress: bool = True
+    save_bundle: str = ""
 
     vesical: VESIcalConfig = field(default_factory=VESIcalConfig)
     volfe: VolFeConfig = field(default_factory=VolFeConfig)
@@ -444,6 +446,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("_top", "verbose"):             "Print progress to terminal",
     ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
     ("_top", "show_progress"):       "Show rich progress bars (True/False)",
+    ("_top", "save_bundle"):         "Path to save reproducible JSON bundle (empty = don't save)",
     # VESIcal
     ("vesical", "model"):            "Solubility model name",
     ("vesical", "steps"):            "Number of degassing steps",
@@ -503,6 +506,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("evo", "p_stop"):               "Final pressure (bar)",
     ("evo", "wgt"):                  "Initial gas weight fraction",
     ("evo", "loss_frac"):            "Gas loss fraction per step (open-system)",
+    ("evo", "run_type"):             "'closed' (default) or 'open' — open-system requires loss_frac < 1",
     ("evo", "atomic_h"):             "Atomic H (ppm) — only used when atomic_mass_set=true",
     ("evo", "atomic_c"):             "Atomic C (ppm) — only used when atomic_mass_set=true",
     ("evo", "atomic_s"):             "Atomic S (ppm) — only used when atomic_mass_set=true",
