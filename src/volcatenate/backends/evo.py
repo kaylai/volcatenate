@@ -21,7 +21,7 @@ from volcatenate.log import logger
 
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.evo_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 
@@ -123,7 +123,7 @@ class Backend(ModelBackend):
         import evo
         _patch_evo_prompts()
 
-        cfg = config.evo
+        cfg = resolve_sample_config(config.evo, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_satp")
         os.makedirs(work_dir, exist_ok=True)
 
@@ -175,7 +175,7 @@ class Backend(ModelBackend):
         import evo
         _patch_evo_prompts()
 
-        cfg = config.evo
+        cfg = resolve_sample_config(config.evo, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_degas")
         os.makedirs(work_dir, exist_ok=True)
 

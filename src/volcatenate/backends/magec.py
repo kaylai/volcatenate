@@ -25,7 +25,7 @@ import pandas as pd
 from volcatenate.backends._base import ModelBackend
 from volcatenate import columns as col
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.magec_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger
@@ -136,7 +136,7 @@ class Backend(ModelBackend):
         self._check_matlab(config)
         self._check_solver(config)
 
-        cfg = config.magec
+        cfg = resolve_sample_config(config.magec, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         os.makedirs(work_dir, exist_ok=True)
 
@@ -222,12 +222,15 @@ class Backend(ModelBackend):
         results: list[pd.Series | None] = [None] * len(comps)
         all_rows: list[dict] = []
         comp_index: dict[str, int] = {}  # sample name → index in comps
+        sample_cfgs: dict[str, Any] = {}  # sample name → resolved cfg
 
         for i, comp in enumerate(comps):
             try:
-                rows = _build_sample_input_rows(comp, cfg)
+                sample_cfg = resolve_sample_config(config.magec, comp.sample)
+                rows = _build_sample_input_rows(comp, sample_cfg)
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
+                sample_cfgs[comp.sample] = sample_cfg
             except Exception as exc:
                 logger.warning(
                     "[MAGEC] Skipping %s in batch: %s", comp.sample, exc,
@@ -272,11 +275,13 @@ class Backend(ModelBackend):
                 df["Run_ID"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
             )
         else:
-            # Fallback: assign by row count (n_steps per sample, in order)
+            # Fallback: assign by row count (n_steps per sample, in order).
+            # Each sample's row count uses its resolved config so per-sample
+            # n_steps overrides line up correctly.
             sample_labels: list[str] = []
             for comp in comps:
                 if comp.sample in comp_index:
-                    sample_labels.extend([comp.sample] * cfg.n_steps)
+                    sample_labels.extend([comp.sample] * sample_cfgs[comp.sample].n_steps)
             if len(sample_labels) == len(df):
                 df["_sample"] = sample_labels
             else:
@@ -326,7 +331,7 @@ class Backend(ModelBackend):
         self._check_matlab(config)
         self._check_solver(config)
 
-        cfg = config.magec
+        cfg = resolve_sample_config(config.magec, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         os.makedirs(work_dir, exist_ok=True)
 
@@ -476,9 +481,9 @@ def _build_sample_input_rows(
     bulk_c = comp.CO2 * norm * _CO2_TO_C
     bulk_s = comp.S   * norm
 
-    # Pressure grid (log-spaced, high -> low)
-    # Allow per-sample override of the starting pressure.
-    p_start = cfg.p_start_overrides.get(comp.sample, cfg.p_start_kbar)
+    # Pressure grid (log-spaced, high -> low). Per-sample overrides
+    # are already applied to cfg via resolve_sample_config.
+    p_start = cfg.p_start_kbar
     p_grid = np.logspace(
         np.log10(p_start),
         np.log10(cfg.p_final_kbar),

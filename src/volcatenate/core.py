@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import warnings
+from dataclasses import fields as _dc_fields
 from typing import Optional, Union
 
 import numpy as np
@@ -26,6 +27,32 @@ from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_sta
 from volcatenate.log import logger, setup_logging
 from volcatenate.progress import VolcProgress
 from volcatenate.result import SaturationResult
+
+
+def _validate_override_sample_names(config, sample_names):
+    """Raise ValueError if any backend overrides reference a sample
+    name not in ``sample_names``.
+    """
+    known = set(sample_names)
+    bad = []
+    # Auto-discover backends that opt in by carrying an `overrides` dict.
+    # Today: evo, magec.  Future backends with `overrides` are picked up
+    # without changes here.
+    for f in _dc_fields(config):
+        backend_cfg = getattr(config, f.name)
+        if not hasattr(backend_cfg, "overrides"):
+            continue
+        for sample in backend_cfg.overrides.keys():
+            if sample not in known:
+                bad.append((f.name, sample))
+    if bad:
+        msg = "; ".join(
+            f"{b}.overrides references unknown sample '{s}'"
+            for b, s in bad
+        )
+        raise ValueError(
+            f"{msg}. Known samples: {sorted(known)}"
+        )
 
 
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
@@ -502,6 +529,9 @@ def run_comparison(
         _resolve_compositions(degassing_compositions)
         if degassing_compositions is not None else []
     )
+
+    all_sample_names = [c.sample for c in satp_comps] + [c.sample for c in degas_comps]
+    _validate_override_sample_names(config, all_sample_names)
 
     # Save reproducible bundle if requested
     if config.save_bundle:

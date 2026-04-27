@@ -20,8 +20,10 @@ import glob
 import os
 import platform
 import shutil
-from dataclasses import dataclass, field, fields, MISSING as dataclass_field_missing
-from typing import Type, TypeVar
+from dataclasses import dataclass, field, fields, replace, MISSING as dataclass_field_missing
+from typing import Any, Type, TypeVar
+
+from volcatenate.log import logger
 
 
 # ── Auto-detection helpers ───────────────────────────────────────
@@ -299,6 +301,11 @@ class EVoConfig:
     fo2_model: str = "kc1991"
     fmq_model: str = "frost1991"
 
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"MORB": {"dp_max": 25}, "Fogo": {"p_start": 5000, "gas_system": "coh"}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+
 
 @dataclass
 class MAGECConfig:
@@ -336,14 +343,14 @@ class MAGECConfig:
     p_final_kbar: float = 0.001
     n_steps: int = 100
 
-    # Per-sample pressure overrides — keys are sample names, values are
-    # starting pressures in kbar.  Samples not listed here use ``p_start_kbar``.
-    # Example:  {"Fogo": 8.0, "Fuego": 5.0}
-    p_start_overrides: dict = field(default_factory=dict)
-
     # Subprocess timeout (seconds) — if MAGEC hangs (e.g. saturation
     # pressure outside search range), it will be killed after this.
     timeout: int = 300
+
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"p_start_kbar": 8.0}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -525,6 +532,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("evo", "density_model"):        "",
     ("evo", "fo2_model"):            "",
     ("evo", "fmq_model"):            "",
+    ("evo", "overrides"):            "Per-sample overrides, e.g. {MORB: {dp_max: 25}}",
     # MAGEC
     ("magec", "solver_dir"):         "Path to MAGEC_Solver_v1b.p directory",
     ("magec", "matlab_bin"):         "Path to MATLAB binary",
@@ -546,7 +554,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("magec", "p_start_kbar"):       "SatP search start pressure (kbar)",
     ("magec", "p_final_kbar"):       "SatP search end pressure (kbar)",
     ("magec", "n_steps"):            "Number of pressure steps for SatP search",
-    ("magec", "p_start_overrides"):  "Per-sample start pressure overrides (kbar), e.g. {Fogo: 8.0}",
+    ("magec", "overrides"):          "Per-sample overrides, e.g. {Fogo: {p_start_kbar: 8.0}}",
     ("magec", "timeout"):            "MATLAB subprocess timeout (seconds)",
     # SulfurX
     ("sulfurx", "path"):             "Path to SulfurX installation",
@@ -569,6 +577,33 @@ _SECTION_CLASSES: dict[str, Type] = {
     "sulfurx": SulfurXConfig,
     "dcompress": DCompressConfig,
 }
+
+
+def resolve_sample_config(cfg, sample: str):
+    """Return a copy of ``cfg`` with per-sample overrides applied.
+
+    Looks up ``cfg.overrides[sample]``; if absent or empty, returns the
+    original ``cfg`` unchanged. Otherwise returns a shallow
+    ``dataclasses.replace`` copy with each listed field set.
+
+    Unknown field names emit a warning via the volcatenate logger and
+    are skipped (the original value is kept). The ``overrides`` field
+    itself cannot be overridden — attempts are warned and skipped.
+    """
+    sample_overrides = cfg.overrides.get(sample, {})
+    if not sample_overrides:
+        return cfg
+    valid = {f.name for f in fields(type(cfg))}
+    resolved = replace(cfg, overrides=dict(cfg.overrides))
+    for k, v in sample_overrides.items():
+        if k not in valid or k == "overrides":
+            logger.warning(
+                "[%s] Unknown override field '%s' for sample '%s' — ignored",
+                type(cfg).__name__, k, sample,
+            )
+            continue
+        setattr(resolved, k, v)
+    return resolved
 
 
 # ── YAML I/O ─────────────────────────────────────────────────────────
@@ -702,6 +737,24 @@ def _build_dataclass(cls: Type[T], data: dict) -> T:
     return cls(**filtered)
 
 
+def _migrate_deprecated_keys(section_name: str, section_data: dict) -> None:
+    """Mutate ``section_data`` in place to fold deprecated keys into
+    their replacements. Emits a deprecation warning for each migration.
+    """
+    if section_name == "magec" and "p_start_overrides" in section_data:
+        old = section_data.pop("p_start_overrides") or {}
+        new = section_data.setdefault("overrides", {})
+        for sample, p_start in old.items():
+            # New-shape entry wins on conflict.
+            entry = new.setdefault(sample, {})
+            entry.setdefault("p_start_kbar", p_start)
+        logger.warning(
+            "magec.p_start_overrides is deprecated; folded into "
+            "magec.overrides as '<sample>: {p_start_kbar: <value>}'. "
+            "Update your config to silence this warning."
+        )
+
+
 def load_config(path: str) -> RunConfig:
     """Load a RunConfig from a YAML file.
 
@@ -740,6 +793,8 @@ def load_config(path: str) -> RunConfig:
     # Sub-config sections
     for section_name, cls in _SECTION_CLASSES.items():
         if section_name in raw and isinstance(raw[section_name], dict):
-            kwargs[section_name] = _build_dataclass(cls, raw[section_name])
+            section_data = raw[section_name]
+            _migrate_deprecated_keys(section_name, section_data)
+            kwargs[section_name] = _build_dataclass(cls, section_data)
 
     return RunConfig(**kwargs)
