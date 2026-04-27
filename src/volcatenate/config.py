@@ -299,6 +299,11 @@ class EVoConfig:
     fo2_model: str = "kc1991"
     fmq_model: str = "frost1991"
 
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"MORB": {"dp_max": 25}, "Fogo": {"p_start": 5000, "gas_system": "coh"}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict = field(default_factory=dict)
+
 
 @dataclass
 class MAGECConfig:
@@ -336,10 +341,10 @@ class MAGECConfig:
     p_final_kbar: float = 0.001
     n_steps: int = 100
 
-    # Per-sample pressure overrides — keys are sample names, values are
-    # starting pressures in kbar.  Samples not listed here use ``p_start_kbar``.
-    # Example:  {"Fogo": 8.0, "Fuego": 5.0}
-    p_start_overrides: dict = field(default_factory=dict)
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"p_start_kbar": 8.0}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict = field(default_factory=dict)
 
     # Subprocess timeout (seconds) — if MAGEC hangs (e.g. saturation
     # pressure outside search range), it will be killed after this.
@@ -525,6 +530,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("evo", "density_model"):        "",
     ("evo", "fo2_model"):            "",
     ("evo", "fmq_model"):            "",
+    ("evo", "overrides"):            "Per-sample overrides, e.g. {MORB: {dp_max: 25}}",
     # MAGEC
     ("magec", "solver_dir"):         "Path to MAGEC_Solver_v1b.p directory",
     ("magec", "matlab_bin"):         "Path to MATLAB binary",
@@ -546,7 +552,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("magec", "p_start_kbar"):       "SatP search start pressure (kbar)",
     ("magec", "p_final_kbar"):       "SatP search end pressure (kbar)",
     ("magec", "n_steps"):            "Number of pressure steps for SatP search",
-    ("magec", "p_start_overrides"):  "Per-sample start pressure overrides (kbar), e.g. {Fogo: 8.0}",
+    ("magec", "overrides"):          "Per-sample overrides, e.g. {Fogo: {p_start_kbar: 8.0}}",
     ("magec", "timeout"):            "MATLAB subprocess timeout (seconds)",
     # SulfurX
     ("sulfurx", "path"):             "Path to SulfurX installation",
