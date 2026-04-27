@@ -25,7 +25,7 @@ import pandas as pd
 from volcatenate.backends._base import ModelBackend
 from volcatenate import columns as col
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.magec_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger
@@ -136,7 +136,7 @@ class Backend(ModelBackend):
         self._check_matlab(config)
         self._check_solver(config)
 
-        cfg = config.magec
+        cfg = resolve_sample_config(config.magec, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         os.makedirs(work_dir, exist_ok=True)
 
@@ -225,7 +225,8 @@ class Backend(ModelBackend):
 
         for i, comp in enumerate(comps):
             try:
-                rows = _build_sample_input_rows(comp, cfg)
+                sample_cfg = resolve_sample_config(config.magec, comp.sample)
+                rows = _build_sample_input_rows(comp, sample_cfg)
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
             except Exception as exc:
@@ -326,7 +327,7 @@ class Backend(ModelBackend):
         self._check_matlab(config)
         self._check_solver(config)
 
-        cfg = config.magec
+        cfg = resolve_sample_config(config.magec, comp.sample)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
         os.makedirs(work_dir, exist_ok=True)
 
@@ -476,9 +477,9 @@ def _build_sample_input_rows(
     bulk_c = comp.CO2 * norm * _CO2_TO_C
     bulk_s = comp.S   * norm
 
-    # Pressure grid (log-spaced, high -> low)
-    # Allow per-sample override of the starting pressure.
-    p_start = cfg.p_start_overrides.get(comp.sample, cfg.p_start_kbar)
+    # Pressure grid (log-spaced, high -> low). Per-sample overrides
+    # are already applied to cfg via resolve_sample_config.
+    p_start = cfg.p_start_kbar
     p_grid = np.logspace(
         np.log10(p_start),
         np.log10(cfg.p_final_kbar),

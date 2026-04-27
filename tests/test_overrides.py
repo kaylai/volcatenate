@@ -174,6 +174,15 @@ def test_evo_backend_uses_global_default_for_unlisted_sample(tmp_path, morb_comp
     assert env["DP_MAX"] == 100  # global default
 
 
+def test_magec_resolve_changes_p_start_kbar():
+    """resolve_sample_config applies overrides to MAGECConfig fields."""
+    cfg = MAGECConfig(overrides={"Fogo": {"p_start_kbar": 8.0}})
+    resolved = resolve_sample_config(cfg, "Fogo")
+    assert resolved.p_start_kbar == 8.0
+    # Unmatched sample falls through to default
+    assert resolve_sample_config(cfg, "MORB").p_start_kbar == 3.0
+
+
 def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
     pytest.importorskip("evo")
     from volcatenate.backends.evo import Backend
