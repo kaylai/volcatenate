@@ -1,10 +1,15 @@
 """Tests for per-sample config overrides."""
 
 import logging
+import os
+from unittest.mock import patch
 
+import pandas as pd
 import pytest
+import yaml
 
-from volcatenate.config import EVoConfig, MAGECConfig, resolve_sample_config
+from volcatenate.composition import MeltComposition
+from volcatenate.config import EVoConfig, MAGECConfig, RunConfig, resolve_sample_config
 
 
 def test_evo_config_has_overrides_field():
@@ -94,15 +99,6 @@ def test_resolve_does_not_alias_overrides_dict():
 
 # ── End-to-end EVo backend tests ────────────────────────────────────
 
-import os
-from unittest.mock import patch
-
-import pandas as pd
-import yaml
-
-from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
-
 
 @pytest.fixture
 def morb_comp():
@@ -118,15 +114,18 @@ def morb_comp():
 
 
 def _written_env(tmp_path, sample):
-    """Locate the env.yaml written by the EVo backend for `sample`."""
+    """Locate the env.yaml written by the EVo backend for `sample`.
+
+    Asserts that exactly one of the degassing or satp env.yaml files exists,
+    so a test can never silently match the wrong one.
+    """
     candidates = [
         tmp_path / "raw_tool_output" / f"{sample}_evo_degas" / "env.yaml",
         tmp_path / "raw_tool_output" / f"{sample}_evo_satp" / "env.yaml",
     ]
-    for p in candidates:
-        if p.exists():
-            return yaml.safe_load(p.read_text())
-    raise AssertionError(f"No env.yaml found for {sample}")
+    found = [p for p in candidates if p.exists()]
+    assert len(found) == 1, f"Expected exactly 1 env.yaml for {sample}, found: {found}"
+    return yaml.safe_load(found[0].read_text())
 
 
 def test_evo_backend_applies_dp_max_override(tmp_path, morb_comp):
@@ -173,3 +172,26 @@ def test_evo_backend_uses_global_default_for_unlisted_sample(tmp_path, morb_comp
 
     env = _written_env(tmp_path, "MORB")
     assert env["DP_MAX"] == 100  # global default
+
+
+def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
+    pytest.importorskip("evo")
+    from volcatenate.backends.evo import Backend
+
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"MORB": {"dp_max": 25}}
+
+    def fake_run_evo(chem_path, env_path, out_yaml, folder):
+        os.makedirs(folder, exist_ok=True)
+        pd.DataFrame({
+            "P": [3000.0],
+            "T(K)": [1473.15],
+            "fO2": [-8.0],
+            "F": [1.0],
+        }).to_csv(os.path.join(folder, "dgs_output_satp.csv"), index=False)
+
+    with patch("evo.run_evo", side_effect=fake_run_evo):
+        Backend().calculate_saturation_pressure(morb_comp, config)
+
+    env = _written_env(tmp_path, "MORB")
+    assert env["DP_MAX"] == 25
