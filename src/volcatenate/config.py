@@ -162,6 +162,11 @@ class VESIcalConfig:
     final_pressure: float = 1.0       # bar
     fractionate_vapor: float = 0.0    # 0 = closed, 1 = open
 
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"steps": 50, "final_pressure": 10.0}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+
 
 @dataclass
 class VolFeConfig:
@@ -236,6 +241,11 @@ class VolFeConfig:
     k_osg: str = "Ohmoto97"             # SO2 equilibrium (0.5S2 + O2 = SO2)
     k_cohg: str = "Ohmoto97"            # CH4 equilibrium (CH4 + 2O2 = CO2 + 2H2O)
     k_ocsg: str = "Moussallam19"         # OCS equilibrium
+
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"gassing_style": "open", "scss": "Fortin15"}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -375,6 +385,11 @@ class SulfurXConfig:
     sigma: float = 0.005              # log10fO2 tolerance for redox calculation
     sulfide_pre: int = 0              # 0 = no sulfide precipitation, 1 = enabled
 
+    # Per-sample overrides: {sample_name: {field_name: value}}
+    # Example: {"Fogo": {"n_steps": 100, "sigma": 0.001}}
+    # Unknown field names are warned and skipped at resolution time.
+    overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+
 
 @dataclass
 class DCompressConfig:
@@ -462,6 +477,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("vesical", "steps"):            "Number of degassing steps",
     ("vesical", "final_pressure"):   "bar",
     ("vesical", "fractionate_vapor"): "0 = closed-system, 1 = open-system",
+    ("vesical", "overrides"):        "Per-sample overrides, e.g. {Fogo: {steps: 50}}",
     # VolFe
     ("volfe", "sulfur_saturation"):  "",
     ("volfe", "graphite_saturation"): "",
@@ -502,6 +518,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("volfe", "k_osg"):              "SO2 equilibrium constant (0.5S2 + O2 = SO2)",
     ("volfe", "k_cohg"):             "CH4 equilibrium constant (CH4 + 2O2 = CO2 + 2H2O)",
     ("volfe", "k_ocsg"):             "OCS equilibrium constant",
+    ("volfe", "overrides"):          "Per-sample overrides, e.g. {Fogo: {gassing_style: open}}",
     # EVo
     ("evo", "gas_system"):           "'cohs', 'coh', 'cos', etc.",
     ("evo", "fo2_buffer"):           "'FMQ', 'NNO', etc.",
@@ -569,6 +586,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("sulfurx", "s_fe_choice"):      "S speciation: 0=Nash, 1=O'Neill&Mavrogenes",
     ("sulfurx", "sigma"):            "log10fO2 tolerance for redox calculation",
     ("sulfurx", "sulfide_pre"):      "0 = no sulfide precipitation, 1 = enabled",
+    ("sulfurx", "overrides"):        "Per-sample overrides, e.g. {Fogo: {n_steps: 100}}",
 }
 
 # Maps section name → dataclass type (for load_config)

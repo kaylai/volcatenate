@@ -20,7 +20,7 @@ from scipy.optimize import brentq
 from volcatenate.log import logger
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.sulfurx_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.iron import fe3fet_kc91
@@ -743,7 +743,7 @@ class Backend(ModelBackend):
         config: RunConfig,
     ) -> pd.Series | None:
         self._ensure_on_path(config)
-        cfg = config.sulfurx
+        cfg = resolve_sample_config(config.sulfurx, comp.sample)
 
         tk = comp.T_C + 273.15
         h2o_wt = comp.H2O
@@ -796,8 +796,9 @@ class Backend(ModelBackend):
     ) -> pd.DataFrame:
         self._ensure_on_path(config)
 
+        cfg = resolve_sample_config(config.sulfurx, comp.sample)
         with _quiet_sulfurx():
-            df = _run_degassing(comp, config.sulfurx)
+            df = _run_degassing(comp, cfg)
 
         # Standardize columns
         df = convert(df)

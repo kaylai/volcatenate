@@ -18,7 +18,7 @@ from volcatenate.log import logger
 
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.volfe_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 
@@ -86,7 +86,7 @@ class Backend(ModelBackend):
     ) -> pd.Series | None:
         import VolFe as vf
 
-        cfg = config.volfe
+        cfg = resolve_sample_config(config.volfe, comp.sample)
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_satp")
@@ -124,7 +124,7 @@ class Backend(ModelBackend):
     ) -> pd.DataFrame:
         import VolFe as vf
 
-        cfg = config.volfe
+        cfg = resolve_sample_config(config.volfe, comp.sample)
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_degas")
