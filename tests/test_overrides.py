@@ -61,6 +61,9 @@ def test_resolve_skips_attempts_to_override_overrides_field(caplog):
     cfg = EVoConfig(overrides={"MORB": {"overrides": {"X": {"y": 1}}}})
     with caplog.at_level(logging.WARNING, logger="volcatenate"):
         out = resolve_sample_config(cfg, "MORB")
+    # Guard preserved the original — the inner {"X": {"y": 1}} value did not become
+    # the new `overrides` dict (which would happen if the guard had been bypassed).
+    assert "X" not in out.overrides
     assert out.overrides == cfg.overrides
     assert "overrides" in caplog.text
 
@@ -77,3 +80,11 @@ def test_resolve_works_for_magec_config():
     out = resolve_sample_config(cfg, "Fogo")
     assert out.p_start_kbar == 8.0
     assert cfg.p_start_kbar == 3.0
+
+
+def test_resolve_does_not_alias_overrides_dict():
+    """Mutating the resolved copy's overrides must not leak into the original."""
+    cfg = EVoConfig(overrides={"MORB": {"dp_max": 25}})
+    out = resolve_sample_config(cfg, "MORB")
+    out.overrides["NewSample"] = {"dp_max": 50}
+    assert "NewSample" not in cfg.overrides

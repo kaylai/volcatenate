@@ -594,7 +594,7 @@ def resolve_sample_config(cfg, sample: str):
     if not sample_overrides:
         return cfg
     valid = {f.name for f in fields(type(cfg))}
-    resolved = replace(cfg)
+    resolved = replace(cfg, overrides=dict(cfg.overrides))
     for k, v in sample_overrides.items():
         if k not in valid or k == "overrides":
             logger.warning(
