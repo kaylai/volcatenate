@@ -750,7 +750,7 @@ def _migrate_deprecated_keys(section_name: str, section_data: dict) -> None:
             entry.setdefault("p_start_kbar", p_start)
         logger.warning(
             "magec.p_start_overrides is deprecated; folded into "
-            "magec.overrides as {sample: {p_start_kbar: value}}. "
+            "magec.overrides as '<sample>: {p_start_kbar: <value>}'. "
             "Update your config to silence this warning."
         )
 
