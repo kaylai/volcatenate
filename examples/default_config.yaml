@@ -37,7 +37,6 @@ log_file: ""  # Write all output to this file (empty = no log file)
 show_progress: true  # Show rich progress bars (True/False)
 
 vesical:
-  model: IaconoMarziano  # Solubility model name
   steps: 101  # Number of degassing steps
   final_pressure: 1.0  # bar
   fractionate_vapor: 0.0  # 0 = closed-system, 1 = open-system

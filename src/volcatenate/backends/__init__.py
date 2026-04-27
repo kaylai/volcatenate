@@ -25,9 +25,8 @@ from volcatenate.backends._base import ModelBackend
 # Maps display name (e.g. "EVo") → Backend instance
 _REGISTRY: dict[str, ModelBackend] = {}
 
-# (module_name, class_name) for each backend
+# (module_name, class_name) for each backend that takes no constructor args.
 _BACKEND_MODULES = [
-    ("volcatenate.backends.vesical",   "Backend"),
     ("volcatenate.backends.volfe",     "Backend"),
     ("volcatenate.backends.evo",       "Backend"),
     ("volcatenate.backends.magec",     "Backend"),
@@ -57,6 +56,17 @@ def _discover() -> None:
                 stacklevel=2,
             )
 
+    # VESIcal has no default solubility model — register one backend per variant.
+    try:
+        from volcatenate.backends.vesical import Backend as VESIcalBackend, VARIANT_MAP
+        for display_name, internal_name in VARIANT_MAP.items():
+            _REGISTRY[display_name] = VESIcalBackend(variant=internal_name)
+    except ImportError as exc:
+        warnings.warn(
+            f"Could not load VESIcal backend: {exc}",
+            stacklevel=2,
+        )
+
 
 def get_backend(name: str) -> ModelBackend:
     """Return the backend instance for the given model name.
@@ -81,19 +91,16 @@ def get_backend(name: str) -> ModelBackend:
     if name in _REGISTRY:
         return _REGISTRY[name]
 
-    # Dynamic VESIcal variant lookup
-    if name.startswith("VESIcal_"):
-        from volcatenate.backends.vesical import Backend as VESIcalBackend, VARIANT_MAP
-        if name in VARIANT_MAP:
-            instance = VESIcalBackend(variant=VARIANT_MAP[name])
-            _REGISTRY[name] = instance  # cache for reuse
-            return instance
+    if name == "VESIcal":
+        raise KeyError(
+            "VESIcal has no default solubility model — request a named "
+            "variant instead: 'VESIcal_Iacono', 'VESIcal_Dixon', "
+            "'VESIcal_MS', 'VESIcal_Liu', or 'VESIcal_ShishkinaIdealMixing'."
+        )
 
     raise KeyError(
         f"Unknown backend {name!r}. "
-        f"Available: {sorted(_REGISTRY.keys())}. "
-        f"VESIcal variants: VESIcal_MS, VESIcal_Dixon, VESIcal_Iacono, "
-        f"VESIcal_Liu, VESIcal_ShishkinaIdealMixing"
+        f"Available: {sorted(_REGISTRY.keys())}."
     )
 
 

@@ -70,11 +70,12 @@ show_progress: true               # Show rich progress bars during model runs
 
 # ── VESIcal ─────────────────────────────────────────────────────
 # VESIcal wraps multiple solubility models (IaconoMarziano, Dixon,
-# MagmaSat).  volcatenate treats each as a separate backend:
-#   VESIcal_Iacono, VESIcal_Dixon, VESIcal_MS
+# MagmaSat).  volcatenate treats each as a separate backend; pick
+# which one(s) to run by passing the corresponding name to the
+# calculate_* functions: VESIcal_Iacono, VESIcal_Dixon, VESIcal_MS,
+# VESIcal_Liu, VESIcal_ShishkinaIdealMixing.
 
 vesical:
-  model: IaconoMarziano          # Solubility model: IaconoMarziano, Dixon, MagmaSat
   steps: 101                     # Number of degassing pressure steps
   final_pressure: 1.0            # Final pressure (bar)
   fractionate_vapor: 0.0         # 0.0 = closed-system, 1.0 = open-system

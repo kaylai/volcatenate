@@ -65,8 +65,12 @@ import volcatenate
 print(volcatenate.config.default_config_path())
 ```
 
-The currently-supported backends are: **VESIcal**, **VolFe**, **EVo**,
-**MAGEC**, **SulfurX**, and **DCompress** (stub).
+The currently-supported backends are: **VolFe**, **EVo**, **MAGEC**,
+**SulfurX**, **DCompress** (stub), and **VESIcal** (split into one named
+backend per solubility model: `VESIcal_Iacono`, `VESIcal_Dixon`,
+`VESIcal_MS`, `VESIcal_Liu`, `VESIcal_ShishkinaIdealMixing`). Pick the
+VESIcal variant by passing the name to the calculate functions —
+there is no `vesical.model` config field.
 
 ## Per-sample overrides
 
@@ -121,6 +125,20 @@ magec:
 magec:
   overrides:
     Fogo: {p_start_kbar: 8.0}
+```
+
+VESIcal previously had a `vesical.model: <SolubilityModel>` field that picked
+which solubility model to use for the bare `"VESIcal"` backend. The bare
+backend has been removed — request a named variant directly. Configs with
+the old field load with a deprecation warning and the field is ignored:
+
+```yaml
+# Old (still loads, but deprecated and ignored):
+vesical:
+  model: IaconoMarziano
+
+# New: drop the field, then request the variant by name:
+#   volcatenate.calculate_degassing(comp, models=["VESIcal_Iacono", ...])
 ```
 
 ## Loading and saving

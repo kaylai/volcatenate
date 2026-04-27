@@ -151,9 +151,13 @@ def _find_sulfurx() -> str:
 
 @dataclass
 class VESIcalConfig:
-    """VESIcal model configuration."""
+    """VESIcal model configuration.
 
-    model: str = "IaconoMarziano"
+    The solubility model is selected by the backend name passed to
+    ``calculate_*`` (e.g. ``"VESIcal_Iacono"``, ``"VESIcal_Dixon"``),
+    not by config.
+    """
+
     steps: int = 101
     final_pressure: float = 1.0       # bar
     fractionate_vapor: float = 0.0    # 0 = closed, 1 = open
@@ -455,7 +459,6 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("_top", "show_progress"):       "Show rich progress bars (True/False)",
     ("_top", "save_bundle"):         "Path to save reproducible JSON bundle (empty = don't save)",
     # VESIcal
-    ("vesical", "model"):            "Solubility model name",
     ("vesical", "steps"):            "Number of degassing steps",
     ("vesical", "final_pressure"):   "bar",
     ("vesical", "fractionate_vapor"): "0 = closed-system, 1 = open-system",
@@ -741,6 +744,16 @@ def _migrate_deprecated_keys(section_name: str, section_data: dict) -> None:
     """Mutate ``section_data`` in place to fold deprecated keys into
     their replacements. Emits a deprecation warning for each migration.
     """
+    if section_name == "vesical" and "model" in section_data:
+        section_data.pop("model")
+        logger.warning(
+            "vesical.model is deprecated and ignored; the VESIcal solubility "
+            "model is now selected by backend name (e.g. 'VESIcal_Iacono', "
+            "'VESIcal_Dixon', 'VESIcal_MS') passed to the calculate_* "
+            "functions. Remove vesical.model from your config to silence "
+            "this warning."
+        )
+
     if section_name == "magec" and "p_start_overrides" in section_data:
         old = section_data.pop("p_start_overrides") or {}
         new = section_data.setdefault("overrides", {})

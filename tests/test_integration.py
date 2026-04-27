@@ -68,7 +68,7 @@ def test_vesical_satp_smoke(tmp_path):
     pytest.importorskip("VESIcal")
     from volcatenate.backends.vesical import Backend
 
-    backend = Backend()
+    backend = Backend(variant="IaconoMarziano")
     if not backend.is_available():
         pytest.skip("VESIcal backend not available")
 
@@ -83,7 +83,7 @@ def test_vesical_degassing_smoke(tmp_path):
     pytest.importorskip("VESIcal")
     from volcatenate.backends.vesical import Backend
 
-    backend = Backend()
+    backend = Backend(variant="IaconoMarziano")
     if not backend.is_available():
         pytest.skip("VESIcal backend not available")
 

@@ -37,20 +37,24 @@ VARIANT_MAP: dict[str, str] = {
 
 class Backend(ModelBackend):
 
-    def __init__(self, variant: str | None = None) -> None:
-        # variant is the VESIcal internal model name (e.g. "IaconoMarziano")
-        # or None to use the config default.
+    def __init__(self, variant: str) -> None:
+        # variant is the VESIcal internal model name (e.g. "IaconoMarziano",
+        # "Dixon", "MagmaSat"). Callers must specify which solubility model
+        # they want — there is no default.
+        if not variant:
+            raise ValueError(
+                "VESIcal Backend requires a variant (e.g. 'IaconoMarziano', "
+                "'Dixon', 'MagmaSat'). Request a named model like "
+                "'VESIcal_Iacono' or 'VESIcal_Dixon' instead of bare 'VESIcal'."
+            )
         self._variant = variant
-        if variant is None:
-            self._name = "VESIcal"
+        # Find the canonical short display name
+        for display, internal in VARIANT_MAP.items():
+            if internal == variant:
+                self._name = display
+                break
         else:
-            # Find the canonical short display name
-            for display, internal in VARIANT_MAP.items():
-                if internal == variant:
-                    self._name = display
-                    break
-            else:
-                self._name = f"VESIcal_{variant}"
+            self._name = f"VESIcal_{variant}"
 
     @property
     def name(self) -> str:
@@ -76,8 +80,7 @@ class Backend(ModelBackend):
 
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model_name = self._variant or config.vesical.model
-        model = v.models.default_models[model_name]
+        model = v.models.default_models[self._variant]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -119,10 +122,9 @@ class Backend(ModelBackend):
         import VESIcal as v
 
         cfg = config.vesical
-        model_name = self._variant or cfg.model
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model = v.models.default_models[model_name]
+        model = v.models.default_models[self._variant]
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -136,7 +138,7 @@ class Backend(ModelBackend):
             )
 
         # Standardize output
-        df = convert(df, model_variant=model_name)
+        df = convert(df, model_variant=self._variant)
         df = compute_cs_v_mf(df)
         df = normalize_volatiles(df)
         df = ensure_standard_columns(df)
