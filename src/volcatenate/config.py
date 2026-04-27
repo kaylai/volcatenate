@@ -411,6 +411,7 @@ class RunConfig:
     log_file: str = ""
     show_progress: bool = True
     save_bundle: str = ""
+    bundle_comments: str = ""
 
     vesical: VESIcalConfig = field(default_factory=VESIcalConfig)
     volfe: VolFeConfig = field(default_factory=VolFeConfig)
@@ -458,6 +459,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
     ("_top", "show_progress"):       "Show rich progress bars (True/False)",
     ("_top", "save_bundle"):         "Path to save reproducible JSON bundle (empty = don't save)",
+    ("_top", "bundle_comments"):     "Free-text notes recorded in the run bundle (provenance only; ignored on replay)",
     # VESIcal
     ("vesical", "steps"):            "Number of degassing steps",
     ("vesical", "final_pressure"):   "bar",
