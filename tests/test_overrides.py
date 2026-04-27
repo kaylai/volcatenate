@@ -2,6 +2,8 @@
 
 import logging
 
+import pytest
+
 from volcatenate.config import EVoConfig, MAGECConfig, resolve_sample_config
 
 
@@ -88,3 +90,86 @@ def test_resolve_does_not_alias_overrides_dict():
     out = resolve_sample_config(cfg, "MORB")
     out.overrides["NewSample"] = {"dp_max": 50}
     assert "NewSample" not in cfg.overrides
+
+
+# ── End-to-end EVo backend tests ────────────────────────────────────
+
+import os
+from unittest.mock import patch
+
+import pandas as pd
+import yaml
+
+from volcatenate.composition import MeltComposition
+from volcatenate.config import RunConfig
+
+
+@pytest.fixture
+def morb_comp():
+    """Minimal MORB-like composition for backend tests."""
+    return MeltComposition(
+        sample="MORB",
+        T_C=1200.0,
+        SiO2=50.0, TiO2=1.5, Al2O3=15.0, FeOT=10.0, MnO=0.18,
+        MgO=8.0, CaO=11.0, Na2O=2.5, K2O=0.2, P2O5=0.2,
+        H2O=0.5, CO2=0.05, S=0.1,
+        dFMQ=-1.24,
+    )
+
+
+def _written_env(tmp_path, sample):
+    """Locate the env.yaml written by the EVo backend for `sample`."""
+    candidates = [
+        tmp_path / "raw_tool_output" / f"{sample}_evo_degas" / "env.yaml",
+        tmp_path / "raw_tool_output" / f"{sample}_evo_satp" / "env.yaml",
+    ]
+    for p in candidates:
+        if p.exists():
+            return yaml.safe_load(p.read_text())
+    raise AssertionError(f"No env.yaml found for {sample}")
+
+
+def test_evo_backend_applies_dp_max_override(tmp_path, morb_comp):
+    pytest.importorskip("evo")
+    from volcatenate.backends.evo import Backend
+
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"MORB": {"dp_max": 25}}
+
+    # Make run_evo a no-op that writes a stub CSV so the backend can read it.
+    def fake_run_evo(chem_path, env_path, out_yaml, folder):
+        os.makedirs(folder, exist_ok=True)
+        stub = pd.DataFrame({
+            "P": [100.0, 50.0],
+            "T(K)": [1473.15, 1473.15],
+            "fO2": [-8.0, -8.5],
+            "F": [0.99, 0.95],
+        })
+        stub.to_csv(os.path.join(folder, "dgs_output_test.csv"), index=False)
+
+    with patch("evo.run_evo", side_effect=fake_run_evo):
+        Backend().calculate_degassing(morb_comp, config)
+
+    env = _written_env(tmp_path, "MORB")
+    assert env["DP_MAX"] == 25
+    # global default is 100 — confirm the override won, not the default
+    assert config.evo.dp_max == 100
+
+
+def test_evo_backend_uses_global_default_for_unlisted_sample(tmp_path, morb_comp):
+    pytest.importorskip("evo")
+    from volcatenate.backends.evo import Backend
+
+    config = RunConfig(output_dir=str(tmp_path))
+    config.evo.overrides = {"OtherSample": {"dp_max": 25}}
+
+    def fake_run_evo(chem_path, env_path, out_yaml, folder):
+        os.makedirs(folder, exist_ok=True)
+        pd.DataFrame({"P": [1.0], "T(K)": [1473.15], "fO2": [-8.0], "F": [1.0]}) \
+            .to_csv(os.path.join(folder, "dgs_output_test.csv"), index=False)
+
+    with patch("evo.run_evo", side_effect=fake_run_evo):
+        Backend().calculate_degassing(morb_comp, config)
+
+    env = _written_env(tmp_path, "MORB")
+    assert env["DP_MAX"] == 100  # global default
