@@ -40,6 +40,7 @@ vesical:
   steps: 101  # Number of degassing steps
   final_pressure: 1.0  # bar
   fractionate_vapor: 0.0  # 0 = closed-system, 1 = open-system
+  overrides: {}  # Per-sample overrides, e.g. {Fogo: {steps: 50}}
 
 volfe:
   sulfur_saturation: false
@@ -81,6 +82,7 @@ volfe:
   k_osg: Ohmoto97  # SO2 equilibrium constant
   k_cohg: Ohmoto97  # CH4 equilibrium constant
   k_ocsg: Moussallam19  # OCS equilibrium constant
+  overrides: {}  # Per-sample overrides, e.g. {Fogo: {gassing_style: open}}
 
 evo:
   gas_system: cohs  # 'cohs', 'coh', 'cos', etc.
@@ -153,3 +155,4 @@ sulfurx:
   s_fe_choice: 1  # S speciation: 0=Nash, 1=O'Neill&Mavrogenes
   sigma: 0.005  # log10fO2 tolerance for redox calculation
   sulfide_pre: 0  # 0 = no sulfide precipitation, 1 = enabled
+  overrides: {}  # Per-sample overrides, e.g. {Fogo: {n_steps: 100}}

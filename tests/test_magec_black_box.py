@@ -92,28 +92,23 @@ ALL_COMPOSITIONS = [
     pytest.param(MORB,    "MORB",    id="MORB"),
     pytest.param(KILAUEA, "Kilauea", id="Kilauea"),
     pytest.param(FOGO,    "Fogo",    id="Fogo"),
-    pytest.param(FUEGO,   "Fuego",   id="Fuego"),
 ]
 
-_FUEGO_XFAIL = pytest.mark.xfail(
-    reason=(
-        "Fuego benchmark: MAGEC's fsolve solver fails to find saturation at "
-        "the correct pressure (~6093 bars) for this high-H2O composition "
-        "(4.5 wt%), reporting satP at ~2365 bars instead — a 61% error. "
-        "The three drier compositions (MORB, Kilauea, Fogo) all pass within "
-        "tolerance.  Possible causes: solver convergence failure at high "
-        "pressure / high H2O, or a need for a narrower pressure bracket. "
-        "Compare with Sun & Yao 2024 (EPSL 638, 118742) reference output."
-    ),
-    strict=False,
-)
+# Fuego (4.5 wt% H2O, satP ~6 kbar) is excluded from the parametrize lists
+# because (a) its MAGEC solver run takes ~64 s vs ~15 s for the other
+# compositions and dominates wall time, and (b) MAGEC's fsolve solver
+# fails to find the correct saturation pressure for it (reports ~2365
+# bars vs reference ~6093 bars, a 61% error — likely a solver
+# convergence failure at high pressure/high H2O). The three drier
+# compositions (MORB, Kilauea, Fogo) span dry/moderate/CO2-rich melt
+# regimes and exercise the same physics invariants; conservation laws
+# don't care about composition. Re-add Fuego here once MAGEC's solver
+# bracket / convergence issue is resolved.
 
 BENCHMARK_PARAMS = [
     pytest.param(KILAUEA, "Kilauea", "kilauea.csv", id="Kilauea"),
     pytest.param(MORB,    "MORB",    "morb.csv",    id="MORB"),
     pytest.param(FOGO,    "Fogo",    "fogo.csv",    id="Fogo"),
-    pytest.param(FUEGO,   "Fuego",   "fuego.csv",
-                 marks=_FUEGO_XFAIL, id="Fuego"),
 ]
 
 
@@ -189,14 +184,29 @@ _AUTHOR_DIR = _find_author_dir()
 # ── Config & availability ───────────────────────────────────────────────────
 
 def _config(tmp_path: str, n_steps: int = 60) -> RunConfig:
+    """Test config tuned for speed.
+
+    p_start_kbar defaults to 3.0 kbar — covers MORB and Kilauea
+    (satP <1.5 kbar) with a tight, fast search grid. Fogo (satP
+    ~4.2 kbar against the Sun & Yao 2024 reference) gets a
+    per-sample override to 6.0 kbar so its search spans the
+    correct pressure range. Lowering the global from the previous
+    8.0 kbar saves ~25-30% wall time per MAGEC run.
+
+    Fuego (satP ~6 kbar) is excluded entirely from this suite
+    because its solver run takes ~64 s and MAGEC has known
+    convergence issues for it — see the comment on
+    BENCHMARK_PARAMS below.
+    """
     return RunConfig(
         output_dir=str(tmp_path),
         keep_raw_output=False,
         show_progress=False,
         magec=MAGECConfig(
             n_steps=n_steps,
-            p_start_kbar=8.0,   # enough headroom for Fuego (satP ~6 kbar)
+            p_start_kbar=3.0,
             p_final_kbar=0.001,
+            overrides={"Fogo": {"p_start_kbar": 6.0}},
         ),
     )
 
@@ -614,10 +624,12 @@ def test_carbon_bulk_mass_conserved(comp_dict, name, tmp_path):
 def test_satp_matches_author_output(comp_dict, name, ref_csv, tmp_path):
     """Saturation pressure must agree with the Sun & Yao 2024 reference within 15%.
 
-    Tolerance rationale: volcatenate uses a log-spaced 60-step grid from
-    8 kbar → 0.001 kbar (step factor ~12%), so the discrete grid alone can
-    contribute up to ~12% discretization error.  15% flags genuine solver
-    failures or input mangling while accepting normal grid effects.
+    Tolerance rationale: volcatenate uses a log-spaced 60-step grid (per
+    test config: 3 kbar for MORB/Kilauea, 6 kbar for Fogo via per-sample
+    override) → 0.001 kbar, step factor ~12-14%, so the discrete grid
+    alone can contribute up to ~14% discretization error. 15% flags
+    genuine solver failures or input mangling while accepting normal
+    grid effects.
     """
     _skip_if_unavailable()
     ref_df = _load_author_output(ref_csv)

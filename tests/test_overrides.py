@@ -330,4 +330,187 @@ def test_default_yaml_loads_clean(caplog):
         cfg = load_config(default_config_path())
     assert cfg.evo.overrides == {}
     assert cfg.magec.overrides == {}
+    assert cfg.volfe.overrides == {}
+    assert cfg.vesical.overrides == {}
+    assert cfg.sulfurx.overrides == {}
     assert "deprecated" not in caplog.text.lower()
+
+
+# ── VolFe overrides ─────────────────────────────────────────────────
+
+
+def test_volfe_config_has_overrides_field():
+    from volcatenate.config import VolFeConfig
+    cfg = VolFeConfig()
+    assert cfg.overrides == {}
+
+
+def test_volfe_overrides_field_is_independent_per_instance():
+    from volcatenate.config import VolFeConfig
+    a = VolFeConfig()
+    b = VolFeConfig()
+    a.overrides["MORB"] = {"gassing_style": "open"}
+    assert b.overrides == {}
+
+
+def test_resolve_works_for_volfe_config():
+    from volcatenate.config import VolFeConfig
+    cfg = VolFeConfig(overrides={"Fogo": {"gassing_style": "open"}})
+    out = resolve_sample_config(cfg, "Fogo")
+    assert out.gassing_style == "open"
+    assert cfg.gassing_style == "closed"
+
+
+def test_volfe_backend_applies_override_to_models_df(morb_comp):
+    pytest.importorskip("VolFe")
+    from volcatenate.backends.volfe import Backend, _build_models_df
+
+    config = RunConfig()
+    config.volfe.overrides = {"MORB": {"gassing_style": "open"}}
+
+    captured: dict = {}
+
+    def fake_build_models_df(cfg):
+        captured["gassing_style"] = cfg.gassing_style
+        return _build_models_df(cfg)
+
+    def fake_calc_gassing(setup_df, models, suppress_warnings):
+        return pd.DataFrame({"P_bar": [1.0], "wt_g_O": [0.0]})
+
+    with patch("volcatenate.backends.volfe._build_models_df",
+               side_effect=fake_build_models_df), \
+         patch("VolFe.calc_gassing", side_effect=fake_calc_gassing):
+        try:
+            Backend().calculate_degassing(morb_comp, config)
+        except Exception:
+            pass  # converter may fail on the stub frame — we only care about cfg
+
+    assert captured["gassing_style"] == "open"
+    assert config.volfe.gassing_style == "closed"
+
+
+# ── VESIcal overrides ───────────────────────────────────────────────
+
+
+def test_vesical_config_has_overrides_field():
+    from volcatenate.config import VESIcalConfig
+    cfg = VESIcalConfig()
+    assert cfg.overrides == {}
+
+
+def test_vesical_overrides_field_is_independent_per_instance():
+    from volcatenate.config import VESIcalConfig
+    a = VESIcalConfig()
+    b = VESIcalConfig()
+    a.overrides["MORB"] = {"steps": 50}
+    assert b.overrides == {}
+
+
+def test_resolve_works_for_vesical_config():
+    from volcatenate.config import VESIcalConfig
+    cfg = VESIcalConfig(overrides={"Fogo": {"steps": 50, "final_pressure": 10.0}})
+    out = resolve_sample_config(cfg, "Fogo")
+    assert out.steps == 50
+    assert out.final_pressure == 10.0
+    assert cfg.steps == 101
+    assert cfg.final_pressure == 1.0
+
+
+def test_vesical_backend_applies_steps_override(morb_comp):
+    pytest.importorskip("VESIcal")
+    from volcatenate.backends.vesical import Backend
+
+    config = RunConfig()
+    config.vesical.overrides = {"MORB": {"steps": 7}}
+
+    captured: dict = {}
+
+    class _FakeModel:
+        def calculate_degassing_path(self, sample, temperature, pressure,
+                                     fractionate_vapor, final_pressure, steps):
+            captured["steps"] = steps
+            return pd.DataFrame({"Pressure_bars": [100.0], "H2O_liq": [0.0],
+                                 "CO2_liq": [0.0], "XH2O_fl": [0.5], "XCO2_fl": [0.5]})
+
+    with patch.dict("VESIcal.models.default_models", {"IaconoMarziano": _FakeModel()}):
+        try:
+            Backend(variant="IaconoMarziano").calculate_degassing(morb_comp, config)
+        except Exception:
+            pass  # converter may complain about minimal stub — we only check cfg flow
+
+    assert captured["steps"] == 7
+    assert config.vesical.steps == 101
+
+
+# ── SulfurX overrides ───────────────────────────────────────────────
+
+
+def test_sulfurx_config_has_overrides_field():
+    from volcatenate.config import SulfurXConfig
+    cfg = SulfurXConfig()
+    assert cfg.overrides == {}
+
+
+def test_sulfurx_overrides_field_is_independent_per_instance():
+    from volcatenate.config import SulfurXConfig
+    a = SulfurXConfig()
+    b = SulfurXConfig()
+    a.overrides["MORB"] = {"n_steps": 100}
+    assert b.overrides == {}
+
+
+def test_resolve_works_for_sulfurx_config():
+    from volcatenate.config import SulfurXConfig
+    cfg = SulfurXConfig(overrides={"Fogo": {"n_steps": 100, "sigma": 0.001}})
+    out = resolve_sample_config(cfg, "Fogo")
+    assert out.n_steps == 100
+    assert out.sigma == 0.001
+    assert cfg.n_steps == 600
+    assert cfg.sigma == 0.005
+
+
+def test_sulfurx_backend_passes_resolved_cfg_to_run_degassing(morb_comp):
+    from volcatenate.backends.sulfurx import Backend
+
+    config = RunConfig()
+    config.sulfurx.path = "/nonexistent"  # we'll patch _ensure_on_path
+    config.sulfurx.overrides = {"MORB": {"n_steps": 42}}
+
+    captured: dict = {}
+
+    def fake_run_degassing(comp, cfg):
+        captured["n_steps"] = cfg.n_steps
+        return pd.DataFrame()
+
+    with patch.object(Backend, "_ensure_on_path", lambda self, config: None), \
+         patch("volcatenate.backends.sulfurx._run_degassing",
+               side_effect=fake_run_degassing):
+        try:
+            Backend().calculate_degassing(morb_comp, config)
+        except Exception:
+            pass  # converter may fail on the empty frame; we only check cfg
+
+    assert captured["n_steps"] == 42
+    assert config.sulfurx.n_steps == 600
+
+
+def test_yaml_round_trip_preserves_all_backend_overrides(tmp_path):
+    """save_config + load_config must preserve overrides on every backend."""
+    from volcatenate.config import save_config, load_config
+
+    cfg = RunConfig()
+    cfg.evo.overrides = {"MORB": {"dp_max": 25}}
+    cfg.magec.overrides = {"Fogo": {"p_start_kbar": 8.0}}
+    cfg.volfe.overrides = {"Sample1": {"gassing_style": "open"}}
+    cfg.vesical.overrides = {"Sample2": {"steps": 50}}
+    cfg.sulfurx.overrides = {"Sample3": {"n_steps": 100}}
+
+    yaml_path = tmp_path / "test.yaml"
+    save_config(cfg, str(yaml_path))
+    loaded = load_config(str(yaml_path))
+
+    assert loaded.evo.overrides == {"MORB": {"dp_max": 25}}
+    assert loaded.magec.overrides == {"Fogo": {"p_start_kbar": 8.0}}
+    assert loaded.volfe.overrides == {"Sample1": {"gassing_style": "open"}}
+    assert loaded.vesical.overrides == {"Sample2": {"steps": 50}}
+    assert loaded.sulfurx.overrides == {"Sample3": {"n_steps": 100}}

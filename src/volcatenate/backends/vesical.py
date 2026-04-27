@@ -19,7 +19,7 @@ import pandas as pd
 
 from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
-from volcatenate.config import RunConfig
+from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.vesical_converter import convert
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 
@@ -121,7 +121,7 @@ class Backend(ModelBackend):
     ) -> pd.DataFrame:
         import VESIcal as v
 
-        cfg = config.vesical
+        cfg = resolve_sample_config(config.vesical, comp.sample)
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
         model = v.models.default_models[self._variant]
