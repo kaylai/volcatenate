@@ -208,6 +208,15 @@ EVo's nitrogen handling is the only field where, when sample data is absent, a Y
 
 Solubility models, equilibrium-constant parameterizations, fugacity-coefficient choices, gas-system identity, pressure-stepping, run-bundle paths, log-file paths, model versions — these are all pure method/output choices and don't depend on what's in the sample. The CSV and `MeltComposition` have no fields for them. The full inventory is in the per-backend sections below and in the [top-level RunConfig settings](#top-level-runconfig-settings) section above.
 
+### YAML syntax notes
+
+The YAML file uses YAML syntax, not Python syntax. A few small differences worth noting:
+
+- Booleans are `true` and `false` in lowercase — not Python's `True` / `False`. (YAML accepts the capitalised forms too as aliases, but the lowercase form is canonical and is what volcatenate writes when you call `save_config`.)
+- `null` (not `None`) for explicit nulls. Empty strings, empty dicts (`{}`), and empty lists (`[]`) work as written.
+- Strings do not need quotes unless they would be parsed as another type (`"yes"` quoted to keep it a string rather than a boolean; `"1"` quoted to keep it a string rather than an int). Most volcatenate string fields don't need quotes.
+- Dataclass field names map 1-to-1 to YAML keys (e.g. `volfe.fo2_column` in this doc = the `fo2_column` key under the `volfe:` section in your YAML).
+
 ---
 
 ## Top-level `RunConfig` settings
@@ -424,7 +433,33 @@ In **strict modes** (`fo2_source="fe3fet"`, `"dnno"`, `"dfmq"`), the wrapper req
 
 ## EVo
 
-EVo is run via three YAML files (`chem.yaml`, `env.yaml`, `output.yaml`) that volcatenate writes to a per-sample work directory, then calls `evo.run_evo()` on. EVo prints prolifically to stdout, so volcatenate wraps the call in a `_quiet_evo()` context that routes everything to the logger at DEBUG level.
+The options set by the user in volcatenate's configuration YAML file and in user sample inputs (CSV, `MeltComposition` object, or Python dict) are used to populate the three YAML files (`chem.yaml`, `env.yaml`, `output.yaml`) that EVo reads. Volcatenate writes all three to a per-sample work directory, then calls `evo.run_evo()`. EVo prints prolifically to stdout; volcatenate wraps the call in a `_quiet_evo()` context that routes the captured output to the volcatenate logger at DEBUG level (which lands in `RunConfig.log_file` if you set one).
+
+#### Files saved per EVo run
+
+For one EVo run on a sample called `Fuego`, the on-disk layout produced is:
+
+```
+<output_dir>/
+├── EVo/
+│   └── fuego.csv                              # standardized degassing path (always)
+├── saturation_pressures.csv                   # row for each (sample, model) (when running calculate_saturation_pressure)
+├── resolved_inputs/
+│   └── Fuego/
+│       └── EVo.yaml                           # exact env+chem+output dicts the wrapper handed EVo (when save_bundle is on)
+├── <save_bundle>.json                         # full run bundle including resolved_inputs (when save_bundle is set)
+└── <raw_output_dir>/                          # = "raw_tool_output" by default
+    └── Fuego_evo_degas/                       # (or _evo_satp for sat-pressure calls)
+        ├── chem.yaml                          # only when keep_raw_output: true
+        ├── env.yaml                           # only when keep_raw_output: true
+        ├── output.yaml                        # only when keep_raw_output: true
+        └── output/
+            └── dgs_output_*.csv               # EVo's own native degassing output (only when keep_raw_output: true)
+```
+
+When `keep_raw_output: false`, the entire `<raw_output_dir>/Fuego_evo_degas/` subtree is deleted at the end of the run. The standardized degassing CSV (`EVo/fuego.csv`), the `resolved_inputs/Fuego/EVo.yaml` sidecar, and the run bundle JSON are unaffected by `keep_raw_output` — they always survive.
+
+The same on-disk layout is documented in the [Top-level RunConfig settings](#on-disk-layout-the-top-level-fields-produce) section above; the file list here is the EVo-specific subset.
 
 ### How the YAML propagates
 
@@ -443,49 +478,54 @@ Wrapper code: [backends/evo.py](../src/volcatenate/backends/evo.py).
 
 ### Field-by-field — EVo
 
-The "env.yaml key" column gives the exact key written into `env.yaml` (or, where noted, `chem.yaml`) — the file EVo actually reads. Defaults are explicit; allowed values are enumerated when finite, or described as a Python type with bounds when continuous.
+The "env.yaml key" column gives the exact key written into EVo's `env.yaml`, `chem.yaml`, or `output.yaml` — the files EVo actually reads. Defaults are explicit. Allowed values are enumerated when finite; for continuous fields the column gives a Python type plus a bound. Where a string field accepts case-insensitive forms, that note is in the Behavior column.
 
-| volcatenate YAML key | Default | Allowed values | What it does | env.yaml key |
+| volcatenate YAML key | Default | Allowed values (with type) | Behavior | env.yaml key |
 | --- | --- | --- | --- | --- |
-| `gas_system` | `cohs` | `coh`, `cohs`, `cohsn`, `cos` (case-insensitive; the letters name the elements tracked in the gas) | Selects which gas-phase species the run will track. `cohs` (default) covers C, O, H, S — the standard sulfur-bearing system. `coh` drops sulfur (faster, sulfur-free runs); `cohsn` adds N; `cos` drops H (rare). | `GAS_SYS` |
-| `composition` | `basalt` | `basalt`, `phonolite`, `rhyolite` | Selects the per-composition coefficient set EVo's `Molecule.__init__` (in `EVo/dgs_classes.py`) applies for each species. EVo also runs a SiO2 sanity check (`run_melt_match` in `EVo/readin.py`): basalt expects 45–55 wt%, phonolite 52–63, rhyolite 65–80. Volcatenate auto-confirms continuation when the sample's SiO2 is out of the expected range. | `COMPOSITION` |
-| `fo2_buffer` | `FMQ` | `FMQ`, `NNO`, `IW` | Names the redox buffer EVo uses when fO2 is set as an offset. Read by EVo only when the wrapper takes a buffer-offset path; ignored otherwise. See [fO2-related YAML keys: precedence](#fo2-related-yaml-keys-precedence-and-which-keys-are-ignored-when-others-are-set). | `FO2_buffer` |
-| `fo2_source` | `auto` | `auto`, `fe3fet`, `buffer`, `absolute` | Volcatenate wrapper setting (no native EVo equivalent). Selects the input pathway used to set the initial fO2. See the expanded `evo.fo2_source` subsection below. | (drives `FO2_buffer_SET`, `FO2_SET`, `FO2_START`) |
-| `fe_system` | `true` | `true`, `false` | Controls whether EVo iterates Fe redox equilibrium with fO2 at every pressure step. `true` (default) lets fO2 evolve as Fe3+/FeT shifts; `false` holds Fe (and therefore fO2 from the iron path) fixed for the whole run. | `FE_SYSTEM` |
-| `find_saturation` | `true` | `true`, `false` | Controls EVo's starting pressure. `true` (default): EVo determines the saturation pressure for the sample's bulk volatiles itself, then begins degassing there — `p_start` is consulted as a search ceiling. `false`: EVo begins at exactly `p_start` and assumes that pressure is appropriate for the sample (no saturation-pressure search). | `FIND_SATURATION` |
-| `single_step` | `false` | `true`, `false` | Single-pressure equilibrium calculation rather than a degassing path. Has effect only when `find_saturation=false`. | `SINGLE_STEP` |
-| `s_sat_warn` | `false` | `true`, `false` | When `true`, EVo emits a warning when the melt reaches sulfide saturation during the run. Volcatenate routes that warning through its logger. The default suppresses the message. | `S_SAT_WARN` |
-| `atomic_mass_set` | `false` | `true`, `false` | Volatile-input mode switch. `false` (default) uses the sample's `H2O`/`CO2`/`S` (wt%) directly. `true` ignores those and uses `atomic_h`/`atomic_c`/`atomic_s`/`atomic_n` (ppm) instead. Volcatenate users typically leave this at `false`. | `ATOMIC_MASS_SET` |
-| `ocs` | `false` | `true`, `false` | If `true`, EVo includes carbonyl sulfide (OCS) as a vapor species, adding a coupling between C and S. The contribution is small except at low fO2 (≲ FMQ−2). | `OCS` |
-| `dp_min`, `dp_max` | `1`, `100` (bar) | `int`, `1 ≤ dp_min ≤ dp_max` | Minimum and maximum pressure step (bar) the adaptive integrator will take. Decreasing `dp_max` makes the degassing curves smoother but slows the run linearly. | `DP_MIN`, `DP_MAX` |
-| `mass` | `100` (g) | `int` or `float`, > 0 | Total system mass (g) used for mass-balance bookkeeping. Intensive results (compositions, fO2, mole fractions) are independent of `mass`; only the absolute mass of vapor produced scales. | `MASS` |
-| `p_start` | `3000` (bar) | `int` or `float`, > `p_stop` | Starting pressure (bar). When `find_saturation=true`, EVo treats `p_start` as the **search ceiling** for its saturation-pressure search; the run actually begins at the saturation pressure EVo finds (which is below `p_start` by definition of saturation). When `find_saturation=false`, the run begins at exactly `p_start`. Set `p_start` well above the expected saturation pressure for volatile-rich samples. | `P_START` |
-| `p_stop` | `1` (bar) | `int` or `float`, > 0, < `p_start` | Final pressure (bar) at the bottom of the degassing path. | `P_STOP` |
-| `wgt` | `1e-5` | `float`, > 0 | Initial mass fraction of vapor seeded into the system to start the iteration. EVo's solver requires a non-zero gas mass to converge from; `1e-5` is the upstream-recommended value. Practical range is roughly `1e-7` to `1e-3`; values outside that range can cause the solver to fail or bias the initial vapor speciation. | `WgT` |
-| `loss_frac` | `0.9999` | `float`, `0 ≤ loss_frac ≤ 1` | Per-step vapor retention fraction in open-system runs (`run_type=open`). At each pressure step, this fraction of the vapor is kept in equilibrium with the melt for the next step; the remainder is removed from the system. `0.9999` keeps almost all vapor (effectively closed-system); `0.0` removes all vapor at each step (perfect open-system extraction). The name is parameterized as the *retained* fraction even though the parameter is conceptually a "loss" parameter — read it as "1 − retained = lost." | `LOSS_FRAC` |
-| `run_type` | `closed` | `closed`, `open` | Closed- vs. open-system degassing. Open-system runs require `loss_frac < 1`. The wrapper hardcodes `closed` for saturation-pressure-only runs (regardless of `run_type` in the config) — see [backends/evo.py:132](../src/volcatenate/backends/evo.py). | `RUN_TYPE` |
-| `atomic_h`, `atomic_c`, `atomic_s`, `atomic_n` | `500`, `200`, `4000`, `10` (ppm each) | `float`, ≥ 0 | Per-element bulk volatile budgets in ppm. Used **only when `atomic_mass_set=true`**; ignored otherwise. | `ATOMIC_H`, `ATOMIC_C`, `ATOMIC_S`, `ATOMIC_N` |
-| `nitrogen_set` | `false` | `true`, `false` | When `true`, EVo tracks nitrogen as a system component. When `false` (default), N is excluded entirely. | `NITROGEN_SET` |
-| `nitrogen_start` | `0.0001` (mass fraction) | `float`, > 0 | Starting nitrogen mass fraction. Read **only when `nitrogen_set=true`**, and then only as a fallback: if the sample carries `N_ppm` (e.g. via the `Nitrogen` / `Nppm` / `N_ppm` CSV column), the wrapper uses that value instead and `nitrogen_start` is ignored. See [`MeltComposition` field reference](sample_data.md). | `NITROGEN_START` |
-| `graphite_saturated` | `false` | `true`, `false` | When `true`, EVo starts the system as graphite-saturated (paired with `graphite_start` for the initial graphite mass fraction). Most natural basalts are not graphite-saturated. | `GRAPHITE_SATURATED` |
-| `graphite_start` | `0.0001` (mass fraction) | `float`, > 0 | Starting graphite mass fraction. Read only when `graphite_saturated=true`. | `GRAPHITE_START` |
-| `fo2_set`, `fo2_start` | `false`, `0.0` | `true`/`false`; `float` ≥ 0 (bar) | Absolute-fO2 entry point. Read only when `fo2_source='absolute'`; in that mode `fo2_set` must be `true` and `fo2_start > 0`. Otherwise written to `env.yaml` but ignored by EVo. | `FO2_SET`, `FO2_START` |
-| `fh2_set`, `fh2_start` | `false`, `0.24` (bar) | `true`/`false`; `float`, > 0 | Set H2 fugacity as an explicit starting condition. Read only when `fh2_set=true`. Otherwise EVo derives H2 from H2O + fO2 via the H2 solubility model. | `FH2_SET`, `FH2_START` |
-| `fh2o_set`, `fh2o_start` | `false`, `1000.0` (bar) | `true`/`false`; `float`, > 0 | Set H2O fugacity as an explicit starting condition. Read only when `fh2o_set=true`. | `FH2O_SET`, `FH2O_START` |
-| `fco2_set`, `fco2_start` | `false`, `1.0` (bar) | `true`/`false`; `float`, > 0 | Set CO2 fugacity as an explicit starting condition. Read only when `fco2_set=true`. | `FCO2_SET`, `FCO2_START` |
-| `h2o_model` | `burguisser2015` | `burguisser2015`, others recognized by EVo's solubility module | Which H2O solubility law EVo uses. The choice can produce meaningfully different H2O contents at the same pressure. | `H2O_MODEL` |
-| `h2_model` | `gaillard2003` | `gaillard2003`, others recognized by EVo's H2 module | H2 solubility law. Has effect only at reduced fO2 where dissolved H2 is non-trivial. | `H2_MODEL` |
-| `c_model` | `burguisser2015` | `burguisser2015`, others recognized by EVo's C module | CO2 / CO3²⁻ solubility law. Match `h2o_model` to the same source paper for internal consistency. | `C_MODEL` |
-| `co_model` | `armstrong2015` | `armstrong2015`, others | CO solubility law. Has effect only at reduced fO2. | `CO_MODEL` |
-| `ch4_model` | `ardia2013` | `ardia2013`, others | CH4 solubility law. Has effect only at strongly reduced fO2 (≲ FMQ−2). | `CH4_MODEL` |
-| `sulfide_capacity` | `oneill2020` | `oneill2020`, others | Sulfide capacity model (controls how much S²⁻ the melt holds at given fO2 and composition). Affects S degassing under reducing conditions. | `SULFIDE_CAPACITY` |
-| `sulfate_capacity` | `nash2019` | `nash2019`, others | Sulfate capacity model. Affects S degassing under oxidizing conditions. | `SULFATE_CAPACITY` |
-| `scss` | `liu2007` | `liu2007`, others | Sulfide content at sulfide saturation (SCSS) model. | `SCSS` |
-| `n_model` | `libourel2003` | `libourel2003`, others | Nitrogen solubility law. Read only when `nitrogen_set=true`. | `N_MODEL` |
-| `density_model` | `spera2000` | `spera2000`, others | Melt density model used for mass ↔ volume conversion in the bookkeeping. Does not affect intensive quantities like fO2 or species mole fractions. | `DENSITY_MODEL` |
-| `fo2_model` | `kc1991` | `kc1991`, `r2013` | Fe3+/FeT ↔ logfO2 conversion equation EVo uses internally. `kc1991` = Kress & Carmichael (1991) appendix eq. A-5; `r2013` = Righter (2013). Read whenever EVo needs to translate between Fe3+/FeT and fO2, regardless of `fo2_source`. | `FO2_MODEL` |
-| `fmq_model` | `frost1991` | `frost1991`, others | Definition of the FMQ buffer (and, in volcatenate's wrapper, also of the NNO and IW buffers via Frost 1991 expressions). Used whenever fO2 is reported relative to a buffer or read from a buffer offset. | `FMQ_MODEL` |
-| `overrides` | `{}` | `dict[str, dict[str, Any]]` | Per-sample overrides keyed by sample name; values override the corresponding fields above for that sample only. Nested-dataclass fields can be overridden as partial dicts (the wrapper merges them onto the parent). See [Per-sample overrides in configuration.md](configuration.md#per-sample-overrides). | (resolved in `resolve_sample_config`) |
+| `gas_system` | `cohs` | `str`: `OH`, `COH`, `SOH`, `COHS`, `COHSN` | Selects which elements the gas phase tracks. The letters name the elements: `OH` = H, O only; `COH` = C, H, O; `SOH` = S, H, O; `COHS` = C, O, H, S (the standard sulfur-bearing system, volcatenate's default); `COHSN` = COHS plus N. The string is case-insensitive — EVo upper-cases internally. | `GAS_SYS` |
+| `composition` | `basalt` | `str`: `basalt`, `phonolite`, `rhyolite` | Selects the per-composition coefficient set EVo's `Molecule.__init__` (in `EVo/dgs_classes.py`) applies for each species. EVo also runs a SiO2 sanity check (`run_melt_match` in `EVo/readin.py`): basalt expects 45–55 wt%, phonolite 52–63, rhyolite 65–80. Volcatenate auto-confirms continuation when the sample's SiO2 is out of the expected range. | `COMPOSITION` |
+| `fo2_buffer` | `FMQ` | `str`: `FMQ`, `NNO`, `IW` | Names the redox buffer EVo uses when fO2 is set as a buffer-relative offset. Read by EVo only when (a) you set `evo.fo2_source: buffer`, or (b) `evo.fo2_source: auto` falls all the way through and ends up using the YAML's named buffer at offset 0 (last-resort fallback). Otherwise written to `env.yaml` but ignored. See [fO2-related YAML keys: precedence](#fo2-related-yaml-keys-precedence-and-which-keys-are-ignored-when-others-are-set). | `FO2_buffer` |
+| `fo2_source` | `auto` | `str`: `auto`, `fe3fet`, `buffer`, `absolute` | Volcatenate wrapper setting (no native EVo equivalent). Names the input pathway used to set the initial fO2. See the expanded `evo.fo2_source` subsection below. | (drives `FO2_buffer_SET`, `FO2_SET`, `FO2_START`) |
+| `fe_system` | `true` | `bool`: `true`, `false` | When `true` (default), EVo iterates Fe redox equilibrium with fO2 at every pressure step — fO2 evolves as Fe3+/FeT shifts during degassing. When `false`, Fe (and therefore the fO2 implied by the iron redox state) is held fixed at its initial value for the whole run. | `FE_SYSTEM` |
+| `find_saturation` | `true` | `bool`: `true`, `false` | Controls EVo's starting pressure. When `true` (default), EVo searches for the saturation pressure of the sample's bulk volatiles itself, then begins degassing at that pressure; `p_start` is read only as an upper-bound for the search. When `false`, EVo begins at exactly `p_start` and assumes that pressure is appropriate for the sample (no saturation-pressure search). | `FIND_SATURATION` |
+| `single_step` | `false` | `bool`: `true`, `false` | When `true`, EVo runs a single equilibrium calculation at one pressure rather than a full degassing path. Has effect only when `find_saturation=false`. | `SINGLE_STEP` |
+| `s_sat_warn` | `false` | `bool`: `true`, `false` | When `true`, EVo emits a warning at the moment the melt reaches sulfide saturation during the run; volcatenate routes that warning through its logger. The default suppresses the message. | `S_SAT_WARN` |
+| `atomic_mass_set` | `false` | `bool`: `true`, `false` | Volatile-input mode switch. `false` (default) feeds the sample's `H2O`/`CO2`/`S` (wt%, from the `MeltComposition`) directly into EVo's chem.yaml. `true` ignores those sample values and uses `atomic_h`/`atomic_c`/`atomic_s`/`atomic_n` (ppm, from the YAML) instead. Volcatenate users typically leave this `false`. | `ATOMIC_MASS_SET` |
+| `ocs` | `false` | `bool`: `true`, `false` | When `true`, EVo includes carbonyl sulfide (OCS) as a vapor species, adding a coupling between C and S. The contribution is small except at low fO2 (≲ FMQ−2). | `OCS` |
+| `dp_min` | `1` (bar) | `int`, `≥ 1` | Smallest pressure step the adaptive integrator is allowed to take. | `DP_MIN` |
+| `dp_max` | `100` (bar) | `int`, `≥ dp_min` | Largest pressure step. Decreasing `dp_max` makes the degassing curves smoother but slows the run linearly. | `DP_MAX` |
+| `mass` | `100` (g) | `int` or `float`, `> 0` | Total system mass for mass-balance bookkeeping. Intensive results (compositions, fO2, mole fractions) are independent of `mass`; only the absolute mass of vapor produced scales with it. | `MASS` |
+| `p_start` | `3000` (bar) | `int` or `float`, `> p_stop` | Starting pressure (bar). When `find_saturation=true`, EVo treats `p_start` as the **search ceiling** for its saturation-pressure search; the run actually begins at the saturation pressure EVo finds (which is below `p_start` by definition of saturation). When `find_saturation=false`, the run begins at exactly `p_start`. Set `p_start` well above the expected saturation pressure for volatile-rich samples. | `P_START` |
+| `p_stop` | `1` (bar) | `int` or `float`, `> 0`, `< p_start` | Final pressure (bar) at the bottom of the degassing path. | `P_STOP` |
+| `wgt` | `1e-5` | `float`, `> 0` | Initial mass fraction of vapor seeded into the system to start the iteration. EVo's solver requires a non-zero gas mass to converge from; `1e-5` is the upstream-recommended value. Practical range is roughly `1e-7` to `1e-3`; values outside that range can cause the solver to fail or bias the initial vapor speciation. | `WgT` |
+| `loss_frac` | `0.9999` | `float`, `0 ≤ value ≤ 1` | Per-step vapor *retention* fraction in open-system runs (`run_type=open`). At each pressure step, this fraction of the vapor is kept in equilibrium with the melt for the next step; the rest is removed from the system. `0.9999` keeps almost all vapor (effectively closed-system); `0.0` removes all vapor at each step (perfect open-system extraction). The parameter is named for vapor *loss* but parameterized as the fraction *retained*. | `LOSS_FRAC` |
+| `run_type` | `closed` | `str`: `closed`, `open` | Closed- vs. open-system degassing. Open-system runs require `loss_frac < 1`. The wrapper hardcodes `closed` for saturation-pressure-only runs (regardless of `run_type` in the config) — see [backends/evo.py:132](../src/volcatenate/backends/evo.py). | `RUN_TYPE` |
+| `atomic_h`, `atomic_c`, `atomic_s`, `atomic_n` | `500`, `200`, `4000`, `10` (ppm each) | `float`, `≥ 0` | Per-element bulk volatile budgets in ppm. Used **only when `atomic_mass_set=true`**; ignored otherwise. | `ATOMIC_H`, `ATOMIC_C`, `ATOMIC_S`, `ATOMIC_N` |
+| `nitrogen_set` | `false` | `bool`: `true`, `false` | When `true`, EVo tracks nitrogen as a system component. When `false` (default), N is excluded entirely. | `NITROGEN_SET` |
+| `nitrogen_start` | `0.0001` (mass fraction) | `float`, `> 0` | Starting nitrogen mass fraction. Read **only when `nitrogen_set=true`**, and then only as a fallback: if the sample carries `N_ppm` (via the `Nitrogen` / `Nppm` / `N_ppm` CSV column or `MeltComposition.N_ppm`), the wrapper uses that value (converted ppm → mass fraction) instead and `nitrogen_start` is ignored. See [`MeltComposition` field reference](sample_data.md). | `NITROGEN_START` |
+| `graphite_saturated` | `false` | `bool`: `true`, `false` | When `true`, EVo starts the system as graphite-saturated (paired with `graphite_start` for the initial graphite mass fraction). Most natural basalts are not graphite-saturated. | `GRAPHITE_SATURATED` |
+| `graphite_start` | `0.0001` (mass fraction) | `float`, `> 0` | Starting graphite mass fraction. Read only when `graphite_saturated=true`. | `GRAPHITE_START` |
+| `fo2_set` | `false` | `bool`: `true`, `false` | Switch for absolute-fO2 input. Read only when `fo2_source: absolute`; in that mode `fo2_set` must be `true`. | `FO2_SET` |
+| `fo2_start` | `0.0` (bar) | `float`, `≥ 0` | Absolute fO2 value (bar). Read only when `fo2_source: absolute` and `fo2_set=true`; in that mode must be `> 0`. Otherwise written to `env.yaml` but ignored by EVo. | `FO2_START` |
+| `fh2_set` | `false` | `bool`: `true`, `false` | Switch to set H2 fugacity as an explicit starting condition. Read only when `true`; otherwise EVo derives H2 from H2O + fO2 via the H2 solubility model. | `FH2_SET` |
+| `fh2_start` | `0.24` (bar) | `float`, `> 0` | H2 fugacity (bar) used when `fh2_set=true`. | `FH2_START` |
+| `fh2o_set` | `false` | `bool`: `true`, `false` | Switch to set H2O fugacity as an explicit starting condition. Read only when `true`. | `FH2O_SET` |
+| `fh2o_start` | `1000.0` (bar) | `float`, `> 0` | H2O fugacity (bar) used when `fh2o_set=true`. | `FH2O_START` |
+| `fco2_set` | `false` | `bool`: `true`, `false` | Switch to set CO2 fugacity as an explicit starting condition. Read only when `true`. | `FCO2_SET` |
+| `fco2_start` | `1.0` (bar) | `float`, `> 0` | CO2 fugacity (bar) used when `fco2_set=true`. | `FCO2_START` |
+| `h2o_model` | `burguisser2015` | `str`: `burguisser2015` (only option recognized by upstream EVo at present) | Which H2O solubility law EVo uses to relate dissolved melt-H2O to H2O fugacity. | `H2O_MODEL` |
+| `h2_model` | `gaillard2003` | `str`: `gaillard2003`, `burguisser2015` | H2 solubility law. Has effect only at reduced fO2 where dissolved H2 is non-trivial. | `H2_MODEL` |
+| `c_model` | `burguisser2015` | `str`: `burguisser2015`, `eguchi2018` | CO2 / CO3²⁻ solubility law. Pair `c_model` with the H2O law from the same source paper for internal consistency. `eguchi2018` exposes additional graphite-saturation handling. | `C_MODEL` |
+| `co_model` | `armstrong2015` | `str`: `armstrong2015`, `None` (literal string `None`, disables CO solubility) | CO solubility law. Has effect only at reduced fO2 where dissolved CO is non-trivial. | `CO_MODEL` |
+| `ch4_model` | `ardia2013` | `str`: `ardia2013`, `None` (disables CH4 solubility) | CH4 solubility law. Has effect only at strongly reduced fO2 (≲ FMQ−2). | `CH4_MODEL` |
+| `sulfide_capacity` | `oneill2020` | `str`: `oneill2020`, `oneill2002` | Sulfide capacity model — controls how much S²⁻ the melt holds at given fO2 and composition. Affects S degassing under reducing conditions. | `SULFIDE_CAPACITY` |
+| `sulfate_capacity` | `nash2019` | `str`: `nash2019` (only option recognized at present) | Sulfate capacity model. Affects S degassing under oxidizing conditions. | `SULFATE_CAPACITY` |
+| `scss` | `liu2007` | `str`: `liu2007` (only option recognized at present) | Sulfide content at sulfide saturation (SCSS) model. Read by EVo when sulfide saturation is reached during the run. | `SCSS` |
+| `n_model` | `libourel2003` | `str`: `libourel2003` (only option recognized at present) | Nitrogen solubility law. Read only when `nitrogen_set=true`. | `N_MODEL` |
+| `density_model` | `spera2000` | `str`: `spera2000` (only option recognized at present) | Melt density model used for mass ↔ volume conversion in the bookkeeping. Does not affect intensive quantities like fO2 or species mole fractions. | `DENSITY_MODEL` |
+| `fo2_model` | `kc1991` | `str`: `kc1991`, `r2013` | Fe3+/FeT ↔ logfO2 conversion equation EVo uses internally. `kc1991` = Kress & Carmichael (1991) appendix eq. A-5; `r2013` = Righter (2013). Read whenever EVo needs to translate between Fe3+/FeT and fO2 — i.e., during initialization on the Fe3+/FeT path, and at every pressure step when `fe_system=true`. | `FO2_MODEL` |
+| `fmq_model` | `frost1991` | `str`: `frost1991` (only option recognized at present) | Definition of the FMQ buffer (and, in volcatenate's wrapper, also of the NNO and IW buffers via Frost 1991 expressions). Read by EVo (a) during initialization on the buffer path, when converting `dFMQ`/`dNNO` from the sample to absolute fO2; (b) at every pressure step when reporting `dFMQ`. | `FMQ_MODEL` |
+| `overrides` | `{}` | `dict[str, dict[str, Any]]`. Example: `{"MORB": {"dp_max": 25}, "Fogo": {"p_start": 5000, "gas_system": "coh"}}` | Per-sample overrides keyed by sample name; values override the corresponding fields above for that sample only. Nested-dataclass fields can be overridden as partial dicts (the wrapper merges them onto the parent). See [Per-sample overrides in configuration.md](configuration.md#per-sample-overrides). | (resolved in `resolve_sample_config`) |
 
 ### `evo.fo2_source`
 
@@ -493,39 +533,44 @@ How EVo's initial fO2 is set at the top of the degassing run. Default `auto`. Al
 
 #### EVo's internal representation of fO2
 
-EVo represents fO2 internally as `sys.FO2` = ln(absolute fO2 in bar). It also tracks `sys.FO2_buffer` (the offset relative to a chosen reference buffer — FMQ, NNO, or IW) for reporting. The reported `logfO2` and `dFMQ` columns in volcatenate's standardized output come directly from these.
+EVo represents fO2 internally as `sys.FO2 = ln(absolute fO2 in bar)` — natural log, not log10 (atypical compared to most petrological conventions; see [`backends/evo.py` and `EVo/conversions.py` notes](#evo-fo2-source-internal-representation-followup)). EVo also tracks `sys.FO2_buffer` (the offset relative to a chosen reference buffer — FMQ, NNO, or IW) for reporting. Volcatenate's standardized output reports `logfO2` (= log10 of absolute fO2) and `dFMQ` columns; both are derived from those internal quantities.
 
-Whatever sample field the wrapper picks to set the initial state, EVo converts it to that internal absolute-fO2 form via one of three equations, all evaluated at the run's T and P:
+Whatever sample field you use to initialize the run, EVo converts it to that internal `sys.FO2` (= ln fO2 in bar) via one of three equations. The equation used in each path is itself selected by other YAML keys (`evo.fo2_model`, `evo.fmq_model`); the user controls both the input pathway (via `fo2_source`) and the conversion equation (via `fo2_model` / `fmq_model`):
 
-| Input on the sample | EVo conversion to internal `sys.FO2` (= ln fO2 in bar) | Equation source |
+| Source of redox value | YAML key choosing the conversion equation | Conversion to internal `sys.FO2` |
 | --- | --- | --- |
-| `Fe3FeT` (or speciated `FeO + Fe2O3`) | `Fe3+/FeT` (with melt composition cm, T, P) → log10(fO2) → ln(fO2). Implementation: `c2fo2(cm, T, P, FO2_MODEL)` in `EVo/conversions.py`. | `FO2_MODEL = kc1991` (default): Kress & Carmichael (1991) appendix eq. A-5. Alternative: `r2013` (Righter 2013). |
-| `dFMQ` | `dFMQ` (with T, P) → log10(fO2) → ln(fO2). Implementation: `fmq2fo2(dfmq, T, P, FMQ_MODEL)`. | `FMQ_MODEL = frost1991`: Frost (1991) FMQ parameterization. |
-| `dNNO` | `dNNO` (with T, P) → log10(fO2) → ln(fO2). Implementation: `nno2fo2(dnno, T, P, FMQ_MODEL)`. | `FMQ_MODEL = frost1991`: Frost (1991) NNO parameterization. (Volcatenate uses the same `FMQ_MODEL` setting for both buffer families since Frost 1991 covers both.) |
-| `fo2_start` (absolute, in bar; via `fo2_source: absolute`) | `ln(fo2_start)` directly. EVo also back-computes `sys.FO2_buffer = fo2_2fmq(log10(fo2), T, P, FMQ_MODEL)` for reporting. | (no conversion equation; direct assignment) |
+| `Fe3FeT` (or speciated `FeO + Fe2O3`) on the sample | `evo.fo2_model` | Translates Fe3+/FeT (with melt composition, T in K, P in bar) → log10(fO2) → ln(fO2) via the chosen equation. <br> `kc1991` (default): Kress & Carmichael (1991) appendix eq. A-5. <br> `r2013`: Righter (2013). |
+| `dFMQ` on the sample | `evo.fmq_model` | Translates `dFMQ` (with T in K, P in bar) → log10(fO2) → ln(fO2). <br> `frost1991` (default; only option in upstream EVo): Frost (1991) FMQ parameterization. |
+| `dNNO` on the sample | `evo.fmq_model` | Translates `dNNO` (with T in K, P in bar) → log10(fO2) → ln(fO2). <br> `frost1991` (default; only option): Frost (1991) NNO parameterization. (Same `fmq_model` setting controls both buffer families because Frost 1991 covers both.) |
+| `evo.fo2_start` (YAML; absolute fO2 in bar; only when `evo.fo2_source: absolute` and `evo.fo2_set: true`) | (none — direct assignment) | `sys.FO2 = ln(fo2_start)`. EVo also back-computes `sys.FO2_buffer = log10(fO2) − log10(fO2_FMQ)(T,P)` for reporting. |
 
 T (Kelvin) is the run temperature; P (bar) is the current pressure. All four conversions are P- and T-dependent, so the same input value at different P/T yields different absolute fO2.
 
-Once `sys.FO2` is set at saturation pressure, fO2 evolves with pressure during degassing if `evo.fe_system=true` (default). With `evo.fe_system=false`, `sys.FO2` is held at its initial value.
+Once `sys.FO2` is set at the saturation pressure, fO2 evolves with pressure during degassing if `evo.fe_system=true` (default). With `evo.fe_system=false`, `sys.FO2` is held at its initial value for the whole run.
 
-#### Disambiguation from `evo.fo2_model`
+#### Disambiguation: `fo2_source` vs. `fo2_model`
 
-`fo2_source` chooses the input pathway (which sample field the wrapper reads). `evo.fo2_model` chooses the conversion equation (Fe3+/FeT ↔ logfO2) used inside the Fe3+/FeT pathway. They are independent: `fo2_model` is consulted whenever EVo needs that translation, regardless of which path `fo2_source` selected.
+These are two independent settings the user controls separately:
+
+- `evo.fo2_source` selects the **input pathway** — which sample field volcatenate reads to derive the initial fO2 (`Fe3FeT`, `dNNO`, `dFMQ`, or none if `absolute`).
+- `evo.fo2_model` selects the **conversion equation** EVo uses inside the Fe3+/FeT pathway to map `Fe3+/FeT ↔ logfO2`. It is also consulted at every pressure step when `fe_system=true` (because Fe3+/FeT and fO2 are interconverted as the run evolves), regardless of which path was used to initialize.
+
+Setting `evo.fo2_source: buffer` and `evo.fo2_model: r2013` is meaningful: the buffer path is used for initialization, and Righter 2013 is used at every subsequent step to keep Fe3+/FeT and fO2 in sync.
 
 #### Per-mode behavior of `fo2_source`
 
-| `fo2_source` value | Sample field referenced | Initial `sys.FO2` from | If sample field is missing |
+| `fo2_source` value | Sample field used (set in CSV / dict / `MeltComposition`) | Initial `sys.FO2` from | Behavior when the required sample field is missing |
 | --- | --- | --- | --- |
-| `auto` (default) | best available, in priority order: `Fe3FeT` → `dNNO` → `dFMQ` | the equation matching the chosen field (see table above) | Falls back to `evo.fo2_buffer` with offset 0; emits a `WARNING`-level log entry. Never raises. |
-| `fe3fet` | `Fe3FeT` (or speciated `FeO + Fe2O3` on the sample) | KC91 / Righter via `evo.fo2_model` | Raises `ValueError`. |
-| `buffer` | `dNNO` (when `fo2_buffer: NNO`) or `dFMQ` (when `fo2_buffer: FMQ`); `IW` is allowed but uses offset 0 since `comp.dIW` does not exist | Frost-1991 buffer expression via `evo.fmq_model` | Raises `ValueError` if `fo2_buffer` is `FMQ` or `NNO` and the matching offset is missing. |
-| `absolute` | (none — uses the YAML's `fo2_start`) | direct: `ln(fo2_start)` | Raises `ValueError` if `fo2_set` is not `true` or `fo2_start ≤ 0`. Side effect: `chem.yaml` does not split `FeOT` into `FeO + Fe2O3` because EVo refuses to run with both an absolute fO2 and a speciated iron entry. |
+| `auto` (default) | best available, in priority order: `Fe3FeT` → `dNNO` → `dFMQ` | the equation matching the chosen field (see table above) | Falls back to `evo.fo2_buffer` (from the YAML) at offset 0; emits a `WARNING`-level log entry. Never raises. |
+| `fe3fet` | `Fe3FeT` (or speciated `FeO + Fe2O3`) | KC91 / Righter via `evo.fo2_model` | Raises `ValueError`. |
+| `buffer` | `dNNO` if `evo.fo2_buffer: NNO`; `dFMQ` if `evo.fo2_buffer: FMQ`. (`IW` is allowed as a buffer choice but uses offset 0 since `comp.dIW` does not exist as a sample field.) | Frost-1991 buffer expression via `evo.fmq_model` | Raises `ValueError` if `evo.fo2_buffer` is `FMQ` or `NNO` and the matching offset is missing. |
+| `absolute` | (none — uses the YAML's `evo.fo2_start`) | direct: `sys.FO2 = ln(fo2_start)` | Raises `ValueError` if `evo.fo2_set` is not `true` or `evo.fo2_start ≤ 0`. Side effect: `chem.yaml` does not split `FeOT` into `FeO + Fe2O3` because EVo refuses to run with both an absolute fO2 and a speciated iron entry. |
 
-`auto` mode logs each path choice at INFO level, except the `fo2_buffer`-with-offset-0 last fallback, which is logged at WARNING so it is visible at any log level. Multiple redox indicators on the sample do not conflict — `Fe3FeT` wins.
+`auto` mode logs each path choice at INFO level, except the `evo.fo2_buffer`-with-offset-0 last fallback, which is logged at WARNING so it is visible at any log level. Multiple redox indicators on the sample do not conflict — `Fe3FeT` wins.
 
 #### Output columns
 
-`fo2_source` directly determines the initial values of the `logfO2`, `dFMQ`, and `Fe3Fet_m` columns in the standardized output CSV. The chosen initial fO2 then propagates through S speciation and vapor composition for the rest of the run.
+The choice of `fo2_source` directly determines the initial values of the `logfO2`, `dFMQ`, and `Fe3Fet_m` columns in the standardized output CSV. The chosen initial fO2 then propagates through S speciation and vapor composition for the rest of the run.
 
 #### Initialization vs. evolution
 
@@ -534,6 +579,8 @@ Once `sys.FO2` is set at saturation pressure, fO2 evolves with pressure during d
 #### Which other EVo YAML keys interact with this one
 
 `evo.fo2_source` is the dispatch switch for redox initialization, and several other EVo keys are read or ignored conditional on its value (`evo.fo2_buffer`, `evo.fo2_set`/`fo2_start`, `evo.fo2_model`, `evo.fmq_model`, the `evo.fh*_set` fields). For the complete map of which keys are read in which mode and which are ignored, see [fO2-related YAML keys: precedence and which keys are ignored when others are set](#fo2-related-yaml-keys-precedence-and-which-keys-are-ignored-when-others-are-set) in the universal Redox section above.
+
+(<a id="evo-fo2-source-internal-representation-followup"></a>**Follow-up note:** EVo's choice of `ln(fO2)` (natural log) for its internal representation is unusual — most of the petrological literature uses `log10(fO2)`. This is purely an internal storage choice; volcatenate's reported `logfO2` column is in `log10` and matches the literature convention. Worth confirming with the EVo authors that this is intentional rather than a typo we should flag upstream.)
 
 ### Wrapper-managed values not in the YAML — EVo
 
