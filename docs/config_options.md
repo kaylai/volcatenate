@@ -6,15 +6,15 @@ The doc is organized in two layers:
 
 - **[Top-level `RunConfig` settings](#top-level-runconfig-settings)** — the universal fields that apply to every run: output paths, logging, progress bars, run-bundle saving.
 - **Per-backend sections**, ordered from simplest to most involved:
-    1. [VESIcal](#vesical)
-    2. [VolFe](#volfe)
-    3. [EVo](#evo)
-    4. [MAGEC](#magec)
-    5. [SulfurX](#sulfurx)
+  1. [VESIcal](#vesical)
+  2. [VolFe](#volfe)
+  3. [EVo](#evo)
+  4. [MAGEC](#magec)
+  5. [SulfurX](#sulfurx)
 
 Each per-backend section has the same structure:
 
-- **Where the YAML lands** — the full call chain from YAML to backend.
+- **How the YAML propagates** — the full call chain from YAML to backend.
 - **Field-by-field table** — what each setting actually does to the calculation.
 - **Hidden behaviors** — things volcatenate hardcodes or pulls from the `MeltComposition`, that you can't see in the YAML.
 - **Fallback chains** — what happens when the option you picked doesn't have a matching value on the sample.
@@ -25,9 +25,27 @@ Throughout, when you see a redox indicator referenced in plain English:
 - **dFMQ** — log fO2 relative to the FMQ (fayalite-magnetite-quartz) buffer at the same T (and usually 1 bar).
 - **dNNO** — log fO2 relative to the NNO (nickel-nickel oxide) buffer.
 
+### Unit conventions
+
+Whatever unit you put on the sample, the wrapper converts to whatever each backend wants:
+
+- VolFe and SulfurX consume CO₂ and S as ppm. The wrapper multiplies your wt% values by 10000 before passing them in.
+- EVo consumes volatiles as mass fractions. The wrapper divides your wt% values by 100.
+- H₂O is passed as wt% directly to backends that want it, then divided by 100 for EVo.
+
+These rescalings preserve the underlying chemistry — they're just the format each backend's input expects. You don't need to think about them when supplying the sample.
+
+### Logging
+
+The volcatenate log file (`RunConfig.log_file`) is truncated on the first call within a Python process and **appended** thereafter, so multiple `calculate_*` calls in the same notebook accumulate into one log instead of clobbering each other. To restart from a clean file mid-session, call `volcatenate.log.reset_log_file_tracking()` before the next call.
+
+### Output CSV schema
+
+The DataFrames returned by `calculate_degassing` contain a fixed set of columns ([`columns.STANDARD_COLUMNS`](../src/volcatenate/columns.py)). When backends produce extra intermediate columns (e.g. MAGEC's `Run_ID`, `_sample`), those are stripped on write via [`convert.to_standard_schema`](../src/volcatenate/convert.py), which is wired into `export_degassing_paths` so the on-disk CSV is always the canonical schema.
+
 ---
 
-## What goes in the sample vs. what goes in the YAML
+## What goes in the sample inputs, what goes in the YAML config, what goes in both?
 
 You provide volcatenate two kinds of input: **sample data** — a description of one melt's composition, temperature, and volatile content — and a **YAML config** that tells the wrapper which models to run and how to run them. Most fields belong cleanly to one or the other, but a handful of fields can live in either place, with rules about which wins. This section maps every field a new user will encounter so you know where each piece of information has to go.
 
@@ -52,44 +70,18 @@ flowchart LR
     RUN --> OUT["Standardized CSVs<br/>+ run bundle JSON<br/>+ resolved-input YAMLs"]
 ```
 
-### Required: data that must be in the sample
-
-Without these, no run will start. They define *what* you're modeling.
-
-| Field on the sample (CSV column / dict key / `MeltComposition` field) | Used by | What it is |
-| --- | --- | --- |
-| `Sample` (alias `Label`) | All | Identifier — used as the row key in output CSVs and as the per-sample override key in YAML. |
-| `T_C` (alias `Temp`, `Temperature`) | All | Temperature in °C. Each backend converts to Kelvin internally where needed. |
-| `SiO2`, `TiO2`, `Al2O3`, `MnO`, `MgO`, `CaO`, `Na2O`, `K2O`, `P2O5` | All | Major-oxide composition, all wt%. |
-| `FeOT` *or* speciated `FeO` + `Fe2O3` | All | Total iron, wt%. You can supply `FeOT` directly, or supply both `FeO` and `Fe2O3` and let the wrapper compute `FeOT` and `Fe3+/FeT` from them. Don't mix the two forms. |
-| `H2O`, `CO2`, `S` | All | Bulk volatile budget, all wt%. Volcatenate rescales these per backend (some want ppm, some want mass fraction, some want wt% directly), but the underlying meaning is unchanged. |
-
-These fields **cannot** appear in the YAML config. The YAML has no `H2O` or `T_C` setting — your samples define those, period.
-
-One detail worth knowing: H₂O, CO₂, and S are taken in as **neutral oxides / elemental sulfur** (not as separately speciated melt species like H₂, CH₄, etc.). Whether a backend internally re-speciates them — splitting H₂O into H₂ and H₂Oₘₒₗ, or producing OCS / H₂S in the vapor — depends on the backend's own machinery and on its COH-species YAML setting (e.g. `volfe.coh_species`).
-
-### Optional: data that only the sample can carry
-
-These are sample fields some backends use and others ignore. The YAML has no equivalent — to include them in a run, they have to be on the sample.
-
-| Field on the sample | Used by | What it is | Default if absent |
-| --- | --- | --- | --- |
-| `Cr2O3` | MAGEC only | wt% Cr₂O₃, included in MAGEC's anhydrous renormalization | 0.0 (treated as absent) |
-| `Xppm` | VolFe only | "Other" trace species (Ar or Ne; species identity is set by `volfe.species_x`) | 0.0 |
-| `Reservoir` | none directly | Free-text grouping label propagated to output for plotting | empty string |
-
-### Redox indicators: value lives on the sample, choice lives in the YAML
+## Redox indicators: value lives on the sample, choice lives in the YAML
 
 This is the case worth understanding carefully. You may have wondered "where does fO₂ live?" — the answer is **the value comes from the sample, the choice of which value to use comes from the YAML.**
 
 You supply one or more of `Fe3FeT`, `dNNO`, `dFMQ` on each sample (any one is enough; providing several is fine). Each backend then has YAML settings that control which of those gets used:
 
-| YAML setting | Purpose |
-| --- | --- |
-| `evo.fo2_source` | `auto` (default) prefers `Fe3FeT`, then falls back to `dNNO`, then `dFMQ`. The strict modes `fe3fet` / `buffer` / `absolute` force a specific path and raise if the sample lacks that data. |
-| `volfe.fo2_column` *and* `volfe.fo2_source` | `fo2_column` names the preferred indicator (`Fe3FeT` / `DNNO` / `DFMQ`); `fo2_source=auto` allows fallback through the others; strict modes (`fe3fet` / `dnno` / `dfmq`) raise on missing data. |
-| `magec.redox_option` *and* `magec.redox_source` | `redox_option` names the preferred indicator; `redox_source=auto` allows fallback (including a KC91 conversion from `dNNO`/`dFMQ` to `Fe3+/FeT`); strict modes raise. |
-| (SulfurX) | No setting — SulfurX always tries `dFMQ` first, then `Fe3+/FeT` (via KC91 inversion at 1 bar), then `dNNO` (via Frost-1991 buffer offset). |
+| YAML setting                                          | Purpose                                                                                                                                                                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `evo.fo2_source`                                    | `auto` (default) prefers `Fe3FeT`, then falls back to `dNNO`, then `dFMQ`. The strict modes `fe3fet` / `buffer` / `absolute` force a specific path and raise if the sample lacks that data.       |
+| `volfe.fo2_column` *and* `volfe.fo2_source`     | `fo2_column` names the preferred indicator (`Fe3FeT` / `DNNO` / `DFMQ`); `fo2_source=auto` allows fallback through the others; strict modes (`fe3fet` / `dnno` / `dfmq`) raise on missing data. |
+| `magec.redox_option` *and* `magec.redox_source` | `redox_option` names the preferred indicator; `redox_source=auto` allows fallback (including a KC91 conversion from `dNNO`/`dFMQ` to `Fe3+/FeT`); strict modes raise.                                 |
+| (SulfurX)                                             | No setting — SulfurX always tries `dFMQ` first, then `Fe3+/FeT` (via KC91 inversion at 1 bar), then `dNNO` (via Frost-1991 buffer offset).                                                               |
 
 **Precedence rule:** the YAML can never substitute its own redox value. It can only narrow *which* of your supplied indicators each backend will look at. If you set `evo.fo2_source: fe3fet` but your sample has only `dFMQ`, EVo will raise rather than silently use `dFMQ`.
 
@@ -115,7 +107,33 @@ flowchart TD
 
 For the full per-backend redox cascade — including which auto-mode fallbacks are silent vs. logged at INFO vs. logged at WARNING — see the "Fallback chains" subsection in each per-backend section below.
 
-### The one field where the YAML can fill in for the sample
+## Sample inputs (CSV file, `MeltComposition`, or dict)
+
+### Required in sample input
+
+| Field on the sample (CSV column / dict key /`MeltComposition` field)                | Used by | What it is                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Sample` (alias `Label`)                                                          | All     | Identifier — used as the row key in output CSVs and as the per-sample override key in YAML.                                                                                      |
+| `T_C` (alias `Temp`, `Temperature`)                                             | All     | Temperature in °C. Each backend converts to Kelvin internally where needed.                                                                                                      |
+| `SiO2`, `TiO2`, `Al2O3`, `MnO`, `MgO`, `CaO`, `Na2O`, `K2O`, `P2O5` | All     | Major-oxide composition, all wt%.                                                                                                                                                 |
+| `FeOT` *or* speciated `FeO` + `Fe2O3`                                         | All     | Total iron, wt%. You can supply `FeOT` directly, or supply both `FeO` and `Fe2O3` and let the wrapper compute `FeOT` and `Fe3+/FeT` from them. Don't mix the two forms. |
+| `H2O`, `CO2`, `S`                                                               | All     | Bulk volatile budget, all wt%. Volcatenate rescales these per backend (some want ppm, some want mass fraction, some want wt% directly), but the underlying meaning is unchanged.  |
+
+These fields **cannot** appear in the YAML config. The YAML has no `H2O` or `T_C` setting — your samples define those, period.
+
+One detail worth knowing: H₂O, CO₂, and S are taken in as **neutral oxides / elemental sulfur** (not as separately speciated melt species like H₂, CH₄, etc.). Whether a backend internally re-speciates them — splitting H₂O into H₂ and H₂Oₘₒₗ, or producing OCS / H₂S in the vapor — depends on the backend's own machinery and on its COH-species YAML setting (e.g. `volfe.coh_species`).
+
+### Optional data that can only be set in the sample inputs
+
+These are sample fields some backends use and others ignore. The YAML has no equivalent — to include them in a run, they have to be on the sample.
+
+| Field on the sample | Used by       | What it is                                                                       | Default if absent       |
+| ------------------- | ------------- | -------------------------------------------------------------------------------- | ----------------------- |
+| `Cr2O3`           | MAGEC only    | wt% Cr₂O₃, included in MAGEC's anhydrous renormalization                       | 0.0 (treated as absent) |
+| `Xppm`            | VolFe only    | "Other" trace species (Ar or Ne; species identity is set by `volfe.species_x`) | 0.0                     |
+| `Reservoir`       | none directly | Free-text grouping label propagated to output for plotting                       | empty string            |
+
+### Nitrogen in EVo: The one field where the YAML can fill in for the sample
 
 EVo's nitrogen handling is the only field where, when sample data is absent, a YAML value takes its place. When `evo.nitrogen_set: True`:
 
@@ -124,27 +142,9 @@ EVo's nitrogen handling is the only field where, when sample data is absent, a Y
 
 `evo.nitrogen_set: False` (the default) bypasses nitrogen entirely. Every other piece of sample data has no YAML fallback — if it's not on the sample, it's not in the run.
 
-### Engine settings: fields that only the YAML can carry
+## The YAML configuration file
 
 Solubility models, equilibrium-constant parameterizations, fugacity-coefficient choices, gas-system identity, pressure-stepping, run-bundle paths, log-file paths, model versions — these are all pure method/output choices and don't depend on what's in the sample. The CSV and `MeltComposition` have no fields for them. The full inventory is in the per-backend sections below and in the [top-level RunConfig settings](#top-level-runconfig-settings) section above.
-
-### Unit conventions
-
-Whatever unit you put on the sample, the wrapper converts to whatever each backend wants:
-
-- VolFe and SulfurX consume CO₂ and S as ppm. The wrapper multiplies your wt% values by 10000 before passing them in.
-- EVo consumes volatiles as mass fractions. The wrapper divides your wt% values by 100.
-- H₂O is passed as wt% directly to backends that want it, then divided by 100 for EVo.
-
-These rescalings preserve the underlying chemistry — they're just the format each backend's input expects. You don't need to think about them when supplying the sample.
-
-### Logging
-
-The volcatenate log file (`RunConfig.log_file`) is truncated on the first call within a Python process and **appended** thereafter, so multiple `calculate_*` calls in the same notebook accumulate into one log instead of clobbering each other. To restart from a clean file mid-session, call `volcatenate.log.reset_log_file_tracking()` before the next call.
-
-### Output CSV schema
-
-The DataFrames returned by `calculate_degassing` contain a fixed set of columns ([`columns.STANDARD_COLUMNS`](../src/volcatenate/columns.py)). When backends produce extra intermediate columns (e.g. MAGEC's `Run_ID`, `_sample`), those are stripped on write via [`convert.to_standard_schema`](../src/volcatenate/convert.py), which is wired into `export_degassing_paths` so the on-disk CSV is always the canonical schema.
 
 ---
 
@@ -154,16 +154,16 @@ These are the YAML fields that live at the top of the config file (not under any
 
 ### Field-by-field
 
-| YAML key | Default | What it does | Where it lands |
-| --- | --- | --- | --- |
-| `output_dir` | `"."` | Root directory for **everything** the run produces — standardized result CSVs, the run bundle JSON, the per-`(sample, backend)` resolved-input YAML sidecars, and the `raw_output_dir` subtree. The path is taken as-is (relative to the cwd if not absolute) and created if it doesn't exist. | Used by every entry point in [`core.py`](../src/volcatenate/core.py); plumbed through to each backend wrapper. |
-| `raw_output_dir` | `"raw_tool_output"` | Subdirectory **under `output_dir`** where each backend drops its scratch files: EVo writes per-sample `chem.yaml` / `env.yaml` / `output.yaml` plus EVo's own CSV output; MAGEC writes the per-sample input/output xlsx pair; VolFe writes its captured stdout / log fragments; SulfurX writes nothing here today. The path is interpreted relative to `output_dir`, so the absolute scratch path is `<output_dir>/<raw_output_dir>/...`. | Each backend builds `work_dir = os.path.join(config.output_dir, config.raw_output_dir, ...)` at the start of its calculate-* method. |
-| `keep_raw_output` | `True` | Whether to keep `raw_output_dir` on disk after the run. `True` retains every backend's scratch files for inspection. `False` deletes the `raw_output_dir` tree (per-sample subdirs first, then the top-level dir if empty) at the end of the run. The standardized result CSVs, the run bundle JSON, and the resolved-input sidecars are unaffected — they live outside `raw_output_dir`. | Cleanup is per-backend after each calculate-* call (e.g. [evo.py:163](../src/volcatenate/backends/evo.py)) plus a final empty-dir sweep in [`run_comparison`](../src/volcatenate/core.py). |
-| `verbose` | `False` | Whether to send INFO-level log messages from the volcatenate logger to stdout. When `False` the logger is silent on the terminal (a `NullHandler` is installed unless `log_file` is also set). When `True`, a Rich-formatted handler is attached if Rich is available; falls back to a plain stdout handler otherwise. Has no effect on what gets written to `log_file`. | Consumed by [`setup_logging`](../src/volcatenate/log.py), called automatically by every entry point. |
-| `log_file` | `""` | Path to a file that captures **all** DEBUG-level messages, including the per-step output that gets routed there from EVo's stdout, MAGEC's MATLAB stdout, and VESIcal's captured warnings. Empty string disables file logging. The file is **truncated on the first call within a Python process**, then **appended to** thereafter — so multiple `calculate_*` calls in the same notebook accumulate into one log instead of clobbering each other. To force a fresh log mid-session, call [`reset_log_file_tracking()`](../src/volcatenate/log.py). | [`setup_logging`](../src/volcatenate/log.py) attaches a `FileHandler`. |
-| `show_progress` | `True` | Show Rich progress bars during multi-sample runs. `False` is the right choice for CI / headless / batch scripts where progress bars produce noisy output. | Consumed by [`_init_progress`](../src/volcatenate/core.py); only matters when Rich is installed. |
-| `save_bundle` | `""` | Path at which to write a reproducible JSON run bundle. Empty string disables. The bundle is written **twice**: an inputs-only version is saved up front (so the bundle survives a mid-run crash), and a full version with `resolved_inputs` populated from the run is saved at end of run. See [run_bundles.md](run_bundles.md) for the full anatomy. | [`create_bundle`](../src/volcatenate/reproducible.py) + [`save_bundle`](../src/volcatenate/reproducible.py); orchestrated by every entry point in [`core.py`](../src/volcatenate/core.py). |
-| `bundle_comments` | `""` | Free-text notes recorded in the bundle's `comments` field. **Provenance only** — ignored on replay. Useful for "why this run exists," patches you applied to a backend, expected outcomes, etc. The `comments=` kwarg on [`create_bundle`](../src/volcatenate/reproducible.py) overrides this when both are supplied. | Stored verbatim in the bundle JSON. |
+| YAML key            | Default               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Where it lands                                                                                                                                                                          |
+| ------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `output_dir`      | `"."`               | Root directory for**everything** the run produces — standardized result CSVs, the run bundle JSON, the per-`(sample, backend)` resolved-input YAML sidecars, and the `raw_output_dir` subtree. The path is taken as-is (relative to the cwd if not absolute) and created if it doesn't exist.                                                                                                                                                                                                                                                                 | Used by every entry point in[`core.py`](../src/volcatenate/core.py); plumbed through to each backend wrapper.                                                                            |
+| `raw_output_dir`  | `"raw_tool_output"` | Subdirectory**under `output_dir`** where each backend drops its scratch files: EVo writes per-sample `chem.yaml` / `env.yaml` / `output.yaml` plus EVo's own CSV output; MAGEC writes the per-sample input/output xlsx pair; VolFe writes its captured stdout / log fragments; SulfurX writes nothing here today. The path is interpreted relative to `output_dir`, so the absolute scratch path is `<output_dir>/<raw_output_dir>/...`.                                                                                                               | Each backend builds `work_dir = os.path.join(config.output_dir, config.raw_output_dir, ...)` at the start of its calculate-* method.                                                  |
+| `keep_raw_output` | `True`              | Whether to keep `raw_output_dir` on disk after the run. `True` retains every backend's scratch files for inspection. `False` deletes the `raw_output_dir` tree (per-sample subdirs first, then the top-level dir if empty) at the end of the run. The standardized result CSVs, the run bundle JSON, and the resolved-input sidecars are unaffected — they live outside `raw_output_dir`.                                                                                                                                                                     | Cleanup is per-backend after each calculate-* call (e.g.[evo.py:163](../src/volcatenate/backends/evo.py)) plus a final empty-dir sweep in [`run_comparison`](../src/volcatenate/core.py).   |
+| `verbose`         | `False`             | Whether to send INFO-level log messages from the volcatenate logger to stdout. When `False` the logger is silent on the terminal (a `NullHandler` is installed unless `log_file` is also set). When `True`, a Rich-formatted handler is attached if Rich is available; falls back to a plain stdout handler otherwise. Has no effect on what gets written to `log_file`.                                                                                                                                                                                       | Consumed by[`setup_logging`](../src/volcatenate/log.py), called automatically by every entry point.                                                                                      |
+| `log_file`        | `""`                | Path to a file that captures**all** DEBUG-level messages, including the per-step output that gets routed there from EVo's stdout, MAGEC's MATLAB stdout, and VESIcal's captured warnings. Empty string disables file logging. The file is **truncated on the first call within a Python process**, then **appended to** thereafter — so multiple `calculate_*` calls in the same notebook accumulate into one log instead of clobbering each other. To force a fresh log mid-session, call [`reset_log_file_tracking()`](../src/volcatenate/log.py). | [`setup_logging`](../src/volcatenate/log.py) attaches a `FileHandler`.                                                                                                                 |
+| `show_progress`   | `True`              | Show Rich progress bars during multi-sample runs.`False` is the right choice for CI / headless / batch scripts where progress bars produce noisy output.                                                                                                                                                                                                                                                                                                                                                                                                               | Consumed by[`_init_progress`](../src/volcatenate/core.py); only matters when Rich is installed.                                                                                          |
+| `save_bundle`     | `""`                | Path at which to write a reproducible JSON run bundle. Empty string disables. The bundle is written**twice**: an inputs-only version is saved up front (so the bundle survives a mid-run crash), and a full version with `resolved_inputs` populated from the run is saved at end of run. See [run_bundles.md](run_bundles.md) for the full anatomy.                                                                                                                                                                                                                | [`create_bundle`](../src/volcatenate/reproducible.py) + [`save_bundle`](../src/volcatenate/reproducible.py); orchestrated by every entry point in [`core.py`](../src/volcatenate/core.py). |
+| `bundle_comments` | `""`                | Free-text notes recorded in the bundle's `comments` field. **Provenance only** — ignored on replay. Useful for "why this run exists," patches you applied to a backend, expected outcomes, etc. The `comments=` kwarg on [`create_bundle`](../src/volcatenate/reproducible.py) overrides this when both are supplied.                                                                                                                                                                                                                                          | Stored verbatim in the bundle JSON.                                                                                                                                                     |
 
 ### On-disk layout the top-level fields produce
 
@@ -216,7 +216,7 @@ What lands at DEBUG level (and therefore in the log file but not on the terminal
 
 VESIcal is the simplest backend — it models only H₂O–CO₂ degassing (no sulfur, no Fe redox), so the wrapper is short and the YAML surface is tiny.
 
-### Where the YAML lands
+### How the YAML propagates
 
 ```
 volcatenate_config.yaml
@@ -256,7 +256,7 @@ VESIcal does not use any of the redox indicators (`Fe3FeT`, `dFMQ`, `dNNO`) — 
 
 VolFe is a Python C-O-H-S-Fe degassing model with a large set of toggles for solubility, fugacity, and equilibrium constants. Almost every YAML field maps 1-to-1 to a VolFe internal option name.
 
-### Where the YAML lands
+### How the YAML propagates
 
 ```
 volcatenate_config.yaml
@@ -348,7 +348,7 @@ In **strict modes** (`fo2_source="fe3fet"`, `"dnno"`, `"dfmq"`), the wrapper req
 
 EVo is run via three YAML files (`chem.yaml`, `env.yaml`, `output.yaml`) that volcatenate writes to a per-sample work directory, then calls `evo.run_evo()` on. EVo prints prolifically to stdout, so volcatenate wraps the call in a `_quiet_evo()` context that routes everything to the logger at DEBUG level.
 
-### Where the YAML lands
+### How the YAML propagates
 
 ```
 volcatenate_config.yaml
@@ -370,7 +370,7 @@ The columns "Backend option" use the *exact* key written into `env.yaml` (or `ch
 | YAML key                                               | What it does (plain English)                                                                                                                                                                                                                                                                                                                                                               | env.yaml key                                            | Gotchas                                                                                                                                                                                                     |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gas_system`                                         | Which gas species are tracked.`'cohs'` = full C-O-H-S system. Other choices include `'coh'` (no sulfur), `'cos'`, `'cohsn'` (with N).                                                                                                                                                                                                                                              | `GAS_SYS`                                             | Reducing the system (e.g.`'coh'`) is faster but obviously omits S.                                                                                                                                        |
-| `composition`                                        | EVo's composition family —`'basalt'`, `'phonolite'`, or `'rhyolite'`. Drives EVo's SiO2-range sanity check ([EVo/readin.py:212-217]) and the K_HOSg / K_OSg branch ([EVo/dgs_classes.py:693-723]) which selects coefficients per composition.                                                                                                                                       | `COMPOSITION`                                         | `basalt` = SiO2 in 45–55%; `phonolite` = 52–63%; `rhyolite` = 65–80%. If your sample's SiO2 is out of range, EVo would normally ask "continue?" — volcatenate auto-answers yes via `_auto_yes`. |
+| `composition`                                        | EVo's composition family —`'basalt'`, `'phonolite'`, or `'rhyolite'`. Drives EVo's SiO2-range sanity check (`run_melt_match` in [EVo/readin.py]) and the per-composition `solCon` assignment in `Molecule.__init__` ([EVo/dgs_classes.py]) which selects coefficients per composition.                                                                                        | `COMPOSITION`                                         | `basalt` = SiO2 in 45–55%; `phonolite` = 52–63%; `rhyolite` = 65–80%. If your sample's SiO2 is out of range, EVo would normally ask "continue?" — volcatenate auto-answers yes via `_auto_yes`. |
 | `fo2_buffer`                                         | Which buffer EVo uses when fO2 is set as an offset.`'FMQ'`, `'NNO'`, `'IW'`, …                                                                                                                                                                                                                                                                                                      | `FO2_buffer`                                          | Only relevant when `fo2_source="auto"` falls back to a buffer, or when `fo2_source="buffer"`. Has no effect when Fe3+/FeT data is present.                                                              |
 | `fe_system`                                          | If `true`, EVo iterates Fe redox equilibrium with fO2 at every step (analogous to VolFe `eq_Fe="yes"`). If `false`, Fe is held fixed.                                                                                                                                                                                                                                                | `FE_SYSTEM`                                           | `true` is the realistic choice.                                                                                                                                                                           |
 | `find_saturation`                                    | If `true`, EVo computes its starting pressure itself from the bulk volatiles (saturation pressure). If `false`, EVo starts at `p_start` and assumes that's correct.                                                                                                                                                                                                                  | `FIND_SATURATION`                                     | Default `true` is what you almost always want.                                                                                                                                                            |
@@ -432,7 +432,7 @@ FEO   = FeOT * (1 - Fe3FeT)
 FE2O3 = FeOT * Fe3FeT * (159.69 / (2 * 71.844))   # MW conversion
 ```
 
-If `fe3fet_computed` is NaN (no redox indicator at all), the wrapper sends `FEO = FeOT, FE2O3 = 0`, leaving fO2 to be set by the buffer. If `fo2_source="absolute"`, the wrapper deliberately **skips** the split and sends `FEO = FeOT, FE2O3 = 0` even when Fe3+/FeT is available — EVo refuses to accept both `FO2_SET=True` and a non-zero Fe2O3 simultaneously ([EVo/readin.py:164]).
+If `fe3fet_computed` is NaN (no redox indicator at all), the wrapper sends `FEO = FeOT, FE2O3 = 0`, leaving fO2 to be set by the buffer. If `fo2_source="absolute"`, the wrapper deliberately **skips** the split and sends `FEO = FeOT, FE2O3 = 0` even when Fe3+/FeT is available — EVo refuses to accept both `FO2_SET=True` and a non-zero Fe2O3 simultaneously (`readin_chem` in [EVo/readin.py]).
 
 #### output.yaml
 
@@ -463,7 +463,7 @@ In every mode the wrapper logs an INFO line naming the source it actually used, 
 
 MAGEC is the most awkward backend: it's a compiled MATLAB solver (`.p` file) called via subprocess. Volcatenate writes a CSV input file, generates a .m script that builds a MATLAB struct of settings, and runs `matlab -batch …`.
 
-### Where the YAML lands
+### How the YAML propagates
 
 ```
 volcatenate_config.yaml
@@ -579,7 +579,7 @@ In **strict modes**:
 
 SulfurX is a Python library that is not pip-installable — it has to be on `sys.path` via `config.sulfurx.path`. Volcatenate calls into its internal modules directly (`Iacono_Marziano_COH`, `degassingrun`, `OxygenFugacity`, etc.) rather than going through a single entry point.
 
-### Where the YAML lands
+### How the YAML propagates
 
 ```
 volcatenate_config.yaml
