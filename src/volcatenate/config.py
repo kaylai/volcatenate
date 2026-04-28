@@ -172,41 +172,77 @@ class VESIcalConfig:
 class VolFeConfig:
     """VolFe model configuration.
 
-    Managed internally by volcatenate (not exposed here):
-      - ``output csv``     — always False; volcatenate handles its own output
-      - ``print status``   — always False; volcatenate handles logging
-      - ``starting_P``     — always 'Pvsat'
-      - ``P_variation``    — always 'polybaric'
-      - ``T_variation``    — always 'isothermal'
-      - ``eq_Fe``          — always 'yes'
+    Always sourced from the input ``MeltComposition`` (not config):
+      - Sample name, ``T_C``, all major oxides, ``H2O`` (wt%),
+        ``CO2`` (→ ppm), ``S`` (→ ppm), ``Xppm``
+      - The redox column used (``DNNO`` / ``Fe3FeT`` / ``DFMQ``) is
+        chosen by ``fo2_column`` and ``fo2_source`` below.
 
-    Populated from the input composition (MeltComposition), not config:
-      - Sample name, T_C, all oxides, H2O, CO2ppm, STppm, Xppm
-      - fO2 indicator (DNNO / Fe3FeT / DFMQ) — chosen via ``fo2_column``
+    Always managed by volcatenate (not exposed here):
+      - VolFe ``output csv`` — always False; volcatenate handles
+        its own output.
+      - VolFe ``print status`` — always False; volcatenate routes
+        logging through its own logger.
+      - VolFe ``solve_species`` — internal solver hint that VolFe
+        re-sets during the calculation, so user-set values are
+        clobbered ([equilibrium_equations.py:39-60]).
+      - VolFe ``mass_volume`` — left at "mass"; the "volume" branch
+        is marked NEEDS FIXING upstream and is unsafe.
+      - VolFe ``setup`` — debug-only flag.
+
+    See ``docs/config_propagation.md`` for the full mapping of fields
+    here onto VolFe's own model option names.
     """
 
-    # Saturation
+    # ── Saturation ───────────────────────────────────────────────────
     sulfur_saturation: bool = False
     graphite_saturation: bool = False
+    sulfur_is_sat: Literal["yes", "no"] = "no"  # Treat melt as sulfur-saturated at start
 
-    # Redox input (volcatenate-specific: which column to read from the input CSV)
+    # ── Redox input ──────────────────────────────────────────────────
+    # ``fo2_column`` is the volcatenate-specific knob for which redox
+    # column to feed into VolFe's ``setup_df`` (DNNO / Fe3FeT / DFMQ).
+    # ``fo2_source`` controls how strictly that choice is enforced:
+    #   "auto" — fall back through the priority chain if the requested
+    #            column is missing (current behavior, with INFO logging).
+    #   "fe3fet"/"dnno"/"dfmq" — require that exact column on the comp
+    #            and raise if missing.
     fo2_column: str = "Fe3FeT"        # 'DNNO', 'Fe3FeT', or 'DFMQ'
+    fo2_source: Literal["auto", "fe3fet", "dnno", "dfmq"] = "auto"
 
-    # Degassing
+    # ── Degassing geometry ───────────────────────────────────────────
     gassing_style: str = "closed"       # 'closed' or 'open'
     gassing_direction: str = "degas"    # 'degas' or 'regas'
     bulk_composition: str = "melt-only" # 'melt-only', 'melt+vapor_wtg', 'melt+vapor_initialCO2'
+    starting_p: Literal["Pvsat", "set"] = "Pvsat"   # Where to start: at saturation pressure or at a user-set P
+    p_variation: Literal["polybaric", "isobaric"] = "polybaric"
+    t_variation: Literal["isothermal", "polythermal"] = "isothermal"
+    crystallisation: Literal["no", "yes"] = "no"     # Track crystallization during degassing
 
-    # Species
+    # ── Iron / oxygen redox handling ─────────────────────────────────
+    # eq_Fe="yes" tracks Fe redox equilibrium with fO2 every step.
+    # eq_Fe="no" freezes Fe (sets wt_Fe=0 internally), decoupling
+    # iron from gas-phase chemistry. See VolFe calculations.py:433-447.
+    eq_fe: Literal["yes", "no"] = "yes"
+    bulk_o: Literal["exc_S", "inc_S"] = "exc_S"      # Whether sulfur-bound O is included in bulk O accounting
+    calc_sat: Literal["fO2_melt", "fO2_fX"] = "fO2_melt"  # Saturation-pressure search mode
+
+    # ── Species ──────────────────────────────────────────────────────
     coh_species: str = "yes_H2_CO_CH4_melt"  # COH species in melt and vapor
     h2s_melt: bool = True               # H2S as dissolved melt species
     species_x: str = "Ar"               # Chemical identity of species X ('Ar' or 'Ne')
+    h_speciation: str = "none"          # H melt speciation (only "none" supported by VolFe today)
 
-    # Oxygen fugacity
+    # ── Oxygen fugacity ──────────────────────────────────────────────
     fo2_model: str = "Kress91A"          # fO2–Fe3+/FeT relationship
     fmq_buffer: str = "Frost91"          # FMQ buffer parameterisation
+    nno_buffer: str = "Frost91"          # NNO buffer parameterisation
 
-    # Solubility constants
+    # ── Bulk physical model ──────────────────────────────────────────
+    density: str = "DensityX"            # Melt density model
+    melt_composition: str = "Basalt"     # Melt-composition family for parameterizations
+
+    # ── Solubility constants ─────────────────────────────────────────
     co2_sol: str = "MORB_Dixon95"        # CO2T solubility constant
     h2o_sol: str = "Basalt_Hughes24"     # H2O solubility constant
     h2_sol: str = "Basalt_Hughes24"      # H2 solubility constant
@@ -219,11 +255,11 @@ class VolFeConfig:
     c_spec_comp: str = "Basalt"          # CO2mol/CO32- speciation model
     h_spec_comp: str = "MORB_HughesIP"   # H2Omol/OH- speciation model
 
-    # Saturation conditions
+    # ── Saturation conditions ────────────────────────────────────────
     scss: str = "ONeill21hyd"            # SCSS model
     scas: str = "Zajacz19_pss"           # SCAS model
 
-    # Fugacity coefficients
+    # ── Fugacity coefficients ────────────────────────────────────────
     ideal_gas: bool = False              # Treat all vapor species as ideal gases
     y_co2: str = "Shi92"                 # CO2 fugacity coefficient
     y_so2: str = "Shi92_Hughes23"        # SO2 fugacity coefficient
@@ -235,12 +271,41 @@ class VolFeConfig:
     y_ch4: str = "Shi92"                 # CH4 fugacity coefficient
     y_h2o: str = "Holland91"             # H2O fugacity coefficient
     y_ocs: str = "Shi92"                 # OCS fugacity coefficient
+    y_x: str = "ideal"                   # Species X fugacity coefficient
 
-    # Equilibrium constants (only those with multiple model options)
+    # ── Equilibrium constants (string model identifiers) ─────────────
+    k_hog: str = "Ohmoto97"             # H2 + 0.5 O2 = H2O
     k_hosg: str = "Ohmoto97"            # H2S equilibrium (0.5S2 + H2O = H2S + 0.5O2)
     k_osg: str = "Ohmoto97"             # SO2 equilibrium (0.5S2 + O2 = SO2)
+    k_osg2: str = "ONeill22"            # SO4 / sulfate equilibrium
+    k_cog: str = "Ohmoto97"             # CO + 0.5 O2 = CO2
     k_cohg: str = "Ohmoto97"            # CH4 equilibrium (CH4 + 2O2 = CO2 + 2H2O)
     k_ocsg: str = "Moussallam19"         # OCS equilibrium
+    k_cos: str = "Holloway92"           # CO2 / carbonate solubility eq.
+    carbonylsulfide: str = "COS"         # Carbonyl-sulfide species name
+
+    # ── Isotopes ─────────────────────────────────────────────────────
+    # All of these only matter when isotopes="yes". They are string
+    # model identifiers (e.g. "Rust04", "Lee24"), not numeric values.
+    isotopes: Literal["no", "yes"] = "no"
+    beta_factors: str = "Richet77"
+    alpha_h_ch4v_ch4m: str = "no fractionation"
+    alpha_h_h2v_h2m: str = "no fractionation"
+    alpha_h_h2ov_ohmm: str = "Rust04"
+    alpha_h_h2ov_h2om: str = "Rust04"
+    alpha_h_h2sv_h2sm: str = "no fractionation"
+    alpha_c_ch4v_ch4m: str = "no fractionation"
+    alpha_c_cov_com: str = "no fractionation"
+    alpha_c_co2v_co2t: str = "Lee24"
+    alpha_c_co2v_co2m: str = "Blank93"
+    alpha_c_co2v_co32mm: str = "Lee24"
+    alpha_s_h2sv_h2sm: str = "no fractionation"
+    alpha_so2_so4: str = "Fiege15"
+    alpha_h2s_s: str = "Fiege15"
+
+    # ── Numerical / runtime ──────────────────────────────────────────
+    error: float = 0.1                 # Numerical tolerance for the solver
+    high_precision: bool = False       # Run in high-precision mode (slower)
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"gassing_style": "open", "scss": "Fortin15"}}

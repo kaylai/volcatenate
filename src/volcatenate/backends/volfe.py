@@ -167,63 +167,139 @@ def _build_setup_df(comp: MeltComposition, cfg) -> pd.DataFrame:
         "Xppm": [comp.Xppm],
     }
 
-    # Add fO2 column based on config preference
-    fo2_col = cfg.fo2_column
-    if fo2_col == "DNNO" and comp.dNNO is not None:
-        setup_dict["DNNO"] = [comp.dNNO]
-    elif fo2_col == "Fe3FeT":
-        fe3fet = comp.fe3fet_computed
-        if not np.isnan(fe3fet):
-            setup_dict["Fe3FeT"] = [fe3fet]
-        elif comp.dNNO is not None:
-            setup_dict["DNNO"] = [comp.dNNO]
-        elif comp.dFMQ is not None:
-            setup_dict["DFMQ"] = [comp.dFMQ]
-    elif fo2_col == "DFMQ" and comp.dFMQ is not None:
-        setup_dict["DFMQ"] = [comp.dFMQ]
-    else:
-        # Fallback chain
-        fe3fet = comp.fe3fet_computed
-        if not np.isnan(fe3fet):
-            setup_dict["Fe3FeT"] = [fe3fet]
-        elif comp.dNNO is not None:
-            setup_dict["DNNO"] = [comp.dNNO]
-        elif comp.dFMQ is not None:
-            setup_dict["DFMQ"] = [comp.dFMQ]
+    redox_col, redox_val = _resolve_volfe_redox(comp, cfg)
+    setup_dict[redox_col] = [redox_val]
 
     return pd.DataFrame(setup_dict)
+
+
+def _resolve_volfe_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
+    """Pick the VolFe redox column + value from the sample.
+
+    Returns a (column_name, value) pair where ``column_name`` is one of
+    ``"DNNO"``, ``"Fe3FeT"``, ``"DFMQ"`` (matching VolFe's setup_df
+    column names exactly).
+
+    Behavior is controlled by :class:`~volcatenate.config.VolFeConfig.fo2_source`:
+
+    - ``"auto"`` (default): try the column requested by ``fo2_column``
+      first, then fall back through Fe3+/FeT → dNNO → dFMQ. Logs the
+      choice at INFO so the user can see what actually got used.
+    - ``"fe3fet"`` / ``"dnno"`` / ``"dfmq"``: require that exact source
+      on the comp; raises ``ValueError`` if missing.
+
+    Raises ``ValueError`` if no usable redox indicator is available.
+    """
+    fe3fet = comp.fe3fet_computed
+    src = cfg.fo2_source
+
+    # Strict mode — user demanded a specific column.
+    if src == "fe3fet":
+        if np.isnan(fe3fet):
+            raise ValueError(
+                f"[VolFe] fo2_source='fe3fet' requires Fe3+/FeT on sample "
+                f"{comp.sample!r}, but none was provided."
+            )
+        return "Fe3FeT", float(fe3fet)
+    if src == "dnno":
+        if comp.dNNO is None:
+            raise ValueError(
+                f"[VolFe] fo2_source='dnno' requires dNNO on sample "
+                f"{comp.sample!r}, but it is missing."
+            )
+        return "DNNO", float(comp.dNNO)
+    if src == "dfmq":
+        if comp.dFMQ is None:
+            raise ValueError(
+                f"[VolFe] fo2_source='dfmq' requires dFMQ on sample "
+                f"{comp.sample!r}, but it is missing."
+            )
+        return "DFMQ", float(comp.dFMQ)
+
+    # Auto mode — try the requested column, then fall back.
+    fo2_col = cfg.fo2_column
+    if fo2_col == "DNNO" and comp.dNNO is not None:
+        logger.info("[VolFe] %s: redox=DNNO (%.3f)", comp.sample, comp.dNNO)
+        return "DNNO", float(comp.dNNO)
+    if fo2_col == "DFMQ" and comp.dFMQ is not None:
+        logger.info("[VolFe] %s: redox=DFMQ (%.3f)", comp.sample, comp.dFMQ)
+        return "DFMQ", float(comp.dFMQ)
+    if fo2_col == "Fe3FeT" and not np.isnan(fe3fet):
+        logger.info("[VolFe] %s: redox=Fe3FeT (%.4f)", comp.sample, fe3fet)
+        return "Fe3FeT", float(fe3fet)
+
+    # Fallback chain when the requested column is missing.
+    if not np.isnan(fe3fet):
+        logger.info(
+            "[VolFe] %s: fo2_column=%s missing on comp; falling back to Fe3FeT (%.4f)",
+            comp.sample, fo2_col, fe3fet,
+        )
+        return "Fe3FeT", float(fe3fet)
+    if comp.dNNO is not None:
+        logger.info(
+            "[VolFe] %s: fo2_column=%s missing on comp; falling back to DNNO (%.3f)",
+            comp.sample, fo2_col, comp.dNNO,
+        )
+        return "DNNO", float(comp.dNNO)
+    if comp.dFMQ is not None:
+        logger.info(
+            "[VolFe] %s: fo2_column=%s missing on comp; falling back to DFMQ (%.3f)",
+            comp.sample, fo2_col, comp.dFMQ,
+        )
+        return "DFMQ", float(comp.dFMQ)
+
+    raise ValueError(
+        f"[VolFe] No usable redox indicator on sample {comp.sample!r}. "
+        f"Need one of: Fe3+/FeT (or speciated FeO+Fe2O3), dNNO, dFMQ."
+    )
 
 
 def _build_models_df(cfg):
     """Build the VolFe model-options DataFrame.
 
     Maps volcatenate's VolFeConfig fields to the exact option names
-    that VolFe expects.  Options not listed here (single-option params,
-    in-development flags) are left to VolFe's built-in defaults via
+    that VolFe expects.  Options not listed here (volcatenate-managed
+    or VolFe-internal) are left to VolFe's built-in defaults via
     ``make_df_and_add_model_defaults``.
     """
     import VolFe as vf
 
     model_opts = [
-        # ── Saturation conditions ──
+        # ── Saturation ──
         ["sulfur_saturation", str(cfg.sulfur_saturation)],
+        ["sulfur_is_sat", cfg.sulfur_is_sat],
         ["graphite_saturation", str(cfg.graphite_saturation)],
         ["SCSS", cfg.scss],
         ["SCAS", cfg.scas],
 
-        # ── Degassing ──
+        # ── Degassing geometry ──
         ["gassing_style", cfg.gassing_style],
         ["gassing_direction", cfg.gassing_direction],
         ["bulk_composition", cfg.bulk_composition],
+        ["starting_P", cfg.starting_p],
+        ["P_variation", cfg.p_variation],
+        ["T_variation", cfg.t_variation],
+        ["crystallisation", cfg.crystallisation],
+
+        # ── Iron / oxygen redox ──
+        ["eq_Fe", cfg.eq_fe],
+        ["bulk_O", cfg.bulk_o],
+        ["calc_sat", cfg.calc_sat],
 
         # ── Species ──
         ["COH_species", cfg.coh_species],
         ["H2S_m", str(cfg.h2s_melt)],
         ["species X", cfg.species_x],
+        ["Hspeciation", cfg.h_speciation],
 
         # ── Oxygen fugacity ──
         ["fO2", cfg.fo2_model],
         ["FMQbuffer", cfg.fmq_buffer],
+        ["NNObuffer", cfg.nno_buffer],
+
+        # ── Bulk physical model ──
+        ["density", cfg.density],
+        ["melt composition", cfg.melt_composition],
 
         # ── Solubility constants ──
         ["carbon dioxide", cfg.co2_sol],
@@ -250,12 +326,39 @@ def _build_models_df(cfg):
         ["y_CH4", cfg.y_ch4],
         ["y_H2O", cfg.y_h2o],
         ["y_OCS", cfg.y_ocs],
+        ["y_X", cfg.y_x],
 
         # ── Equilibrium constants ──
+        ["KHOg", cfg.k_hog],
         ["KHOSg", cfg.k_hosg],
         ["KOSg", cfg.k_osg],
+        ["KOSg2", cfg.k_osg2],
+        ["KCOg", cfg.k_cog],
         ["KCOHg", cfg.k_cohg],
         ["KOCSg", cfg.k_ocsg],
+        ["KCOs", cfg.k_cos],
+        ["carbonylsulfide", cfg.carbonylsulfide],
+
+        # ── Isotopes ──
+        ["isotopes", cfg.isotopes],
+        ["beta_factors", cfg.beta_factors],
+        ["alpha_H_CH4v_CH4m", cfg.alpha_h_ch4v_ch4m],
+        ["alpha_H_H2v_H2m", cfg.alpha_h_h2v_h2m],
+        ["alpha_H_H2Ov_OHmm", cfg.alpha_h_h2ov_ohmm],
+        ["alpha_H_H2Ov_H2Om", cfg.alpha_h_h2ov_h2om],
+        ["alpha_H_H2Sv_H2Sm", cfg.alpha_h_h2sv_h2sm],
+        ["alpha_C_CH4v_CH4m", cfg.alpha_c_ch4v_ch4m],
+        ["alpha_C_COv_COm", cfg.alpha_c_cov_com],
+        ["alpha_C_CO2v_CO2T", cfg.alpha_c_co2v_co2t],
+        ["alpha_C_CO2v_CO2m", cfg.alpha_c_co2v_co2m],
+        ["alpha_C_CO2v_CO32mm", cfg.alpha_c_co2v_co32mm],
+        ["alpha_S_H2Sv_H2Sm", cfg.alpha_s_h2sv_h2sm],
+        ["alpha_SO2_SO4", cfg.alpha_so2_so4],
+        ["alpha_H2S_S", cfg.alpha_h2s_s],
+
+        # ── Numerical / runtime ──
+        ["error", cfg.error],
+        ["high precision", str(cfg.high_precision)],
 
         # ── Volcatenate-managed (not configurable) ──
         ["output csv", "False"],
