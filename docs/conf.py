@@ -18,7 +18,7 @@ copyright = "2025, Kayla Iacovino"
 try:
     release = _pkg_version("volcatenate")
 except PackageNotFoundError:
-    release = "0.3.0"
+    release = "0.4.0"
 version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
@@ -38,10 +38,26 @@ extensions = [
 # example notebooks intentionally do not require every backend to be
 # installed, so they will not always run cleanly on the docs builder.
 nbsphinx_execute = "never"
-# Render Markdown cells via MyST so they get the same parser as our
-# .md docs (admonitions, deflists, etc.).
 nbsphinx_custom_formats: dict = {}
-exclude_patterns_nb = [".ipynb_checkpoints"]
+# A "Download notebook" link is injected at the top of every rendered
+# notebook page. ``env.docname`` is the path of the current notebook
+# without extension, so ``{{ env.docname.split('/')|last }}`` gives
+# the filename. nbsphinx automatically copies the source ``.ipynb`` to
+# the HTML output tree, and we point at it relative to the rendered
+# page (``../_sources/<docname>.ipynb`` is the canonical location).
+nbsphinx_prolog = r"""
+{% set basename = env.docname.split('/')|last %}
+
+.. raw:: html
+
+    <div class="admonition note">
+      <p class="admonition-title">Run this notebook locally</p>
+      <p>Download <a class="reference download external" download
+        href="{{ basename }}.ipynb"
+      ><code class="docutils literal notranslate"><span class="pre">{{ basename }}.ipynb</span></code></a>
+      and open it in Jupyter, JupyterLab, or VS Code to run the cells interactively. nbsphinx copies the source notebook to the output tree alongside this page, so the link above is a direct download.</p>
+    </div>
+"""
 
 # Auto-generate stub pages for autosummary entries.
 autosummary_generate = True

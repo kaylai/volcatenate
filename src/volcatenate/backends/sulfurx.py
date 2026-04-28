@@ -788,7 +788,14 @@ class Backend(ModelBackend):
         composition = _build_composition(comp)
 
         # Capture resolved input for the bundle / sidecar yaml.
+        # The ``params`` block here is a strict subset of the degassing
+        # capture's ``params``: ``crystallization``, ``n_steps``,
+        # ``open_degassing``, and ``d34s_initial`` are degassing-path
+        # settings that have no effect on a single-point satP call,
+        # so we deliberately omit them rather than record values that
+        # didn't influence the answer.
         from volcatenate.resolved_inputs import capture as _capture_resolved
+        s_ppm = comp.S * 10_000
         _capture_resolved(
             sample=comp.sample,
             backend="SulfurX",
@@ -797,6 +804,7 @@ class Backend(ModelBackend):
                 "T_K": float(tk),
                 "H2O_wt": float(h2o_wt),
                 "CO2_ppm": float(co2_ppm),
+                "S_ppm": float(s_ppm),
                 "delta_FMQ": float(_compute_delta_fmq(comp)),
                 "params": {
                     "coh_model": int(cfg.coh_model),
