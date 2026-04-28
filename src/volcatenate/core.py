@@ -427,6 +427,8 @@ def export_degassing_paths(
     list[str]
         Paths of the CSV files written.
     """
+    from volcatenate.convert import to_standard_schema
+
     os.makedirs(output_dir or ".", exist_ok=True)
     name = sample_name or "degassing"
     written = []
@@ -438,7 +440,9 @@ def export_degassing_paths(
             model_dir = os.path.join(output_dir, model)
         os.makedirs(model_dir, exist_ok=True)
         csv_path = os.path.join(model_dir, f"{name}.csv")
-        df.to_csv(csv_path, index=False)
+        # Restrict to the canonical schema so backend intermediates
+        # (e.g. MAGEC's Run_ID) never leak into user-facing CSVs.
+        to_standard_schema(df).to_csv(csv_path, index=False)
         written.append(csv_path)
         logger.info("  %s: saved to %s", model, csv_path)
     return written

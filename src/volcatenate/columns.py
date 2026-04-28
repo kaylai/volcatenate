@@ -74,3 +74,10 @@ STANDARD_COLUMNS = [
     *VAPOR_MF_COLUMNS,
     CS_V_MF,
 ]
+
+# Columns that may also be carried through if the backend produces them.
+# These are *normalized* derived values and are written to CSV when present
+# but are not required.
+OPTIONAL_COLUMNS = [
+    H2OT_M_WTPC_NORM, CO2T_M_PPMW_NORM, ST_M_PPMW_NORM,
+]

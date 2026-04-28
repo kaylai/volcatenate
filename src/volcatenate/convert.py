@@ -98,3 +98,29 @@ def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
         if c not in df.columns:
             df[c] = np.nan
     return df
+
+
+def to_standard_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Return *df* containing exactly the standard schema columns.
+
+    Adds any missing :data:`columns.STANDARD_COLUMNS` (filled with NaN),
+    keeps :data:`columns.OPTIONAL_COLUMNS` if present, and drops every
+    other column.  Use this immediately before writing degassing CSVs so
+    backend-specific intermediate columns (e.g. MAGEC's ``Run_ID``,
+    ``_sample``) never leak into the user-facing output.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Model output DataFrame, possibly with extra columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        New DataFrame restricted to the canonical schema, with column
+        order matching ``STANDARD_COLUMNS`` followed by any optional
+        columns that were present.
+    """
+    df = ensure_standard_columns(df)
+    keep = list(col.STANDARD_COLUMNS) + [c for c in col.OPTIONAL_COLUMNS if c in df.columns]
+    return df[keep].copy()

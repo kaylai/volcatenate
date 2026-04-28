@@ -651,11 +651,12 @@ def _run_magec_matlab(
             timeout=effective_timeout,
         )
     except subprocess.TimeoutExpired:
-        warnings.warn(
-            f"MAGEC timed out after {effective_timeout}s. This usually means the "
-            f"saturation pressure is outside the search range "
-            f"({cfg.p_start_kbar}–{cfg.p_final_kbar} kbar). "
-            f"Try increasing magec.p_start_kbar in your config."
+        logger.warning(
+            "MAGEC timed out after %ds. This usually means the "
+            "saturation pressure is outside the search range "
+            "(%s–%s kbar). "
+            "Try increasing magec.p_start_kbar (or magec.timeout) in your config.",
+            effective_timeout, cfg.p_start_kbar, cfg.p_final_kbar,
         )
         return
 
