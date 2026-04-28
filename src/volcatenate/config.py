@@ -21,7 +21,7 @@ import os
 import platform
 import shutil
 from dataclasses import dataclass, field, fields, replace, MISSING as dataclass_field_missing
-from typing import Any, Type, TypeVar
+from typing import Any, Literal, Type, TypeVar
 
 from volcatenate.log import logger
 
@@ -252,33 +252,34 @@ class VolFeConfig:
 class EVoConfig:
     """EVo model configuration.
 
-    Managed internally by volcatenate (not exposed here):
-      - ``COMPOSITION``    — always 'basalt'
-      - ``RUN_TYPE``       — set by volcatenate method (closed/open)
-      - ``SINGLE_STEP``    — always False
-      - ``S_SAT_WARN``     — always False
+    Always sourced from the input ``MeltComposition`` (not config):
+      - Sample name, ``T_C``, all major oxides
+      - ``WTH2O_START`` ← ``comp.H2O / 100``
+      - ``WTCO2_START`` ← ``comp.CO2 / 100``
+      - ``SULFUR_START`` ← ``comp.S / 100``
+      - FeO/Fe2O3 split written into ``chem.yaml`` from
+        ``comp.fe3fet_computed``
 
-    Volatile initialization (from MeltComposition, not config):
-      - ``WTH2O_SET/START``  — always True; value from comp.H2O
-      - ``WTCO2_SET/START``  — always True; value from comp.CO2
-      - ``SULFUR_SET/START`` — always True; value from comp.S
+    Always managed by volcatenate (not exposed here):
+      - ``WTH2O_SET``, ``WTCO2_SET``, ``SULFUR_SET`` — always True
+      - ``FO2_buffer_SET`` — True only when no Fe3+/FeT data on the
+        sample (controlled by the ``fo2_source`` knob below)
+      - ``FO2_buffer`` / ``FO2_buffer_START`` — picked from
+        ``comp.dNNO`` / ``comp.dFMQ`` when buffering is active
+      - ``output.yaml`` plot flags — all False (volcatenate uses its
+        own DataFrames, not EVo's plot output)
 
-    fO2 buffer (auto-selected from composition data):
-      - ``FO2_buffer_SET``   — True only when no Fe3FeT data available
-      - ``FO2_buffer/START`` — picked from comp.dNNO or comp.dFMQ
-
-    Fugacity fallbacks (kept at EVo defaults):
-      - ``FO2_SET/START``, ``FH2_SET/START``, ``FH2O_SET/START``,
-        ``FCO2_SET/START`` — always False (wt% initialization used instead)
-
-    Iron split (from MeltComposition):
-      - FeOT is split into FeO + Fe2O3 using comp.fe3fet_computed in chem.yaml
+    See ``docs/config_propagation.md`` for the full mapping of fields
+    here onto EVo's own ``env.yaml`` / ``chem.yaml`` keys.
     """
 
     gas_system: str = "cohs"
+    composition: Literal["basalt", "phonolite", "rhyolite"] = "basalt"
     fo2_buffer: str = "FMQ"
     fe_system: bool = True
     find_saturation: bool = True
+    single_step: bool = False         # If True, runs at a single P,T; only meaningful when find_saturation is False
+    s_sat_warn: bool = False          # If True, EVo prints a warning when sulfide saturation is reached
     atomic_mass_set: bool = False
     ocs: bool = False                 # Include OCS as a gas species
     dp_min: int = 1
@@ -299,7 +300,40 @@ class EVoConfig:
 
     # Nitrogen and graphite
     nitrogen_set: bool = False        # Set N from composition (if True, uses N from MeltComposition)
+    nitrogen_start: float = 0.0001    # Starting N mass fraction when nitrogen_set is True and comp.N missing
     graphite_saturated: bool = False  # Graphite saturation at start
+    graphite_start: float = 0.0001    # Initial graphite mass fraction when graphite_saturated is True
+
+    # ── How fO2 is set at the start of the run ───────────────────────
+    # See ``_pick_evo_buffer`` and ``_apply_fo2_source`` in
+    # backends/evo.py for the exact semantics.
+    #
+    #   "auto"     — current default behavior. Picks the best available
+    #                source on the sample (Fe3+/FeT > dNNO > dFMQ > the
+    #                ``fo2_buffer`` field below at offset 0). Logs the
+    #                choice; never raises.
+    #   "fe3fet"   — require Fe3+/FeT (or speciated FeO+Fe2O3) on the
+    #                sample. Raises if missing.
+    #   "buffer"   — require ``comp.dNNO`` or ``comp.dFMQ`` on the
+    #                sample (whichever matches ``fo2_buffer``). Raises
+    #                if missing.
+    #   "absolute" — set absolute fO2 from ``fo2_start`` (in bar).
+    #                Bypasses the iron split entirely.
+    fo2_source: Literal["auto", "fe3fet", "buffer", "absolute"] = "auto"
+
+    # Absolute fugacity entry points. EVo's ``env.yaml`` exposes these
+    # as alternate ways to initialize redox / fugacity. Most users do
+    # NOT need them — the default (``fo2_source="auto"``) drives EVo
+    # via Fe3+/FeT or the buffer path. Set ``fo2_source="absolute"``
+    # and ``fo2_start`` to use ``FO2_SET=True`` mode.
+    fo2_set: bool = False             # EVo env.yaml FO2_SET — written from fo2_source
+    fo2_start: float = 0.0            # Absolute fO2 (bar). Used only when fo2_source="absolute"
+    fh2_set: bool = False             # EVo env.yaml FH2_SET — set H2 fugacity as a starting condition
+    fh2_start: float = 0.24           # H2 fugacity (bar)
+    fh2o_set: bool = False            # EVo env.yaml FH2O_SET — set H2O fugacity as a starting condition
+    fh2o_start: float = 1000.0        # H2O fugacity (bar)
+    fco2_set: bool = False            # EVo env.yaml FCO2_SET — set CO2 fugacity as a starting condition
+    fco2_start: float = 1.0           # CO2 fugacity (bar)
 
     # Solubility model selections
     h2o_model: str = "burguisser2015"
