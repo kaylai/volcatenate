@@ -86,9 +86,9 @@ The "VESIcal model" being used (Dixon, Iacono-Marziano, MagmaSat, …) is **not*
 ### Hidden behaviors
 
 - **Variant selection**: the actual VESIcal solubility model is chosen by the *backend name*, not by config. E.g. `"VESIcal_Iacono"` → `"IaconoMarziano"`, `"VESIcal_MS"` → `"MagmaSat"`. See `VARIANT_MAP` at [backends/vesical.py:28](../src/volcatenate/backends/vesical.py).
-- **Saturation pressure calls always use `pressure="saturation"`** — i.e. VESIcal computes the starting pressure itself from the sample's H₂O+CO₂. There is no way to ask for a fixed starting P.
+- **Degassing always starts at saturation.** VESIcal's ``calculate_degassing_path`` accepts either ``pressure="saturation"`` (compute the starting P from the sample's H₂O+CO₂) or a numeric value (start at that fixed pressure instead). The volcatenate wrapper hardcodes ``"saturation"``; there is no YAML setting today that lets the user provide a numeric starting P. If you want to start a degassing path at a fixed P below saturation, you would need to call VESIcal directly or extend the wrapper.
 - **Iron is sent both ways** ([backends/vesical.py:163-167](../src/volcatenate/backends/vesical.py)): if the sample provides speciated `FeO` and `Fe2O3`, both are sent; otherwise FeOT is sent as `FeO`. This matters only for MagmaSat, which uses Fe redox internally.
-- **Warnings are silenced** during the run with `warnings.simplefilter("ignore")` ([backends/vesical.py:86](../src/volcatenate/backends/vesical.py)) — VESIcal emits many petrological-range warnings that volcatenate suppresses to keep logs clean.
+- **Warnings are captured and routed to the log file** ([backends/vesical.py](../src/volcatenate/backends/vesical.py)). VESIcal emits many petrological-range warnings (e.g. composition outside the calibration band, T outside the tested range). Volcatenate suppresses them on the terminal so logs stay readable, but if you set ``log_file`` in your ``RunConfig`` they are forwarded at DEBUG level and tagged ``[VESIcal/<phase>/<sample>]``, so you can audit them after a run.
 
 ### Fallback chains
 

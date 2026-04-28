@@ -82,8 +82,8 @@ class Backend(ModelBackend):
         sample = v.Sample(sample_dict)
         model = v.models.default_models[self._variant]
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
             try:
                 result = model.calculate_saturation_pressure(
                     sample=sample,
@@ -97,6 +97,7 @@ class Backend(ModelBackend):
                     p = float(result)
 
                 if np.isnan(p):
+                    _log_captured_warnings(captured, comp.sample, "satP")
                     return None
 
                 # Wrap pressure in a Series; VESIcal is H2O-CO2 only so
@@ -104,10 +105,12 @@ class Backend(ModelBackend):
                 state = pd.Series({col.P_BARS: p}, dtype=float)
                 state_df = pd.DataFrame([state])
                 state_df = ensure_standard_columns(state_df)
+                _log_captured_warnings(captured, comp.sample, "satP")
                 return state_df.iloc[0].copy()
 
             except Exception as exc:
                 from volcatenate.log import logger
+                _log_captured_warnings(captured, comp.sample, "satP")
                 logger.warning("[VESIcal] satP failed for %s: %s", comp.sample, exc)
                 return None
 
@@ -126,8 +129,8 @@ class Backend(ModelBackend):
         sample = v.Sample(sample_dict)
         model = v.models.default_models[self._variant]
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always")
             df = model.calculate_degassing_path(
                 sample=sample,
                 temperature=comp.T_C,
@@ -136,6 +139,7 @@ class Backend(ModelBackend):
                 final_pressure=cfg.final_pressure,
                 steps=cfg.steps,
             )
+            _log_captured_warnings(captured, comp.sample, "degassing")
 
         # Standardize output
         df = convert(df, model_variant=self._variant)
@@ -147,6 +151,21 @@ class Backend(ModelBackend):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
+
+def _log_captured_warnings(captured, sample: str, phase: str) -> None:
+    """Route Python warnings emitted during a VESIcal call to the volcatenate logger.
+
+    VESIcal emits many petrological-range warnings (Mg/Fe out of calibration band, T outside tested range, etc.) that would clutter terminal output. We suppress them on the console via ``warnings.simplefilter("always")`` inside ``catch_warnings(record=True)``, then forward each captured warning to the volcatenate logger at DEBUG level so they show up in the configured log file but not in normal stdout.
+    """
+    if not captured:
+        return
+    from volcatenate.log import logger
+    for w in captured:
+        logger.debug(
+            "[VESIcal/%s/%s] %s: %s",
+            phase, sample, w.category.__name__, w.message,
+        )
+
 
 def _build_sample_dict(comp: MeltComposition) -> dict:
     """Build the VESIcal sample dictionary from a MeltComposition."""
