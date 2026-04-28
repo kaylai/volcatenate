@@ -1,59 +1,82 @@
 # volcatenate configuration
+# Generated with: volcatenate.config.save_config(RunConfig(), path)
 #
-# All settings below show their DEFAULT values (matching the Sulfur
-# Comparison Paper).  Edit only the fields you need to change —
-# missing keys will use these defaults automatically.
+# Edit only the settings you need to change.
+# Missing keys use defaults (paper settings).
+# Load with: config = volcatenate.config.load_config(path)
 #
-# ── Getting started ──────────────────────────────────────────────
-# Using a YAML config file is OPTIONAL.  You can also set everything
-# in Python:
+# For a plain-English explanation of what each YAML field does inside
+# the underlying model — including which volcatenate hardcodes,
+# silently pulls from the sample composition, or falls back when data
+# is missing — see docs/config_propagation.md.
 #
-#   from volcatenate.config import RunConfig, EVoConfig
-#   config = RunConfig(evo=EVoConfig(p_stop=10))
-#
-# To use a YAML file instead:
-#
-#   1. Generate your own copy (DO NOT edit the bundled original —
-#      it lives inside the installed package and will be overwritten
-#      on reinstall):
-#
-#        volcatenate init-config                   # → ./volcatenate_config.yaml
-#        volcatenate init-config -o my_config.yaml # → custom path
-#
-#   2. Open the copy and change only what you need.
-#      You can safely delete entire sections you don't need.
-#
-#   3. Load it in Python or from the CLI:
-#
-#        config = volcatenate.load_config("volcatenate_config.yaml")
-#
-#        volcatenate saturation-pressure input.csv --config my_config.yaml
+# Each backend section below begins with a comment block listing the
+# values that are NOT in this YAML (because they come from the sample
+# composition or are managed by volcatenate). Read it before changing
+# anything in that section — the YAML alone does not tell the whole
+# story.
 
-output_dir: "."  # Root directory for all output (default: working directory)
+output_dir: .  # Root directory for all output (default: working directory)
 raw_output_dir: raw_tool_output  # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
 keep_raw_output: true  # Keep raw tool output files after run
 verbose: false  # Print progress to terminal
 log_file: ""  # Write all output to this file (empty = no log file)
 show_progress: true  # Show rich progress bars (True/False)
+save_bundle: ""  # Path to save reproducible JSON bundle (empty = don't save)
+bundle_comments: ""  # Free-text notes recorded in the run bundle (provenance only; ignored on replay)
 
+# ── VESIcal ──
+# VESIcal does not model sulfur, so the per-step S-related output
+# columns will all be NaN. The solubility model is selected by the
+# backend name (e.g. 'VESIcal_Iacono', 'VESIcal_Dixon') passed to
+# calculate_*, NOT by anything in this section.
+#
+# From the sample composition: oxides, T_C, H2O, CO2, S.
+# See docs/config_propagation.md for the full propagation map.
 vesical:
   steps: 101  # Number of degassing steps
   final_pressure: 1.0  # bar
   fractionate_vapor: 0.0  # 0 = closed-system, 1 = open-system
   overrides: {}  # Per-sample overrides, e.g. {Fogo: {steps: 50}}
 
+# ── VolFe ──
+# Always sourced from the sample composition (NOT this YAML):
+#   - Sample name, T_C, all major oxides
+#   - H2O (wt%), CO2 (→ ppm), S (→ ppm), Xppm
+#   - Redox column (DNNO/Fe3FeT/DFMQ) — picked per fo2_column / fo2_source
+# Always managed by volcatenate (NOT exposed here):
+#   - 'output csv' = False, 'print status' = False (volcatenate handles output/logging)
+#   - 'solve_species' is internal; VolFe re-sets it during the calc
+#   - 'mass_volume' = 'mass'; the 'volume' branch is marked NEEDS FIXING upstream
+#   - 'setup' = False (debug flag)
+# Fallback chain when fo2_source = 'auto':
+#   Fe3+/FeT  →  dNNO  →  dFMQ  (logged at INFO when a fallback fires)
+# See docs/config_propagation.md for the full mapping.
 volfe:
-  sulfur_saturation: false
-  graphite_saturation: false
-  fo2_column: Fe3FeT  # 'DNNO', 'Fe3FeT', or 'DFMQ'
+  sulfur_saturation: false  # Track sulfur saturation
+  graphite_saturation: false  # Track graphite saturation
+  sulfur_is_sat: "no"  # 'yes' = treat melt as sulfur-saturated at start
+  fo2_column: Fe3FeT  # Preferred redox column: 'DNNO', 'Fe3FeT', or 'DFMQ'
+  fo2_source: auto  # 'auto' (fall back if missing) | 'fe3fet'/'dnno'/'dfmq' (raise if missing)
   gassing_style: closed  # 'closed' or 'open'
   gassing_direction: degas  # 'degas' or 'regas'
   bulk_composition: melt-only  # 'melt-only', 'melt+vapor_wtg', or 'melt+vapor_initialCO2'
+  starting_p: Pvsat  # 'Pvsat' (start at saturation P) or 'set' (user-defined start P)
+  p_variation: polybaric  # 'polybaric' or 'isobaric'
+  t_variation: isothermal  # 'isothermal' or 'polythermal'
+  crystallisation: "no"  # 'no' or 'yes' (track crystallization during degassing)
+  eq_fe: "yes"  # 'yes' = equilibrate Fe redox each step; 'no' = freeze Fe (decouples Fe from gas chemistry)
+  bulk_o: exc_S  # 'exc_S' (bulk O excludes sulfur-bound O) or 'inc_S'
+  calc_sat: fO2_melt  # 'fO2_melt' (default) or 'fO2_fX' — saturation-pressure search mode
   coh_species: yes_H2_CO_CH4_melt  # 'yes_H2_CO_CH4_melt', 'no_H2_CO_CH4_melt', or 'H2O-CO2 only'
   h2s_melt: true  # Include H2Smol as dissolved melt species
-  species_x: Ar  # 'Ar' or 'Ne'
-  fo2_model: Kress91A  # fO2-Fe3+/FeT: 'Kress91A', 'Kress91', 'ONeill18', 'Borisov18'
+  species_x: Ar  # 'Ar' or 'Ne' — chemical identity of species X
+  h_speciation: none  # H melt speciation (only 'none' supported by VolFe today)
+  fo2_model: Kress91A  # fO2-Fe3+/FeT model: 'Kress91A', 'Kress91', 'ONeill18', 'Borisov18'
   fmq_buffer: Frost91  # FMQ buffer: 'Frost91' or 'ONeill87'
+  nno_buffer: Frost91  # NNO buffer parameterisation
+  density: DensityX  # Melt density model
+  melt_composition: Basalt  # Melt-composition family for parameterisations (e.g. 'Basalt')
   co2_sol: MORB_Dixon95  # CO2T solubility constant
   h2o_sol: Basalt_Hughes24  # H2O solubility constant
   h2_sol: Basalt_Hughes24  # H2 solubility constant
@@ -78,17 +101,54 @@ volfe:
   y_ch4: Shi92  # CH4 fugacity coefficient model
   y_h2o: Holland91  # H2O fugacity coefficient model
   y_ocs: Shi92  # OCS fugacity coefficient model
-  k_hosg: Ohmoto97  # H2S equilibrium constant
-  k_osg: Ohmoto97  # SO2 equilibrium constant
-  k_cohg: Ohmoto97  # CH4 equilibrium constant
+  y_x: ideal  # Species X fugacity coefficient model
+  k_hog: Ohmoto97  # H2 + 0.5 O2 = H2O equilibrium constant
+  k_hosg: Ohmoto97  # H2S equilibrium constant (0.5S2 + H2O = H2S + 0.5O2)
+  k_osg: Ohmoto97  # SO2 equilibrium constant (0.5S2 + O2 = SO2)
+  k_osg2: ONeill22  # Sulfate equilibrium model
+  k_cog: Ohmoto97  # CO + 0.5 O2 = CO2 equilibrium constant
+  k_cohg: Ohmoto97  # CH4 equilibrium constant (CH4 + 2O2 = CO2 + 2H2O)
   k_ocsg: Moussallam19  # OCS equilibrium constant
+  k_cos: Holloway92  # Carbonate solubility equilibrium
+  carbonylsulfide: COS  # Carbonyl-sulfide species name
+  isotopes: "no"  # 'no' (default) or 'yes' — track stable isotope fractionation
+  beta_factors: Richet77  # Equilibrium beta factor model (only used when isotopes='yes')
+  alpha_h_ch4v_ch4m: no fractionation  # H fractionation: CH4 vapor ↔ CH4 melt (only used when isotopes='yes')
+  alpha_h_h2v_h2m: no fractionation  # H fractionation: H2 vapor ↔ H2 melt
+  alpha_h_h2ov_ohmm: Rust04  # H fractionation: H2O vapor ↔ OH- melt
+  alpha_h_h2ov_h2om: Rust04  # H fractionation: H2O vapor ↔ H2Omol melt
+  alpha_h_h2sv_h2sm: no fractionation  # H fractionation: H2S vapor ↔ H2S melt
+  alpha_c_ch4v_ch4m: no fractionation  # C fractionation: CH4 vapor ↔ CH4 melt
+  alpha_c_cov_com: no fractionation  # C fractionation: CO vapor ↔ CO melt
+  alpha_c_co2v_co2t: Lee24  # C fractionation: CO2 vapor ↔ total dissolved CO2
+  alpha_c_co2v_co2m: Blank93  # C fractionation: CO2 vapor ↔ CO2 molecular melt
+  alpha_c_co2v_co32mm: Lee24  # C fractionation: CO2 vapor ↔ CO3^2- melt
+  alpha_s_h2sv_h2sm: no fractionation  # S fractionation: H2S vapor ↔ H2S melt
+  alpha_so2_so4: Fiege15  # S fractionation: SO2 ↔ SO4
+  alpha_h2s_s: Fiege15  # S fractionation: H2S ↔ S
+  error: 0.1  # Numerical tolerance for the solver
+  high_precision: false  # Run in high-precision mode (slower)
   overrides: {}  # Per-sample overrides, e.g. {Fogo: {gassing_style: open}}
 
+# ── EVo ──
+# Always sourced from the sample composition (NOT this YAML):
+#   - Sample name, T_C, all major oxides
+#   - WTH2O_START ← H2O / 100, WTCO2_START ← CO2 / 100, SULFUR_START ← S / 100
+#   - FeO/Fe2O3 split in chem.yaml ← comp.fe3fet_computed
+# Always managed by volcatenate (NOT exposed here):
+#   - WTH2O_SET / WTCO2_SET / SULFUR_SET = True
+#   - Output plot flags in output.yaml = False (we use our own DataFrames)
+# Fallback chain when fo2_source = 'auto':
+#   Fe3+/FeT  →  comp.dNNO  →  comp.dFMQ  →  fo2_buffer with offset 0
+# See docs/config_propagation.md for the full mapping.
 evo:
   gas_system: cohs  # 'cohs', 'coh', 'cos', etc.
-  fo2_buffer: FMQ  # 'FMQ', 'NNO', etc.
+  composition: basalt  # Solubility-constant set: 'basalt', 'phonolite', or 'rhyolite'
+  fo2_buffer: FMQ  # 'FMQ', 'NNO', or 'IW' (only used when fo2_source picks a buffer path)
   fe_system: true  # Include Fe redox equilibrium
   find_saturation: true  # Find saturation pressure automatically
+  single_step: false  # Single-pressure run (only meaningful when find_saturation=false)
+  s_sat_warn: false  # EVo prints a warning at sulfide saturation (false silences it)
   atomic_mass_set: false  # Use atomic mass fractions for H/C/S/N
   ocs: false  # Include OCS as a gas species
   dp_min: 1  # Minimum pressure step (bar)
@@ -96,33 +156,59 @@ evo:
   mass: 100  # System mass (g)
   p_start: 3000  # Starting pressure (bar)
   p_stop: 1  # Final pressure (bar)
-  wgt: 0.00001  # Initial gas weight fraction
+  wgt: 1.0e-05  # Initial gas weight fraction
   loss_frac: 0.9999  # Gas loss fraction per step (open-system)
+  run_type: closed  # 'closed' (default) or 'open' — open-system requires loss_frac < 1
   atomic_h: 500  # Atomic H (ppm) — only used when atomic_mass_set=true
   atomic_c: 200  # Atomic C (ppm) — only used when atomic_mass_set=true
   atomic_s: 4000  # Atomic S (ppm) — only used when atomic_mass_set=true
   atomic_n: 10  # Atomic N (ppm) — only used when atomic_mass_set=true
   nitrogen_set: false  # Set N from composition
+  nitrogen_start: 0.0001  # Starting N mass fraction (used when nitrogen_set=true)
   graphite_saturated: false  # Graphite saturation at start
-  h2o_model: burguisser2015
-  h2_model: gaillard2003
-  c_model: burguisser2015
-  co_model: armstrong2015
-  ch4_model: ardia2013
-  sulfide_capacity: oneill2020
-  sulfate_capacity: nash2019
-  scss: liu2007
-  n_model: libourel2003
-  density_model: spera2000
-  fo2_model: kc1991
-  fmq_model: frost1991
+  graphite_start: 0.0001  # Initial graphite mass fraction (used when graphite_saturated=true)
+  fo2_source: auto  # 'auto' | 'fe3fet' | 'buffer' | 'absolute' — see EVoConfig docstring
+  fo2_set: false  # EVo env.yaml FO2_SET — set automatically by fo2_source
+  fo2_start: 0.0  # Absolute fO2 (bar). Used only when fo2_source='absolute'
+  fh2_set: false  # Set H2 fugacity as a starting condition
+  fh2_start: 0.24  # Starting H2 fugacity (bar)
+  fh2o_set: false  # Set H2O fugacity as a starting condition
+  fh2o_start: 1000.0  # Starting H2O fugacity (bar)
+  fco2_set: false  # Set CO2 fugacity as a starting condition
+  fco2_start: 1.0  # Starting CO2 fugacity (bar)
+  h2o_model: burguisser2015  # H2O solubility model
+  h2_model: gaillard2003  # H2 solubility model
+  c_model: burguisser2015  # C/CO2 solubility model
+  co_model: armstrong2015  # CO solubility model
+  ch4_model: ardia2013  # CH4 solubility model
+  sulfide_capacity: oneill2020  # Sulfide capacity model
+  sulfate_capacity: nash2019  # Sulfate capacity model
+  scss: liu2007  # SCSS model
+  n_model: libourel2003  # N2 solubility model
+  density_model: spera2000  # Melt density model
+  fo2_model: kc1991  # fO2-Fe3+/FeT model
+  fmq_model: frost1991  # FMQ buffer parameterisation
   overrides: {}  # Per-sample overrides, e.g. {MORB: {dp_max: 25}}
 
+# ── MAGEC ──
+# Always sourced from the sample composition (NOT this YAML):
+#   - Sample name, T_C, all major oxides (incl. Cr2O3)
+#   - Bulk_H = H2O × 2/18, Bulk_C = CO2 × 12/44, Bulk_S = S
+#     (volcatenate does the molecular→elemental conversion using the
+#     rounded molecular weights from the Sun & Yao 2024 example files)
+#   - Anhydrous renormalization to 100 wt% before passing to MAGEC
+# Always managed by volcatenate (NOT exposed here):
+#   - 'Reference' column = 'auto_satP' (we always use auto sat-P search,
+#     not a user-supplied initial pressure via 'Reference P (kbar)')
+# Fallback chain when redox_source = 'auto':
+#   cfg.redox_option (if present)  →  Fe3+/FeT  →  KC91 from dNNO/dFMQ
+#   ↑ The KC91 step is a substantively different calculation; logged at WARNING.
+#   Use redox_source='kc91_from_buffer' to opt into it explicitly, or
+#   redox_source='fe3fet'/'dfmq' to refuse it and raise on missing data.
+# See docs/config_propagation.md for the full mapping.
 magec:
-  # Paths are auto-detected. Set here to override, or use env vars
-  # MAGEC_SOLVER_DIR and MATLAB_BIN.
-  solver_dir: ""  # Path to directory containing MAGEC_Solver_v1b.p (auto-detected)
-  matlab_bin: ""  # Path to MATLAB binary (auto-detected)
+  solver_dir: ""  # Path to MAGEC_Solver_v1b.p directory (empty = auto-detect)
+  matlab_bin: ""  # Path to MATLAB binary (empty = auto-detect)
   sulfide_sat: 0  # (1) Yes; (0) No
   sulfate_sat: 0  # (1) Yes; (0) No
   graphite_sat: 0  # (1) Yes; (0) No
@@ -138,15 +224,28 @@ magec:
   gas_behavior: 1  # (1) real gas; (2) ideal
   o2_balance: 0  # (0) Total O balanced; (1) fixed fO2 buffer
   redox_option: Fe3+/FeT  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
+  redox_source: auto  # 'auto' | 'fe3fet' | 'dfmq' | 'kc91_from_buffer' — strict modes raise on missing data
   p_start_kbar: 3.0  # SatP search start pressure (kbar)
-  p_final_kbar: 0.01  # SatP search end pressure (kbar)
+  p_final_kbar: 0.001  # SatP search end pressure (kbar)
   n_steps: 100  # Number of pressure steps for SatP search
   timeout: 300  # MATLAB subprocess timeout (seconds)
   overrides: {}  # Per-sample overrides, e.g. {Fogo: {p_start_kbar: 8.0}}
 
+# ── SulfurX ──
+# Always sourced from the sample composition (NOT this YAML):
+#   - Sample name, T_C, all major oxides
+#   - H2O (wt%), CO2 (→ ppm), S (→ ppm)
+#   - Initial delta_FMQ from the redox indicator on the sample (see below)
+# Always managed by volcatenate (NOT exposed here):
+#   - SulfurX bundles a hardcoded reference composition (Fuego) into
+#     its internal MeltComposition class. The volcatenate wrapper
+#     monkey-patches that class so SulfurX uses YOUR sample composition.
+# Fallback chain (in _compute_delta_fmq):
+#   comp.dFMQ (direct)  →  Fe3+/FeT via KC91 inversion  →  comp.dNNO via Frost-1991
+#   Logs the choice at INFO; raises ValueError if none are available.
+# See docs/config_propagation.md for the full mapping.
 sulfurx:
-  # Path is auto-detected. Set here to override, or use env var SULFURX_PATH.
-  path: ""  # Path to SulfurX installation (auto-detected)
+  path: ""  # Path to SulfurX installation (empty = auto-detect)
   coh_model: 0  # 0 = Iacono-Marziano, 1 = VolatileCalc
   slope_h2o: -0.3396  # K2O-H2O relationship slope: K2O = a*H2O + b
   constant_h2o: 2.7  # K2O-H2O relationship intercept
@@ -155,4 +254,13 @@ sulfurx:
   s_fe_choice: 1  # S speciation: 0=Nash, 1=O'Neill&Mavrogenes
   sigma: 0.005  # log10fO2 tolerance for redox calculation
   sulfide_pre: 0  # 0 = no sulfide precipitation, 1 = enabled
+  crystallization: 0  # 0 = no crystallization (the only path SulfurX exercises today)
+  open_degassing: 0  # 0 = closed-system, 1 = open-system
+  d34s_initial: 0.0  # Initial bulk d34S (only used when isotope tracking is wired up)
+  sulfide:  # Sulfide phase composition (wt% of the sulfide phase, NOT the melt)
+    fe: 65.43  # Fe wt% of the sulfide phase
+    ni: 0.0  # Ni wt% of the sulfide phase
+    cu: 0.0  # Cu wt% of the sulfide phase
+    o: 0.0  # O wt% of the sulfide phase
+    s: 36.47  # S wt% of the sulfide phase
   overrides: {}  # Per-sample overrides, e.g. {Fogo: {n_steps: 100}}

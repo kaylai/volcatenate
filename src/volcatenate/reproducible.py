@@ -39,7 +39,7 @@ import os
 import platform
 import subprocess
 import sys
-from dataclasses import dataclass, field, fields, asdict
+from dataclasses import dataclass, field, fields, is_dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
@@ -178,7 +178,8 @@ def _sanitize_value(val: Any) -> Any:
     - ``np.nan`` and ``float('nan')`` → ``None``
     - ``np.integer`` / ``np.floating`` → Python int/float
     - ``np.bool_`` → Python bool
-    - ``dict`` values are recursively sanitized
+    - nested dataclasses → dict (recursively sanitized)
+    - ``dict`` and ``list`` values are recursively sanitized
     - Everything else passes through unchanged
     """
     if val is None:
@@ -197,6 +198,10 @@ def _sanitize_value(val: Any) -> Any:
     # Python float NaN
     if isinstance(val, float) and np.isnan(val):
         return None
+
+    # Nested dataclass instance (e.g. SulfurXSulfideConfig)
+    if is_dataclass(val) and not isinstance(val, type):
+        return {f.name: _sanitize_value(getattr(val, f.name)) for f in fields(val)}
 
     # Recurse into dicts
     if isinstance(val, dict):
