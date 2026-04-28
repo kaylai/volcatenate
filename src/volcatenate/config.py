@@ -424,6 +424,23 @@ class EVoConfig:
 class MAGECConfig:
     """MAGEC model configuration (MATLAB subprocess).
 
+    Always sourced from the input ``MeltComposition`` (not config):
+      - Sample name, ``T_C``, all major oxides (incl. ``Cr2O3``),
+        ``H2O``, ``CO2``, ``S``
+      - The redox indicator (Fe3+/FeT, dNNO, dFMQ) is selected per
+        ``redox_option`` and ``redox_source`` below.
+
+    Always managed by volcatenate (not exposed here):
+      - MAGEC's ``Reference`` column = ``"auto_satP"``, telling MAGEC
+        to search for the saturation pressure rather than using a
+        user-supplied initial pressure (the alternate "referenced"
+        mode where you'd set ``Reference P (kbar)`` is not surfaced
+        because volcatenate always wants auto satP).
+      - ``Bulk_H``/``Bulk_C``/``Bulk_S`` are converted from H2O/CO2/S
+        wt% via the rounded molecular-weight ratios from the
+        Sun & Yao 2024 example files (2/18, 12/44).
+      - Anhydrous renormalization to 100 wt% before passing to MAGEC.
+
     The *solver_dir* and *matlab_bin* paths are auto-detected at
     import time.  You can also set the environment variables
     ``MAGEC_SOLVER_DIR`` and ``MATLAB_BIN`` to override detection.
@@ -450,8 +467,26 @@ class MAGECConfig:
     gas_behavior: int = 1      # (1) real gas; (2) ideal
     o2_balance: int = 0        # (0) Total O balanced; (1) fixed fO2 buffer
 
-    # Pressure search settings for saturation pressure
+    # ── Redox selection ──────────────────────────────────────────────
+    # ``redox_option`` is the column name MAGEC will read.
+    # ``redox_source`` controls how strictly that choice is enforced
+    # and whether the wrapper is allowed to do its own KC91 conversion
+    # when only buffer-relative redox (dNNO / dFMQ) is on the sample:
+    #
+    #   "auto"               — current behavior. Honors redox_option
+    #                          when possible, falls through to whichever
+    #                          indicator the comp does have, and as a
+    #                          last resort computes Fe3+/FeT from
+    #                          dNNO/dFMQ via KC91 + Frost-1991 buffer
+    #                          at 1 bar (a substantively different
+    #                          calculation, logged at WARNING).
+    #   "fe3fet" / "dfmq" / "dnno"
+    #                        — require that exact indicator on the
+    #                          sample; raise ValueError if missing.
+    #   "kc91_from_buffer"   — explicitly opt into the KC91 conversion
+    #                          even when Fe3+/FeT is also available.
     redox_option: str = "Fe3+/FeT"   # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
+    redox_source: Literal["auto", "fe3fet", "dfmq", "dnno", "kc91_from_buffer"] = "auto"
     p_start_kbar: float = 3.0
     p_final_kbar: float = 0.001
     n_steps: int = 100
