@@ -357,7 +357,7 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     delta_FMQ = _compute_delta_fmq(comp)
 
     coh_model = cfg.coh_model
-    choice = 0  # No crystallization
+    choice = cfg.crystallization
     fo2_tracker = cfg.fo2_tracker
     s_fe_choice = cfg.s_fe_choice
     sigma = cfg.sigma
@@ -365,11 +365,17 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     slope_h2o = cfg.slope_h2o
     constant_h2o = cfg.constant_h2o
     n_steps = cfg.n_steps
-    open_degassing = 0  # closed degassing
-    d34s_initial = 0  # not tracking isotopes
+    open_degassing = cfg.open_degassing
+    d34s_initial = cfg.d34s_initial
 
-    # Sulfide composition (default from main_Fuego.py)
-    sulfide = {"Fe": 65.43, "Ni": 0, "Cu": 0, "O": 0, "S": 36.47}
+    # Sulfide phase composition — exposed via SulfurXSulfideConfig.
+    sulfide = {
+        "Fe": cfg.sulfide.fe,
+        "Ni": cfg.sulfide.ni,
+        "Cu": cfg.sulfide.cu,
+        "O":  cfg.sulfide.o,
+        "S":  cfg.sulfide.s,
+    }
 
     # ── Step 1: Calculate saturation pressure ──────────────────────
     # The IM satP solver is very sensitive to the initial guess.  We

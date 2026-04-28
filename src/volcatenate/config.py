@@ -20,7 +20,7 @@ import glob
 import os
 import platform
 import shutil
-from dataclasses import dataclass, field, fields, replace, MISSING as dataclass_field_missing
+from dataclasses import dataclass, field, fields, is_dataclass, replace, MISSING as dataclass_field_missing
 from typing import Any, Literal, Type, TypeVar
 
 from volcatenate.log import logger
@@ -502,8 +502,40 @@ class MAGECConfig:
 
 
 @dataclass
+class SulfurXSulfideConfig:
+    """Sulfide phase composition for SulfurX.
+
+    SulfurX needs an explicit sulfide composition to compute sulfide
+    saturation behavior. Default values follow ``main_Fuego.py`` from
+    the SulfurX distribution (Fe65.43, S36.47 — a near-stoichiometric
+    pyrrhotite). All values are weight percent of the sulfide phase
+    (not the melt).
+    """
+
+    fe: float = 65.43
+    ni: float = 0.0
+    cu: float = 0.0
+    o: float = 0.0
+    s: float = 36.47
+
+
+@dataclass
 class SulfurXConfig:
     """SulfurX model configuration.
+
+    Always sourced from the input ``MeltComposition`` (not config):
+      - Sample name, ``T_C``, all major oxides, ``H2O`` (wt%),
+        ``CO2`` (→ ppm), ``S`` (→ ppm)
+      - The starting ``delta_FMQ`` is computed from whichever redox
+        indicator the sample carries (``dFMQ`` direct, then Fe3+/FeT
+        via KC91, then ``dNNO`` via Frost-1991 buffer offset). See
+        :func:`backends.sulfurx._compute_delta_fmq`.
+
+    Always managed by volcatenate (not exposed here):
+      - SulfurX bundles a hardcoded reference composition (Fuego) into
+        its internal ``MeltComposition`` class. The volcatenate
+        wrapper monkey-patches that class so SulfurX uses the
+        sample composition you actually passed in.
 
     The *path* is auto-detected at import time.  You can also set
     the environment variable ``SULFURX_PATH`` to override detection.
@@ -518,6 +550,14 @@ class SulfurXConfig:
     s_fe_choice: int = 1              # S speciation model: 0=Nash, 1=O'Neill&Mavrogenes
     sigma: float = 0.005              # log10fO2 tolerance for redox calculation
     sulfide_pre: int = 0              # 0 = no sulfide precipitation, 1 = enabled
+
+    # Crystallization / degassing geometry (previously hardcoded).
+    crystallization: int = 0          # 0 = no crystallization (the only path SulfurX exercises today)
+    open_degassing: int = 0           # 0 = closed-system degassing, 1 = open-system
+    d34s_initial: float = 0.0         # Initial bulk d34S (only used when isotope tracking is wired up)
+
+    # Sulfide phase composition (SulfurX uses this for sulfide saturation).
+    sulfide: SulfurXSulfideConfig = field(default_factory=SulfurXSulfideConfig)
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"n_steps": 100, "sigma": 0.001}}
@@ -846,6 +886,23 @@ def save_config(config: RunConfig, path: str) -> str:
         for f in sub_fields:
             val = getattr(sub, f.name)
             comment = _FIELD_COMMENTS.get((section_name, f.name), "")
+            # Nested dataclass: write as a YAML mapping at +2 indent.
+            if is_dataclass(val) and not isinstance(val, type):
+                lines.append(f"  {f.name}:")
+                if comment:
+                    # Annotate the parent line via a same-line comment.
+                    lines[-1] += f"  # {comment}"
+                for nf in fields(val):
+                    nv = getattr(val, nf.name)
+                    ncomment = _FIELD_COMMENTS.get(
+                        (f"{section_name}.{f.name}", nf.name), ""
+                    )
+                    nline = f"    {nf.name}: {_format_value(nv)}"
+                    if ncomment:
+                        nline += f"  # {ncomment}"
+                    lines.append(nline)
+                continue
+
             line = f"  {f.name}: {_format_value(val)}"
             if comment:
                 line += f"  # {comment}"
@@ -872,25 +929,46 @@ def _build_dataclass(cls: Type[T], data: dict) -> T:
 
     Empty strings are skipped for fields that use ``default_factory``
     (i.e. auto-detected paths) so that auto-detection still runs.
+
+    Nested dataclasses are detected via the field's default
+    (``f.default`` or ``f.default_factory()``); when the YAML value
+    is a dict, it is recursively built into the nested dataclass.
     """
-    valid_names = {f.name for f in fields(cls)}
-    # Fields that use default_factory (auto-detected paths).
-    # For these, an empty string in YAML means "use auto-detection".
+    field_map = {f.name: f for f in fields(cls)}
+    # Fields that use default_factory (auto-detected paths or nested
+    # dataclass instances). For path-style fields, an empty string in
+    # YAML means "use auto-detection".
     factory_fields = {
-        f.name for f in fields(cls)
+        name for name, f in field_map.items()
         if f.default_factory is not dataclass_field_missing
     }
-    filtered = {}
+    filtered: dict[str, Any] = {}
     for k, v in data.items():
-        if k in valid_names:
-            # Skip empty strings for auto-detected fields → let factory run
-            if k in factory_fields and v == "":
+        if k not in field_map:
+            continue
+        f = field_map[k]
+
+        # Nested dataclass: recurse if a dict is supplied.
+        if isinstance(v, dict):
+            nested_default = None
+            if f.default is not dataclass_field_missing:
+                nested_default = f.default
+            elif f.default_factory is not dataclass_field_missing:
+                try:
+                    nested_default = f.default_factory()
+                except Exception:
+                    nested_default = None
+            if nested_default is not None and is_dataclass(nested_default):
+                filtered[k] = _build_dataclass(type(nested_default), v)
                 continue
-            # Coerce types where needed (YAML may parse ints as floats)
-            f_type = {f.name: f.type for f in fields(cls)}.get(k)
-            if f_type == "int" and isinstance(v, float):
-                v = int(v)
-            filtered[k] = v
+
+        # Skip empty strings for auto-detected scalar fields → let factory run
+        if k in factory_fields and v == "":
+            continue
+        # Coerce types where needed (YAML may parse ints as floats)
+        if f.type == "int" and isinstance(v, float):
+            v = int(v)
+        filtered[k] = v
     return cls(**filtered)
 
 
