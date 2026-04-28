@@ -119,6 +119,6 @@ volcatenate degassing input.csv -m all -o ./paths/
 
 - [Configuration](configuration.md) — all `RunConfig` settings.
 - [Run bundles](run_bundles.md) — reproducible JSON snapshots of a run.
-- [Config propagation reference](config_propagation.md) — what each YAML
+- [Config propagation reference](config_options.md) — what each YAML
   field actually does inside each backend.
 - [API reference](api/index.rst) — every public module and function.

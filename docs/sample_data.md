@@ -92,6 +92,6 @@ This is the lowest-level entry point. Both the CSV and dict paths build `MeltCom
 
 ## What "the sample" means in this documentation
 
-Every reference to "the sample" or "from the composition" elsewhere in this documentation — in the [propagation reference](config_propagation.md), the [run-bundle guide](run_bundles.md), the example notebooks, and the API docstrings — refers to a single `MeltComposition` instance. The three input shapes above are just different ways of constructing those instances.
+Every reference to "the sample" or "from the composition" elsewhere in this documentation — in the [propagation reference](config_options.md), the [run-bundle guide](run_bundles.md), the example notebooks, and the API docstrings — refers to a single `MeltComposition` instance. The three input shapes above are just different ways of constructing those instances.
 
 When the propagation reference says, for example, "EVo's `WTH2O_START` is filled from `comp.H2O / 100`," that means: whatever H₂O value you put in the `H2O` column of your CSV (or the `H2O` field of your dict / `MeltComposition`) flows through to EVo's `env.yaml` divided by 100.

@@ -1,16 +1,18 @@
-# How YAML config fields propagate into each backend
+# Configuration options reference
 
-This is a plain-English reference explaining what each setting in your volcatenate YAML config actually *does* once it reaches the underlying model. It complements [configuration.md](configuration.md) (which documents the YAML structure) and the hidden-values audit kept in the project's internal notes (which lists every value that volcatenate hardcodes or pulls silently from the sample composition).
+The exhaustive reference for every YAML field volcatenate exposes — what it does, what values it accepts, and (for backend-specific fields) how it propagates into the underlying model. For the *mechanics* of building, loading, saving, and overriding a config, see [configuration.md](configuration.md).
 
-The doc is organized one backend per section, ordered from simplest to most involved:
+The doc is organized in two layers:
 
-1. [VESIcal](#vesical)
-2. [VolFe](#volfe)
-3. [EVo](#evo)
-4. [MAGEC](#magec)
-5. [SulfurX](#sulfurx)
+- **[Top-level `RunConfig` settings](#top-level-runconfig-settings)** — the universal fields that apply to every run: output paths, logging, progress bars, run-bundle saving.
+- **Per-backend sections**, ordered from simplest to most involved:
+    1. [VESIcal](#vesical)
+    2. [VolFe](#volfe)
+    3. [EVo](#evo)
+    4. [MAGEC](#magec)
+    5. [SulfurX](#sulfurx)
 
-Each section has the same structure:
+Each per-backend section has the same structure:
 
 - **Where the YAML lands** — the full call chain from YAML to backend.
 - **Field-by-field table** — what each setting actually does to the calculation.
@@ -53,6 +55,70 @@ The volcatenate log file (`RunConfig.log_file`) is truncated on the first call w
 ### Output CSV schema
 
 The DataFrames returned by `calculate_degassing` contain a fixed set of columns ([`columns.STANDARD_COLUMNS`](../src/volcatenate/columns.py)). When backends produce extra intermediate columns (e.g. MAGEC's `Run_ID`, `_sample`), those are stripped on write via [`convert.to_standard_schema`](../src/volcatenate/convert.py), which is wired into `export_degassing_paths` so the on-disk CSV is always the canonical schema.
+
+---
+
+## Top-level `RunConfig` settings
+
+These are the YAML fields that live at the top of the config file (not under any backend section). They control where output goes, how logging behaves, whether to save a reproducible run bundle, and a few related concerns that apply to every backend at once. The dataclass definition is [`RunConfig` in config.py](../src/volcatenate/config.py).
+
+### Field-by-field
+
+| YAML key | Default | What it does | Where it lands |
+| --- | --- | --- | --- |
+| `output_dir` | `"."` | Root directory for **everything** the run produces — standardized result CSVs, the run bundle JSON, the per-`(sample, backend)` resolved-input YAML sidecars, and the `raw_output_dir` subtree. The path is taken as-is (relative to the cwd if not absolute) and created if it doesn't exist. | Used by every entry point in [`core.py`](../src/volcatenate/core.py); plumbed through to each backend wrapper. |
+| `raw_output_dir` | `"raw_tool_output"` | Subdirectory **under `output_dir`** where each backend drops its scratch files: EVo writes per-sample `chem.yaml` / `env.yaml` / `output.yaml` plus EVo's own CSV output; MAGEC writes the per-sample input/output xlsx pair; VolFe writes its captured stdout / log fragments; SulfurX writes nothing here today. The path is interpreted relative to `output_dir`, so the absolute scratch path is `<output_dir>/<raw_output_dir>/...`. | Each backend builds `work_dir = os.path.join(config.output_dir, config.raw_output_dir, ...)` at the start of its calculate-* method. |
+| `keep_raw_output` | `True` | Whether to keep `raw_output_dir` on disk after the run. `True` retains every backend's scratch files for inspection. `False` deletes the `raw_output_dir` tree (per-sample subdirs first, then the top-level dir if empty) at the end of the run. The standardized result CSVs, the run bundle JSON, and the resolved-input sidecars are unaffected — they live outside `raw_output_dir`. | Cleanup is per-backend after each calculate-* call (e.g. [evo.py:163](../src/volcatenate/backends/evo.py)) plus a final empty-dir sweep in [`run_comparison`](../src/volcatenate/core.py). |
+| `verbose` | `False` | Whether to send INFO-level log messages from the volcatenate logger to stdout. When `False` the logger is silent on the terminal (a `NullHandler` is installed unless `log_file` is also set). When `True`, a Rich-formatted handler is attached if Rich is available; falls back to a plain stdout handler otherwise. Has no effect on what gets written to `log_file`. | Consumed by [`setup_logging`](../src/volcatenate/log.py), called automatically by every entry point. |
+| `log_file` | `""` | Path to a file that captures **all** DEBUG-level messages, including the per-step output that gets routed there from EVo's stdout, MAGEC's MATLAB stdout, and VESIcal's captured warnings. Empty string disables file logging. The file is **truncated on the first call within a Python process**, then **appended to** thereafter — so multiple `calculate_*` calls in the same notebook accumulate into one log instead of clobbering each other. To force a fresh log mid-session, call [`reset_log_file_tracking()`](../src/volcatenate/log.py). | [`setup_logging`](../src/volcatenate/log.py) attaches a `FileHandler`. |
+| `show_progress` | `True` | Show Rich progress bars during multi-sample runs. `False` is the right choice for CI / headless / batch scripts where progress bars produce noisy output. | Consumed by [`_init_progress`](../src/volcatenate/core.py); only matters when Rich is installed. |
+| `save_bundle` | `""` | Path at which to write a reproducible JSON run bundle. Empty string disables. The bundle is written **twice**: an inputs-only version is saved up front (so the bundle survives a mid-run crash), and a full version with `resolved_inputs` populated from the run is saved at end of run. See [run_bundles.md](run_bundles.md) for the full anatomy. | [`create_bundle`](../src/volcatenate/reproducible.py) + [`save_bundle`](../src/volcatenate/reproducible.py); orchestrated by every entry point in [`core.py`](../src/volcatenate/core.py). |
+| `bundle_comments` | `""` | Free-text notes recorded in the bundle's `comments` field. **Provenance only** — ignored on replay. Useful for "why this run exists," patches you applied to a backend, expected outcomes, etc. The `comments=` kwarg on [`create_bundle`](../src/volcatenate/reproducible.py) overrides this when both are supplied. | Stored verbatim in the bundle JSON. |
+
+### On-disk layout the top-level fields produce
+
+A run with `output_dir="my_run"`, `raw_output_dir="raw_tool_output"`, `save_bundle="my_run/bundle.json"`, `keep_raw_output=True`, and a single sample called `Fuego` run through EVo + MAGEC produces this tree:
+
+```text
+my_run/
+├── bundle.json                       # the run bundle (save_bundle)
+├── saturation_pressures.csv          # per-(sample, model) sat pressures
+├── EVo/
+│   └── fuego.csv                     # standardized degassing path, EVo
+├── MAGEC/
+│   └── fuego.csv                     # standardized degassing path, MAGEC
+├── resolved_inputs/                  # per-(sample, backend) actual model inputs
+│   └── Fuego/
+│       ├── EVo.yaml                  # what EVo's env.yaml + chem.yaml + output.yaml had
+│       └── MAGEC.yaml                # what MAGEC's input row + settings struct had
+└── raw_tool_output/                  # = raw_output_dir
+    ├── Fuego_evo_satp/
+    │   ├── env.yaml
+    │   ├── chem.yaml
+    │   ├── output.yaml
+    │   └── output/                   # EVo's own native CSV output
+    └── magec/
+        └── Fuego/
+            ├── Fuego_input.csv
+            └── Fuego_output.csv
+```
+
+With `keep_raw_output=False`, the `raw_tool_output/` subtree is deleted at end of run; everything else (the bundle, the standardized CSVs, the `resolved_inputs/` sidecars) survives. The `resolved_inputs/` sidecars are **always** written when `save_bundle` is on, regardless of `keep_raw_output` — they are deliberately outside `raw_output_dir` so they survive a cleanup.
+
+### Logging in practice
+
+The `verbose` and `log_file` fields control two independent destinations:
+
+- `verbose=True` → INFO and above to stdout (Rich-formatted if available).
+- `log_file="path.log"` → DEBUG and above to the file.
+
+Both can be on at once. Setting neither leaves the volcatenate logger silent.
+
+What lands at DEBUG level (and therefore in the log file but not on the terminal) includes: EVo's full per-step stdout (captured via `contextlib.redirect_stdout`), MAGEC's MATLAB stdout, every VESIcal warning the wrapper captured (tagged `[VESIcal/<phase>/<sample>] <Category>: <msg>`), and the resolved fO2-source choice for every sample in the run.
+
+### Reading the bundle
+
+`save_bundle` produces a single JSON file that captures both the *intent* (what you put in the YAML and which compositions you ran) and the *realization* (what each backend actually handed to its underlying model, sample by sample, in `resolved_inputs`). See [run_bundles.md](run_bundles.md) for the field-by-field anatomy and replay semantics.
 
 ---
 

@@ -168,7 +168,7 @@ class VESIcalConfig:
 
     See Also
     --------
-    docs/config_propagation.md : plain-English mapping from each YAML field to the underlying VESIcal call.
+    docs/config_options.md : plain-English mapping from each YAML field to the underlying VESIcal call.
     """
 
     steps: int = 101
@@ -211,7 +211,7 @@ class VolFeConfig:
 
     See Also
     --------
-    docs/config_propagation.md : plain-English mapping from each YAML field to the actual VolFe model-option name and what it does to the calculation.
+    docs/config_options.md : plain-English mapping from each YAML field to the actual VolFe model-option name and what it does to the calculation.
     """
 
     # ── Saturation ───────────────────────────────────────────────────
@@ -368,7 +368,7 @@ class EVoConfig:
 
     See Also
     --------
-    docs/config_propagation.md : plain-English mapping from each YAML field to the actual EVo ``env.yaml`` / ``chem.yaml`` key and what it does.
+    docs/config_options.md : plain-English mapping from each YAML field to the actual EVo ``env.yaml`` / ``chem.yaml`` key and what it does.
     """
 
     gas_system: str = "cohs"
@@ -482,7 +482,7 @@ class MAGECConfig:
 
     See Also
     --------
-    docs/config_propagation.md : plain-English mapping from each YAML field to the corresponding MAGEC settings-sheet entry and the input-CSV column.
+    docs/config_options.md : plain-English mapping from each YAML field to the corresponding MAGEC settings-sheet entry and the input-CSV column.
     """
 
     solver_dir: str = field(default_factory=_find_magec_solver)
@@ -593,7 +593,7 @@ class SulfurXConfig:
 
     See Also
     --------
-    docs/config_propagation.md : plain-English mapping from each YAML field to the corresponding SulfurX call.
+    docs/config_options.md : plain-English mapping from each YAML field to the corresponding SulfurX call.
     SulfurXSulfideConfig : nested sulfide phase composition.
     """
 
@@ -652,7 +652,7 @@ class RunConfig:
     See Also
     --------
     docs/configuration.md : top-level overview of YAML structure.
-    docs/config_propagation.md : per-backend plain-English propagation reference.
+    docs/config_options.md : per-backend plain-English propagation reference.
     docs/run_bundles.md : reproducible run bundles.
     """
 
@@ -905,7 +905,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "calculate_*, NOT by anything in this section.",
         "",
         "From the sample composition: oxides, T_C, H2O, CO2, S.",
-        "See docs/config_propagation.md for the full propagation map.",
+        "See docs/config_options.md for the full propagation map.",
     ],
     "volfe": [
         "── VolFe ──",
@@ -920,7 +920,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  - 'setup' = False (debug flag)",
         "Fallback chain when fo2_source = 'auto':",
         "  Fe3+/FeT  →  dNNO  →  dFMQ  (logged at INFO when a fallback fires)",
-        "See docs/config_propagation.md for the full mapping.",
+        "See docs/config_options.md for the full mapping.",
     ],
     "evo": [
         "── EVo ──",
@@ -933,7 +933,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  - Output plot flags in output.yaml = False (we use our own DataFrames)",
         "Fallback chain when fo2_source = 'auto':",
         "  Fe3+/FeT  →  comp.dNNO  →  comp.dFMQ  →  fo2_buffer with offset 0",
-        "See docs/config_propagation.md for the full mapping.",
+        "See docs/config_options.md for the full mapping.",
     ],
     "magec": [
         "── MAGEC ──",
@@ -951,7 +951,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  ↑ The KC91 step is a substantively different calculation; logged at WARNING.",
         "  Use redox_source='kc91_from_buffer' to opt into it explicitly, or",
         "  redox_source='fe3fet'/'dfmq' to refuse it and raise on missing data.",
-        "See docs/config_propagation.md for the full mapping.",
+        "See docs/config_options.md for the full mapping.",
     ],
     "sulfurx": [
         "── SulfurX ──",
@@ -966,7 +966,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "Fallback chain (in _compute_delta_fmq):",
         "  comp.dFMQ (direct)  →  Fe3+/FeT via KC91 inversion  →  comp.dNNO via Frost-1991",
         "  Logs the choice at INFO; raises ValueError if none are available.",
-        "See docs/config_propagation.md for the full mapping.",
+        "See docs/config_options.md for the full mapping.",
     ],
 }
 
@@ -1089,7 +1089,7 @@ def save_config(config: RunConfig, path: str) -> str:
         lines.append("")
         # Per-section preamble describing values that are hardcoded by
         # volcatenate or pulled from the sample composition (i.e. not
-        # configurable via this YAML).  See docs/config_propagation.md.
+        # configurable via this YAML).  See docs/config_options.md.
         for preamble_line in _SECTION_PREAMBLE.get(section_name, []):
             lines.append(f"# {preamble_line}" if preamble_line else "#")
         lines.append(f"{section_name}:")

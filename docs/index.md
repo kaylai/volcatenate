@@ -37,7 +37,7 @@ getting_started
 sample_data
 configuration
 run_bundles
-config_propagation
+config_options
 ```
 
 ```{toctree}
