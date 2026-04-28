@@ -80,8 +80,7 @@ default `dp_max: 100` (bar) works fine for most basalts but causes the solver
 to bail out partway through degassing for reduced MORB at low pressure. The
 fix is `dp_max: 25` for that one sample only.
 
-`EVoConfig` and `MAGECConfig` each accept an `overrides` dict shaped like
-`{sample_name: {field_name: value}}`:
+Every backend config (`VESIcalConfig`, `VolFeConfig`, `EVoConfig`, `MAGECConfig`, `SulfurXConfig`) carries an `overrides` dict shaped like `{sample_name: {field_name: value}}`:
 
 ```yaml
 evo:

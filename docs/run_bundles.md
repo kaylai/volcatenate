@@ -45,7 +45,7 @@ results = volcatenate.replay("run_bundle.json")
 
 ```json
 {
-  "volcatenate_version": "0.3.1",
+  "volcatenate_version": "0.3.0",
   "timestamp": "2026-04-27T15:32:11+00:00",
   "python_version": "3.11.9",
   "run_type": "comparison",
@@ -192,7 +192,7 @@ python: 3.11.9 (...)
 2. Interpolate sulfur_x at low P/Pi for Fuego
 
 --- tool versions ---
-volcatenate==0.3.1
+volcatenate==0.3.0
 VolFe==1.2.0 (git: a1b2c3d)
 SulfurX==0.2.3
 ...
