@@ -1,15 +1,11 @@
 """MAGEC backend — Magma And Gas Equilibrium Calculator (Sun & Yao, 2024).
 
-Runs MAGEC's compiled MATLAB solver (.p) via subprocess, using a bundled
-CSV wrapper for fast I/O.  Requires:
-  1. MATLAB installed (with the bundled fsolve/lsqnonlin shims if the
-     Optimization Toolbox is not available)
-  2. MAGEC_Solver_v1b.p in the configured solver directory
+Runs MAGEC's compiled MATLAB solver (``.p``) via subprocess, using a bundled CSV wrapper for fast I/O. Requires:
 
-The backend generates CSV input files, writes a MATLAB batch script that
-passes settings as a struct, and calls MAGEC_CSV_Wrapper.m which handles
-CSV↔xlsx conversion inside MATLAB before calling the .p solver.  Python-
-side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
+- MATLAB installed (with the bundled fsolve / lsqnonlin shims if the Optimization Toolbox is not available).
+- ``MAGEC_Solver_v1b.p`` in the configured solver directory.
+
+The backend generates CSV input files, writes a MATLAB batch script that passes settings as a struct, and calls ``MAGEC_CSV_Wrapper.m`` which handles CSV↔xlsx conversion inside MATLAB before calling the ``.p`` solver. Python-side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
 """
 
 from __future__ import annotations
@@ -144,7 +140,7 @@ class Backend(ModelBackend):
         in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
         out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_csv(comp, cfg, in_csv)
+        _create_magec_input_csv(comp, cfg, in_csv, output_dir=config.output_dir)
         _run_magec_matlab(in_csv, out_csv, cfg)
 
         if not os.path.isfile(out_csv):
@@ -227,7 +223,7 @@ class Backend(ModelBackend):
         for i, comp in enumerate(comps):
             try:
                 sample_cfg = resolve_sample_config(config.magec, comp.sample)
-                rows = _build_sample_input_rows(comp, sample_cfg)
+                rows = _build_sample_input_rows(comp, sample_cfg, output_dir=config.output_dir)
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
                 sample_cfgs[comp.sample] = sample_cfg
@@ -339,7 +335,7 @@ class Backend(ModelBackend):
         in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
         out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_csv(comp, cfg, in_csv)
+        _create_magec_input_csv(comp, cfg, in_csv, output_dir=config.output_dir)
         _run_magec_matlab(in_csv, out_csv, cfg)
 
         if not os.path.isfile(out_csv):
@@ -365,96 +361,175 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+def _kc91_from_buffer(comp: MeltComposition) -> tuple[float, str]:
+    """Compute Fe3+/FeT for a sample that only has dNNO or dFMQ.
+
+    Uses Kress & Carmichael (1991) to invert logfO2 → Fe3+/FeT, with
+    logfO2 derived from a Frost-1991 buffer at 1 bar. Prefers dNNO
+    when both are present.
+
+    Returns (fe3fet, source_label) or (NaN, "") if neither input is
+    available or KC91 fails.
+    """
+    from volcatenate.iron import fe3fet_kc91
+
+    if comp.dNNO is None and comp.dFMQ is None:
+        return float("nan"), ""
+
+    T_K = comp.T_C + 273.15
+    if comp.dNNO is not None:
+        # NNO buffer (Frost 1991, at 1 bar):
+        nno_1bar = -24930.0 / T_K + 9.36
+        log_fo2 = nno_1bar + comp.dNNO
+        src = f"dNNO={comp.dNNO}"
+    else:
+        # FMQ buffer (Frost 1991, at 1 bar):
+        fmq_1bar = -25096.3 / T_K + 8.735
+        log_fo2 = fmq_1bar + comp.dFMQ
+        src = f"dFMQ={comp.dFMQ}"
+
+    fe3fet = fe3fet_kc91(log_fo2, T_K, comp.oxide_dict, P_bar=1.0)
+    if np.isnan(fe3fet):
+        logger.warning(
+            "[MAGEC] KC91 inversion failed for %s (logfO2=%.3f at %.0f K)",
+            comp.sample, log_fo2, T_K,
+        )
+        return float("nan"), src
+
+    return float(fe3fet), src
+
+
+def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
+    """Pick the (redox_option, redox_value) pair to send to MAGEC.
+
+    Behavior depends on :class:`~volcatenate.config.MAGECConfig.redox_source`:
+
+    - ``"auto"`` (default): honors ``cfg.redox_option`` if the matching
+      indicator is on the comp; otherwise falls through to whatever
+      indicator is available, with a final fallback that computes
+      Fe3+/FeT via KC91 from a buffer-relative offset (a substantively
+      different calculation, logged at WARNING).
+    - ``"fe3fet"`` / ``"dfmq"`` / ``"dnno"``: require that exact
+      indicator on the sample; raise ValueError if missing.
+    - ``"kc91_from_buffer"``: explicitly opt into the KC91 conversion
+      from dNNO / dFMQ even when Fe3+/FeT is also present.
+
+    Returns (option_string, value).  Raises ``ValueError`` if no
+    suitable indicator is available given the chosen mode.
+    """
+    fe3fet = comp.fe3fet_computed
+    src = cfg.redox_source
+
+    if src == "fe3fet":
+        if np.isnan(fe3fet):
+            raise ValueError(
+                f"[MAGEC] redox_source='fe3fet' requires Fe3+/FeT on sample "
+                f"{comp.sample!r}, but none was provided."
+            )
+        return "Fe3+/FeT", float(fe3fet)
+    if src == "dfmq":
+        if comp.dFMQ is None:
+            raise ValueError(
+                f"[MAGEC] redox_source='dfmq' requires dFMQ on sample "
+                f"{comp.sample!r}, but it is missing."
+            )
+        return "dFMQ", float(comp.dFMQ)
+    if src == "dnno":
+        if comp.dNNO is None:
+            raise ValueError(
+                f"[MAGEC] redox_source='dnno' requires dNNO on sample "
+                f"{comp.sample!r}, but it is missing."
+            )
+        # MAGEC doesn't accept dNNO directly — need KC91 conversion.
+        # We surface this rather than silently switching to dFMQ.
+        raise ValueError(
+            f"[MAGEC] redox_source='dnno' is not directly supported "
+            f"(MAGEC does not accept dNNO as a redox column). Use "
+            f"'kc91_from_buffer' to convert dNNO → Fe3+/FeT via KC91, "
+            f"or 'dfmq' / 'fe3fet' if those are available."
+        )
+    if src == "kc91_from_buffer":
+        computed, label = _kc91_from_buffer(comp)
+        if np.isnan(computed):
+            raise ValueError(
+                f"[MAGEC] redox_source='kc91_from_buffer' requires dNNO or dFMQ "
+                f"on sample {comp.sample!r} (and KC91 must converge)."
+            )
+        logger.info(
+            "[MAGEC] %s: KC91 conversion %s → Fe3+/FeT=%.4f",
+            comp.sample, label, computed,
+        )
+        return "Fe3+/FeT", computed
+
+    # ── "auto" (default): preserve the existing behavior, with INFO ──
+    # logging on each choice so the path is visible.
+    requested = cfg.redox_option   # e.g. "Fe3+/FeT"
+
+    # 1. honor the requested option if data is present.
+    if requested == "Fe3+/FeT" and not np.isnan(fe3fet):
+        logger.info("[MAGEC] %s: redox=Fe3+/FeT (%.4f)", comp.sample, fe3fet)
+        return "Fe3+/FeT", float(fe3fet)
+    if requested == "dFMQ" and comp.dFMQ is not None:
+        logger.info("[MAGEC] %s: redox=dFMQ (%.3f)", comp.sample, comp.dFMQ)
+        return "dFMQ", float(comp.dFMQ)
+    # ``logfO2`` and ``S6+/ST`` are valid MAGEC options but volcatenate
+    # doesn't carry direct sources for them on the composition; fall
+    # through to the chain below.
+
+    # 2. prefer Fe3+/FeT when available (MAGEC handles it natively).
+    if not np.isnan(fe3fet):
+        logger.info(
+            "[MAGEC] %s: requested redox=%s missing; using Fe3+/FeT (%.4f)",
+            comp.sample, requested, fe3fet,
+        )
+        return "Fe3+/FeT", float(fe3fet)
+
+    # 3. last resort: KC91 from dNNO/dFMQ (substantively different —
+    # warn loudly so the user can tell from the logs).
+    if comp.dNNO is not None or comp.dFMQ is not None:
+        computed, label = _kc91_from_buffer(comp)
+        if not np.isnan(computed):
+            logger.warning(
+                "[MAGEC] %s: no Fe3+/FeT; computed %.4f via KC91 from %s "
+                "(see redox_source='kc91_from_buffer' to make this explicit)",
+                comp.sample, computed, label,
+            )
+            return "Fe3+/FeT", computed
+
+    raise ValueError(
+        f"No usable redox indicator for {comp.sample}. "
+        f"MAGEC needs Fe3+/FeT, dFMQ, or dNNO."
+    )
+
+
 def _build_sample_input_rows(
     comp: MeltComposition,
     cfg,
+    output_dir: str | None = None,
 ) -> list[dict]:
     """Build MAGEC input rows for a single sample (one row per pressure step).
 
-    Returns a list of row dicts ready for ``pd.DataFrame(rows)``.
-    Raises ``ValueError`` if no usable redox indicator is available.
+    Returns a list of row dicts ready for ``pd.DataFrame(rows)``. Raises ``ValueError`` if no usable redox indicator is available.
+
+    When ``output_dir`` is provided, also captures the resolved input via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
     """
 
-    fe3fet = comp.fe3fet_computed
-
-    # Determine redox option string and value.
-    # The config specifies the preferred input (e.g. "Fe3+/FeT"), but
-    # not all compositions provide that indicator.  Use a fallback chain
-    # so we never send NaN to MATLAB.
-    redox_option = cfg.redox_option   # e.g. "Fe3+/FeT"
-    redox_value = np.nan
-
-    if redox_option == "Fe3+/FeT" and not np.isnan(fe3fet):
-        redox_value = fe3fet
-    elif redox_option == "dFMQ" and comp.dFMQ is not None:
-        redox_value = comp.dFMQ
-    elif redox_option == "logfO2":
-        pass  # no generic source — leave NaN, will warn below
-
-    # Fallback chain: try every available indicator.
-    # MAGEC's internal dFMQ→logfO2 conversion can fail for certain
-    # compositions, so we prefer computing Fe3+/FeT via KC91 when
-    # only a buffer offset (dNNO or dFMQ) is available.
-    if np.isnan(redox_value):
-        if not np.isnan(fe3fet):
-            redox_option = "Fe3+/FeT"
-            redox_value = fe3fet
-        elif comp.dNNO is not None or comp.dFMQ is not None:
-            # Compute logfO2 from the available buffer offset, then
-            # use Kress & Carmichael (1991) to get Fe3+/FeT.  This is
-            # the most reliable pathway because MAGEC uses KC91
-            # internally (fe_redox=2) and handles Fe3+/FeT natively.
-            from volcatenate.iron import fe3fet_kc91
-
-            T_K = comp.T_C + 273.15
-            if comp.dNNO is not None:
-                # NNO buffer (Frost 1991, at 1 bar):
-                nno_1bar = -24930.0 / T_K + 9.36
-                log_fo2 = nno_1bar + comp.dNNO
-                src = f"dNNO={comp.dNNO}"
-            else:
-                # FMQ buffer (Frost 1991, at 1 bar):
-                fmq_1bar = -25096.3 / T_K + 8.735
-                log_fo2 = fmq_1bar + comp.dFMQ
-                src = f"dFMQ={comp.dFMQ}"
-
-            computed = fe3fet_kc91(
-                log_fo2, T_K, comp.oxide_dict, P_bar=1.0,
-            )
-            if not np.isnan(computed):
-                redox_option = "Fe3+/FeT"
-                redox_value = computed
-                logger.warning(
-                    "[MAGEC] No Fe3+/FeT for %s; computed %.4f via KC91 "
-                    "from %s (logfO2=%.3f at %s K)",
-                    comp.sample, computed, src, log_fo2, T_K,
-                )
-            else:
-                logger.warning(
-                    "[MAGEC] KC91 failed for %s (logfO2=%.3f); "
-                    "cannot determine Fe3+/FeT",
-                    comp.sample, log_fo2,
-                )
-
-    if np.isnan(redox_value):
-        raise ValueError(
-            f"No usable redox indicator for {comp.sample}. "
-            f"MAGEC needs Fe3+/FeT, dFMQ, or dNNO."
-        )
+    redox_option, redox_value = _resolve_magec_redox(comp, cfg)
 
     # ── Normalize oxides to 100% anhydrous for MAGEC ──
     # MAGEC expects oxide columns on a volatile-free basis summing to
     # 100 wt% (confirmed by MAGEC supplement example1.xlsx).  Typical
     # petrological input data includes volatiles in the ~100% total, so
     # oxides sum to ~96%.  We normalize here.
-    anhydrous_sum = (comp.SiO2 + comp.TiO2 + comp.Al2O3 + comp.FeOT
-                     + comp.MnO + comp.MgO + comp.CaO + comp.Na2O
-                     + comp.K2O + comp.P2O5)
+    anhydrous_sum = (comp.SiO2 + comp.TiO2 + comp.Al2O3 + comp.Cr2O3
+                     + comp.FeOT + comp.MnO + comp.MgO + comp.CaO
+                     + comp.Na2O + comp.K2O + comp.P2O5)
     norm = 100.0 / anhydrous_sum
 
     sio2  = comp.SiO2  * norm
     tio2  = comp.TiO2  * norm
     al2o3 = comp.Al2O3 * norm
+    cr2o3 = comp.Cr2O3 * norm
     feot  = comp.FeOT  * norm
     mno   = comp.MnO   * norm
     mgo   = comp.MgO   * norm
@@ -505,7 +580,7 @@ def _build_sample_input_rows(
             "melt_SiO2 (wt%)":         sio2,
             "melt_TiO2 (wt%)":         tio2,
             "melt_Al2O3 (wt%)":        al2o3,
-            "melt_Cr2O3 (wt%)":        0.0,
+            "melt_Cr2O3 (wt%)":        cr2o3,
             "melt_FeOT (wt%)":         feot,
             "melt_MgO (wt%)":          mgo,
             "melt_MnO (wt%)":          mno,
@@ -518,6 +593,40 @@ def _build_sample_input_rows(
             "Bulk_S (wt%)":            bulk_s,
             "Reference":               "auto_satP",
         })
+
+    # Capture resolved input (first row + settings) for the bundle and sidecar yaml.
+    if output_dir:
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        settings = {
+            "solver_opt": float(cfg.solver),
+            "sat_sulfide": float(cfg.sulfide_sat),
+            "sat_sulfate": float(cfg.sulfate_sat),
+            "sat_graphite": float(cfg.graphite_sat),
+            "Fe32_opt": float(cfg.fe_redox),
+            "S62_opt": float(cfg.s_redox),
+            "SCSS_opt": float(cfg.scss),
+            "S2max_opt": float(cfg.sulfide_cap),
+            "CO2_opt": float(cfg.co2_sol),
+            "H2O_opt": float(cfg.h2o_sol),
+            "CO_opt": float(cfg.co_sol),
+            "adiabat_r": float(cfg.adiabatic),
+            "ideal": float(cfg.gas_behavior),
+            "buffer": float(cfg.o2_balance),
+        }
+        _capture_resolved(
+            sample=comp.sample,
+            backend="MAGEC",
+            data={
+                "input_first_row": input_rows[0] if input_rows else {},
+                "n_pressure_steps": len(input_rows),
+                "p_grid_kbar_first_last": (
+                    [input_rows[0]["P_degas (kbar)"], input_rows[-1]["P_degas (kbar)"]]
+                    if input_rows else []
+                ),
+                "settings": settings,
+            },
+            output_dir=output_dir,
+        )
 
     return input_rows
 
@@ -562,14 +671,15 @@ def _create_magec_input_csv(
     comp: MeltComposition,
     cfg,
     csv_path: str,
+    output_dir: str | None = None,
 ) -> None:
     """Generate the MAGEC input CSV file.
 
-    Column names and structure must match exactly what the MAGEC
-    solver expects — see the original example files distributed
-    with the MAGEC supplement.
+    Column names and structure must match exactly what the MAGEC solver expects — see the original example files distributed with the MAGEC supplement.
+
+    When ``output_dir`` is provided, the wrapper also captures the resolved input via :mod:`volcatenate.resolved_inputs`.
     """
-    _write_magec_csv(_build_sample_input_rows(comp, cfg), cfg, csv_path)
+    _write_magec_csv(_build_sample_input_rows(comp, cfg, output_dir=output_dir), cfg, csv_path)
 
 
 def _run_magec_matlab(
@@ -651,11 +761,12 @@ def _run_magec_matlab(
             timeout=effective_timeout,
         )
     except subprocess.TimeoutExpired:
-        warnings.warn(
-            f"MAGEC timed out after {effective_timeout}s. This usually means the "
-            f"saturation pressure is outside the search range "
-            f"({cfg.p_start_kbar}–{cfg.p_final_kbar} kbar). "
-            f"Try increasing magec.p_start_kbar in your config."
+        logger.warning(
+            "MAGEC timed out after %ds. This usually means the "
+            "saturation pressure is outside the search range "
+            "(%s–%s kbar). "
+            "Try increasing magec.p_start_kbar (or magec.timeout) in your config.",
+            effective_timeout, cfg.p_start_kbar, cfg.p_final_kbar,
         )
         return
 

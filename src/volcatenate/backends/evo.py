@@ -12,6 +12,7 @@ import io
 import os
 import shutil
 import warnings
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -129,6 +130,7 @@ class Backend(ModelBackend):
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
             comp, cfg, work_dir, run_type="closed",
+            output_dir=config.output_dir,
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
@@ -181,6 +183,7 @@ class Backend(ModelBackend):
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
             comp, cfg, work_dir, run_type=cfg.run_type,
+            output_dir=config.output_dir,
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
@@ -231,9 +234,8 @@ def _pick_evo_buffer(comp: MeltComposition, cfg) -> dict:
     EVo accepts ``"FMQ"``, ``"NNO"``, or ``"IW"`` as the buffer name.
     The offset (``FO2_buffer_START``) must be relative to *that* buffer.
 
-    If the composition provides dNNO we use ``"NNO"`` so the offset is
-    applied correctly.  If it provides dFMQ we use ``"FMQ"``.  If neither
-    is available we fall back to the config default with an offset of 0.
+    Priority: ``comp.dNNO`` → ``"NNO"`` buffer; ``comp.dFMQ`` → ``"FMQ"``
+    buffer; otherwise fall back to ``cfg.fo2_buffer`` with offset 0.
     """
     if comp.dNNO is not None:
         return {
@@ -256,15 +258,133 @@ def _pick_evo_buffer(comp: MeltComposition, cfg) -> dict:
     }
 
 
+def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
+    """Resolve ``cfg.fo2_source`` into the env.yaml fO2 fields.
+
+    Returns a dict of env.yaml keys to merge into the run config.
+    Raises ``ValueError`` when the requested source has no matching
+    data on the composition (only ``"auto"`` is silently permissive).
+
+    See :class:`~volcatenate.config.EVoConfig.fo2_source` for the
+    semantics of each option.
+    """
+    src = cfg.fo2_source
+    has_fe3fet = not np.isnan(comp.fe3fet_computed) and comp.fe3fet_computed > 0
+
+    if src == "absolute":
+        if not cfg.fo2_set or cfg.fo2_start <= 0:
+            raise ValueError(
+                f"[EVo] fo2_source='absolute' requires fo2_set=True and "
+                f"fo2_start>0; got fo2_set={cfg.fo2_set}, fo2_start={cfg.fo2_start}"
+            )
+        logger.info(
+            "[EVo] %s: fO2 set absolutely (FO2_START=%g bar)",
+            comp.sample, cfg.fo2_start,
+        )
+        return {
+            "FO2_buffer_SET": False,
+            "FO2_buffer": cfg.fo2_buffer,   # ignored but must be valid
+            "FO2_buffer_START": 0.0,
+            "FO2_SET": True,
+            "FO2_START": float(cfg.fo2_start),
+        }
+
+    if src == "fe3fet":
+        if not has_fe3fet:
+            raise ValueError(
+                f"[EVo] fo2_source='fe3fet' requires Fe3+/FeT on sample "
+                f"{comp.sample!r}, but none was provided "
+                f"(no Fe3FeT and no speciated FeO/Fe2O3)."
+            )
+        logger.info(
+            "[EVo] %s: fO2 driven by Fe3+/FeT=%.4f via FO2_MODEL=%s",
+            comp.sample, comp.fe3fet_computed, cfg.fo2_model,
+        )
+        return {
+            "FO2_buffer_SET": False,
+            "FO2_buffer": cfg.fo2_buffer,   # ignored
+            "FO2_buffer_START": 0.0,
+            "FO2_SET": False,
+            "FO2_START": 0.0,
+        }
+
+    if src == "buffer":
+        # Required offset must match cfg.fo2_buffer.
+        wanted = cfg.fo2_buffer.upper()
+        if wanted == "NNO" and comp.dNNO is None:
+            raise ValueError(
+                f"[EVo] fo2_source='buffer' with fo2_buffer='NNO' requires "
+                f"comp.dNNO on sample {comp.sample!r}, but it is missing."
+            )
+        if wanted == "FMQ" and comp.dFMQ is None:
+            raise ValueError(
+                f"[EVo] fo2_source='buffer' with fo2_buffer='FMQ' requires "
+                f"comp.dFMQ on sample {comp.sample!r}, but it is missing."
+            )
+        if wanted not in {"NNO", "FMQ", "IW"}:
+            raise ValueError(
+                f"[EVo] fo2_buffer must be one of NNO/FMQ/IW for "
+                f"fo2_source='buffer'; got {cfg.fo2_buffer!r}"
+            )
+        # IW: no comp field exists — the user is responsible for using a
+        # composition that actually buffers at IW. Use offset 0.
+        offset = (
+            float(comp.dNNO) if wanted == "NNO" and comp.dNNO is not None
+            else float(comp.dFMQ) if wanted == "FMQ" and comp.dFMQ is not None
+            else 0.0
+        )
+        logger.info(
+            "[EVo] %s: fO2 set via %s buffer offset %+.3f",
+            comp.sample, wanted, offset,
+        )
+        return {
+            "FO2_buffer_SET": True,
+            "FO2_buffer": wanted,
+            "FO2_buffer_START": offset,
+            "FO2_SET": False,
+            "FO2_START": 0.0,
+        }
+
+    # ── "auto" (default) ─────────────────────────────────────────────
+    # Prefer Fe3+/FeT when available; otherwise fall back to dNNO/dFMQ
+    # via _pick_evo_buffer. Always logs the choice at INFO.
+    if has_fe3fet:
+        logger.info(
+            "[EVo] %s: fo2_source=auto → Fe3+/FeT=%.4f available, "
+            "driving fO2 via FO2_MODEL=%s",
+            comp.sample, comp.fe3fet_computed, cfg.fo2_model,
+        )
+        return {
+            "FO2_buffer_SET": False,
+            "FO2_buffer": cfg.fo2_buffer,
+            "FO2_buffer_START": 0.0,
+            "FO2_SET": False,
+            "FO2_START": 0.0,
+        }
+
+    picked = _pick_evo_buffer(comp, cfg)
+    logger.info(
+        "[EVo] %s: fo2_source=auto → no Fe3+/FeT, using %s buffer offset %+.3f",
+        comp.sample, picked["FO2_buffer"], picked["FO2_buffer_START"],
+    )
+    return {
+        "FO2_buffer_SET": True,
+        **picked,
+        "FO2_SET": False,
+        "FO2_START": 0.0,
+    }
+
+
 def _write_yaml_configs(
     comp: MeltComposition,
     cfg,
     work_dir: str,
     run_type: str = "closed",
+    output_dir: Optional[str] = None,
 ) -> tuple[str, str, str]:
     """Write chem.yaml, env.yaml, and output.yaml for an EVo run.
 
-    Returns (chem_path, env_path, output_yaml_path).
+    Returns (chem_path, env_path, output_yaml_path). When ``output_dir`` is provided, also captures the resolved env / chem / output dicts via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks them up.
     """
     # --- chem.yaml ---
     oxide_map = {
@@ -282,9 +402,16 @@ def _write_yaml_configs(
         # true zero keeps the key alive without affecting chemistry.
         chem_data[evo_key] = float(val) if val > 0 else 1e-10
 
-    # Iron handling: split FeOT into FeO + Fe2O3 using Fe3FeT
+    # Iron handling: split FeOT into FeO + Fe2O3 using Fe3FeT, except
+    # when ``fo2_source="absolute"`` — EVo raises if both FO2_SET=True
+    # and the iron split are present (readin.py:164).
     fe3fet = comp.fe3fet_computed
-    if not np.isnan(fe3fet) and fe3fet > 0:
+    split_iron = (
+        cfg.fo2_source != "absolute"
+        and not np.isnan(fe3fet)
+        and fe3fet > 0
+    )
+    if split_iron:
         feot = comp.FeOT
         # MW ratio: Fe2O3 / (2 * FeO) = 159.69 / (2 * 71.844) ≈ 1.11134
         chem_data["FEO"] = float(feot * (1.0 - fe3fet))
@@ -298,19 +425,23 @@ def _write_yaml_configs(
 
     # --- env.yaml ---
     t_kelvin = comp.T_C + 273.15
-    has_fe3fet = not np.isnan(fe3fet) and fe3fet > 0
+
+    # fO2 / redox initialization: dispatched via cfg.fo2_source.
+    # Returns the FO2_buffer_SET / FO2_buffer / FO2_buffer_START /
+    # FO2_SET / FO2_START block ready to merge into env_data.
+    fo2_block = _resolve_fo2_source(comp, cfg)
 
     env_data = {
-        "COMPOSITION": "basalt",
+        "COMPOSITION": cfg.composition,
         "RUN_TYPE": run_type,
-        "SINGLE_STEP": False,
+        "SINGLE_STEP": cfg.single_step,
         "FIND_SATURATION": cfg.find_saturation,
         "ATOMIC_MASS_SET": cfg.atomic_mass_set,
 
         "GAS_SYS": cfg.gas_system,
         "FE_SYSTEM": cfg.fe_system,
         "OCS": cfg.ocs,
-        "S_SAT_WARN": False,
+        "S_SAT_WARN": cfg.s_sat_warn,
 
         "T_START": t_kelvin,
         "P_START": cfg.p_start,
@@ -334,27 +465,20 @@ def _write_yaml_configs(
         "SCSS": cfg.scss,
         "N_MODEL": cfg.n_model,
 
-        # fO2 buffer: use buffer if no Fe3FeT split.
-        # Match the buffer to the available redox indicator so the
-        # offset is interpreted correctly.  EVo supports "FMQ", "NNO",
-        # and "IW" — we pick the one that matches the composition data.
-        "FO2_buffer_SET": not has_fe3fet,
-        **_pick_evo_buffer(comp, cfg),
-
-        "FO2_SET": False,
-        "FO2_START": 0.0,
+        # fO2 / fugacity initialization (dispatched above).
+        **fo2_block,
 
         "ATOMIC_H": cfg.atomic_h,
         "ATOMIC_C": cfg.atomic_c,
         "ATOMIC_S": cfg.atomic_s,
         "ATOMIC_N": cfg.atomic_n,
 
-        "FH2_SET": False,
-        "FH2_START": 0.24,
-        "FH2O_SET": False,
-        "FH2O_START": 1000,
-        "FCO2_SET": False,
-        "FCO2_START": 1,
+        "FH2_SET": cfg.fh2_set,
+        "FH2_START": cfg.fh2_start,
+        "FH2O_SET": cfg.fh2o_set,
+        "FH2O_START": cfg.fh2o_start,
+        "FCO2_SET": cfg.fco2_set,
+        "FCO2_START": cfg.fco2_start,
 
         "WTH2O_SET": True,
         "WTH2O_START": comp.H2O / 100.0,     # wt% → weight fraction
@@ -366,10 +490,17 @@ def _write_yaml_configs(
         "SULFUR_START": comp.S / 100.0,
 
         "NITROGEN_SET": cfg.nitrogen_set,
-        "NITROGEN_START": 0.0001,
+        # When the user has enabled nitrogen, prefer the sample's N
+        # (ppm → mass fraction); fall back to ``cfg.nitrogen_start``
+        # if the sample doesn't carry it.
+        "NITROGEN_START": (
+            float(comp.N_ppm) * 1e-6
+            if cfg.nitrogen_set and getattr(comp, "N_ppm", 0.0) > 0
+            else cfg.nitrogen_start
+        ),
 
         "GRAPHITE_SATURATED": cfg.graphite_saturated,
-        "GRAPHITE_START": 0.0001,
+        "GRAPHITE_START": cfg.graphite_start,
     }
 
     env_path = os.path.join(work_dir, "env.yaml")
@@ -388,5 +519,15 @@ def _write_yaml_configs(
     output_yaml_path = os.path.join(work_dir, "output.yaml")
     with open(output_yaml_path, "w") as f:
         yaml.dump(output_data, f, Dumper=_EvoDumper, default_flow_style=False)
+
+    # Capture the resolved input for the run-bundle and the per-run
+    # resolved-inputs sidecar yaml.
+    from volcatenate.resolved_inputs import capture as _capture_resolved
+    _capture_resolved(
+        sample=comp.sample,
+        backend="EVo",
+        data={"env": env_data, "chem": chem_data, "output": output_data},
+        output_dir=output_dir,
+    )
 
     return chem_path, env_path, output_yaml_path

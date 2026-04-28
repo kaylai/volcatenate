@@ -156,16 +156,22 @@ def calculate_saturation_pressure(
     model_names = _resolve_models(models)
 
     # Save reproducible bundle if requested (only when called directly,
-    # not when called from run_comparison which saves its own bundle)
+    # not when called from run_comparison which saves its own bundle).
+    # An "inputs-only" version is saved before the run starts so the
+    # bundle survives crashes; a full version (with resolved_inputs
+    # captured during the run) is saved again after the run completes.
+    bundle_obj = None
     if config.save_bundle and _progress is None:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
-        bundle = create_bundle(
+        _resolved_inputs_mod.reset()
+        bundle_obj = create_bundle(
             run_type="saturation_pressure",
             compositions=comps,
             models=model_names,
             config=config,
         )
-        save_bundle(bundle, config.save_bundle)
+        save_bundle(bundle_obj, config.save_bundle)
 
     total_iters = len(model_names) * len(comps)
     _progress, owns_progress = _init_progress(
@@ -251,6 +257,13 @@ def calculate_saturation_pressure(
         name: pd.DataFrame(rows) for name, rows in detail_data.items()
     }
 
+    # Re-save the bundle with resolved_inputs populated from the run.
+    if bundle_obj is not None:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
+        from volcatenate.reproducible import save_bundle
+        bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
+        save_bundle(bundle_obj, config.save_bundle)
+
     return SaturationResult(
         equilibrium_state=equilibrium_state,
         samples=[c.sample for c in comps],
@@ -301,16 +314,20 @@ def calculate_degassing(
 
     model_names = _resolve_models(models)
 
-    # Save reproducible bundle if requested (only when called directly)
+    # Save reproducible bundle if requested. Inputs-only at start (crash-safe);
+    # full version with resolved_inputs at end of run.
+    bundle_obj = None
     if config.save_bundle and _progress is None:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
-        bundle = create_bundle(
+        _resolved_inputs_mod.reset()
+        bundle_obj = create_bundle(
             run_type="degassing",
             compositions=[comp],
             models=model_names,
             config=config,
         )
-        save_bundle(bundle, config.save_bundle)
+        save_bundle(bundle_obj, config.save_bundle)
 
     results: dict[str, pd.DataFrame] = {}
 
@@ -345,6 +362,13 @@ def calculate_degassing(
     finally:
         if owns_progress:
             _progress.__exit__(None, None, None)
+
+    # Re-save the bundle with resolved_inputs populated.
+    if bundle_obj is not None:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
+        from volcatenate.reproducible import save_bundle
+        bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
+        save_bundle(bundle_obj, config.save_bundle)
 
     return results
 
@@ -427,6 +451,8 @@ def export_degassing_paths(
     list[str]
         Paths of the CSV files written.
     """
+    from volcatenate.convert import to_standard_schema
+
     os.makedirs(output_dir or ".", exist_ok=True)
     name = sample_name or "degassing"
     written = []
@@ -438,7 +464,9 @@ def export_degassing_paths(
             model_dir = os.path.join(output_dir, model)
         os.makedirs(model_dir, exist_ok=True)
         csv_path = os.path.join(model_dir, f"{name}.csv")
-        df.to_csv(csv_path, index=False)
+        # Restrict to the canonical schema so backend intermediates
+        # (e.g. MAGEC's Run_ID) never leak into user-facing CSVs.
+        to_standard_schema(df).to_csv(csv_path, index=False)
         written.append(csv_path)
         logger.info("  %s: saved to %s", model, csv_path)
     return written
@@ -486,8 +514,10 @@ def run_comparison(
     Returns
     -------
     dict
-        ``{"satp_df": DataFrame or None,
-           "degassing": {sample_name: {model: DataFrame}} or None}``
+        Result dict shaped like::
+
+            {"satp_df": DataFrame or None,
+             "degassing": {sample_name: {model: DataFrame}} or None}
 
     Example
     -------
@@ -533,12 +563,16 @@ def run_comparison(
     all_sample_names = [c.sample for c in satp_comps] + [c.sample for c in degas_comps]
     _validate_override_sample_names(config, all_sample_names)
 
-    # Save reproducible bundle if requested
+    # Save reproducible bundle if requested. Inputs-only at start;
+    # full version with resolved_inputs at the end of the run.
+    bundle_obj = None
     if config.save_bundle:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
+        _resolved_inputs_mod.reset()
         # Use the union of all compositions for the bundle
         all_comps = satp_comps if satp_comps else degas_comps
-        bundle = create_bundle(
+        bundle_obj = create_bundle(
             run_type="comparison",
             compositions=all_comps,
             models=model_names,
@@ -546,7 +580,7 @@ def run_comparison(
             satp_output=satp_output,
             degassing_output_dir=degassing_output_dir,
         )
-        save_bundle(bundle, config.save_bundle)
+        save_bundle(bundle_obj, config.save_bundle)
 
     total_work = n_models * len(satp_comps) + n_models * len(degas_comps)
 
@@ -596,6 +630,13 @@ def run_comparison(
         raw_dir = os.path.join(config.output_dir, config.raw_output_dir)
         if os.path.isdir(raw_dir) and not os.listdir(raw_dir):
             shutil.rmtree(raw_dir, ignore_errors=True)
+
+    # Re-save the bundle with resolved_inputs populated by the run.
+    if bundle_obj is not None:
+        from volcatenate import resolved_inputs as _resolved_inputs_mod
+        from volcatenate.reproducible import save_bundle
+        bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
+        save_bundle(bundle_obj, config.save_bundle)
 
     logger.info("=== Comparison complete ===")
     return output

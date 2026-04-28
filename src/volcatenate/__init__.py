@@ -95,7 +95,7 @@ def list_models(available_only: bool = False) -> list[str]:
     return list_backends(available_only=available_only)
 
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     # Core API

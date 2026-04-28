@@ -37,23 +37,18 @@ magec:
   solver_dir: /custom/path
 ```
 
-## Top-level settings
+## Where each field is documented
 
-| Field | Default | Description |
-|---|---|---|
-| `output_dir` | `"."` | Root directory for all output. |
-| `raw_output_dir` | `"raw_tool_output"` | Subdirectory for raw model files. |
-| `keep_raw_output` | `True` | Keep raw tool output after run. |
-| `verbose` | `False` | Print progress to terminal. |
-| `log_file` | `""` | Write all output to this file. |
-| `show_progress` | `True` | Show rich progress bars. |
-| `save_bundle` | `""` | Path to save reproducible JSON bundle. See [run_bundles.md](run_bundles.md). |
-| `bundle_comments` | `""` | Free-text notes recorded in the bundle's `comments` field (provenance only — ignored on replay). |
+This file covers the *mechanics* of the config system — how to build, load, save, and override a `RunConfig`. For the *meaning* of every field — what each setting does inside the underlying calculation, how the top-level settings shape the on-disk output layout, and what fallback chains apply per backend — the canonical reference is [config_options.md](config_options.md).
+
+In short:
+
+- **This file**: how to construct a config, where YAML lands in the dataclass, how per-sample overrides resolve, deprecated-key migrations.
+- **config_options.md**: every YAML field listed once, with a plain-English description of what it does.
 
 ## Backend sections
 
-Each backend has its own nested section. The full set of fields and accepted
-values is documented inline in the bundled default config — open it with:
+Each backend has its own nested section in the YAML. The full set of fields and accepted values is documented inline in the bundled default config — open it with:
 
 ```bash
 volcatenate init-config        # writes a copy you can edit
@@ -75,13 +70,9 @@ there is no `vesical.model` config field.
 
 ## Per-sample overrides
 
-A single global default does not always fit every sample. For example, EVo's
-default `dp_max: 100` (bar) works fine for most basalts but causes the solver
-to bail out partway through degassing for reduced MORB at low pressure. The
-fix is `dp_max: 25` for that one sample only.
+A single global default does not always fit every sample. ("Sample" here means one `MeltComposition` instance — see [sample_data.md](sample_data.md) for how those are built from a CSV row, a Python dict, or the class directly.) For example, EVo's default `dp_max: 100` (bar) works fine for most basalts but causes the solver to bail out partway through degassing for reduced MORB at low pressure. The fix is `dp_max: 25` for that one sample only.
 
-`EVoConfig` and `MAGECConfig` each accept an `overrides` dict shaped like
-`{sample_name: {field_name: value}}`:
+Every backend config (`VESIcalConfig`, `VolFeConfig`, `EVoConfig`, `MAGECConfig`, `SulfurXConfig`) carries an `overrides` dict shaped like `{sample_name: {field_name: value}}`:
 
 ```yaml
 evo:

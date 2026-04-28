@@ -24,3 +24,7 @@ Thumbs.db
 # volcatenate output
 volcatenate_output/
 raw_tool_output/
+
+# Sphinx documentation
+docs/_build/
+docs/api/generated/

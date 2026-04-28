@@ -11,8 +11,16 @@ By default the logger is **silent** (NullHandler).  Call
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger("volcatenate")
+
+# Tracks which log-file paths have been opened by this Python process.
+# First time we see a path in a process, we truncate it; subsequent
+# calls to ``setup_logging`` with the same path append.  This means a
+# notebook or script that runs multiple ``calculate_*`` calls keeps
+# all logs in one file instead of overwriting them on every call.
+_log_files_opened: set[str] = set()
 
 
 def setup_logging(
@@ -28,7 +36,12 @@ def setup_logging(
         If *True*, print progress messages to stdout (INFO level).
     log_file : str
         If non-empty, write **all** messages (DEBUG and above) to
-        this file.  The file is overwritten each run.
+        this file.  The file is **truncated on the first call within
+        a Python process** and **appended** thereafter, so multiple
+        ``calculate_*`` calls in the same notebook or script
+        accumulate into one log instead of clobbering each other.
+        Restarting Python (or calling :func:`reset_log_file_tracking`)
+        starts a fresh file on the next call.
     console : rich.console.Console, optional
         If provided and *verbose* is True, use ``RichHandler`` with
         this console instance.  This prevents progress bar corruption
@@ -73,14 +86,28 @@ def setup_logging(
             logger.addHandler(sh)
 
     if log_file:
-        fh = logging.FileHandler(log_file, mode="w")
+        abs_path = os.path.abspath(log_file)
+        # Truncate on first call per process; append thereafter.
+        mode = "w" if abs_path not in _log_files_opened else "a"
+        fh = logging.FileHandler(log_file, mode=mode)
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(
             logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s",
                               datefmt="%H:%M:%S")
         )
         logger.addHandler(fh)
+        _log_files_opened.add(abs_path)
 
     # If neither verbose nor log_file, stay silent
     if not logger.handlers:
         logger.addHandler(logging.NullHandler())
+
+
+def reset_log_file_tracking() -> None:
+    """Forget which log files have been opened in this process.
+
+    The next call to :func:`setup_logging` with a given ``log_file``
+    will truncate it again.  Useful in long-running notebooks where
+    you want to start a fresh log mid-session.
+    """
+    _log_files_opened.clear()

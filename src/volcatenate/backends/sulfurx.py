@@ -332,12 +332,12 @@ def _compute_delta_fmq(comp: MeltComposition) -> float:
     )
 
 
-def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
+def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) -> pd.DataFrame:
     """Run the full SulfurX degassing path.
 
-    Translates the workflow from SulfurX's ``main_Fuego.py`` into a
-    callable function, bypassing interactive prompts and hardcoded
-    compositions.
+    Translates the workflow from SulfurX's ``main_Fuego.py`` into a callable function, bypassing interactive prompts and hardcoded compositions.
+
+    When ``output_dir`` is provided, captures the resolved input via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
     """
     from oxygen_fugacity import OxygenFugacity
     from fugacity import Fugacity
@@ -357,7 +357,7 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     delta_FMQ = _compute_delta_fmq(comp)
 
     coh_model = cfg.coh_model
-    choice = 0  # No crystallization
+    choice = cfg.crystallization
     fo2_tracker = cfg.fo2_tracker
     s_fe_choice = cfg.s_fe_choice
     sigma = cfg.sigma
@@ -365,11 +365,48 @@ def _run_degassing(comp: MeltComposition, cfg) -> pd.DataFrame:
     slope_h2o = cfg.slope_h2o
     constant_h2o = cfg.constant_h2o
     n_steps = cfg.n_steps
-    open_degassing = 0  # closed degassing
-    d34s_initial = 0  # not tracking isotopes
+    open_degassing = cfg.open_degassing
+    d34s_initial = cfg.d34s_initial
 
-    # Sulfide composition (default from main_Fuego.py)
-    sulfide = {"Fe": 65.43, "Ni": 0, "Cu": 0, "O": 0, "S": 36.47}
+    # Sulfide phase composition — exposed via SulfurXSulfideConfig.
+    sulfide = {
+        "Fe": cfg.sulfide.fe,
+        "Ni": cfg.sulfide.ni,
+        "Cu": cfg.sulfide.cu,
+        "O":  cfg.sulfide.o,
+        "S":  cfg.sulfide.s,
+    }
+
+    # Capture resolved input for the bundle / sidecar yaml.
+    if output_dir is not None:
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        _capture_resolved(
+            sample=comp.sample,
+            backend="SulfurX",
+            data={
+                "composition_oxides": dict(composition),
+                "T_K": float(tk),
+                "H2O_wt": float(h2o_wt),
+                "CO2_ppm": float(co2_ppm),
+                "S_ppm": float(s_ppm),
+                "delta_FMQ": float(delta_FMQ),
+                "params": {
+                    "coh_model": int(coh_model),
+                    "crystallization": int(choice),
+                    "fo2_tracker": int(fo2_tracker),
+                    "s_fe_choice": int(s_fe_choice),
+                    "sigma": float(sigma),
+                    "sulfide_pre": int(sulfide_pre),
+                    "slope_h2o": float(slope_h2o),
+                    "constant_h2o": float(constant_h2o),
+                    "n_steps": int(n_steps),
+                    "open_degassing": int(open_degassing),
+                    "d34s_initial": float(d34s_initial),
+                },
+                "sulfide": sulfide,
+            },
+            output_dir=output_dir,
+        )
 
     # ── Step 1: Calculate saturation pressure ──────────────────────
     # The IM satP solver is very sensitive to the initial guess.  We
@@ -750,6 +787,44 @@ class Backend(ModelBackend):
         co2_ppm = comp.CO2 * 10_000
         composition = _build_composition(comp)
 
+        # Capture resolved input for the bundle / sidecar yaml.
+        # The ``params`` block here is a strict subset of the degassing
+        # capture's ``params``: ``crystallization``, ``n_steps``,
+        # ``open_degassing``, and ``d34s_initial`` are degassing-path
+        # settings that have no effect on a single-point satP call,
+        # so we deliberately omit them rather than record values that
+        # didn't influence the answer.
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        s_ppm = comp.S * 10_000
+        _capture_resolved(
+            sample=comp.sample,
+            backend="SulfurX",
+            data={
+                "composition_oxides": dict(composition),
+                "T_K": float(tk),
+                "H2O_wt": float(h2o_wt),
+                "CO2_ppm": float(co2_ppm),
+                "S_ppm": float(s_ppm),
+                "delta_FMQ": float(_compute_delta_fmq(comp)),
+                "params": {
+                    "coh_model": int(cfg.coh_model),
+                    "slope_h2o": float(cfg.slope_h2o),
+                    "constant_h2o": float(cfg.constant_h2o),
+                    "fo2_tracker": int(cfg.fo2_tracker),
+                    "s_fe_choice": int(cfg.s_fe_choice),
+                    "sigma": float(cfg.sigma),
+                    "sulfide_pre": int(cfg.sulfide_pre),
+                },
+                "sulfide": {
+                    "Fe": cfg.sulfide.fe, "Ni": cfg.sulfide.ni,
+                    "Cu": cfg.sulfide.cu, "O": cfg.sulfide.o,
+                    "S": cfg.sulfide.s,
+                },
+                "run_type": "satp",
+            },
+            output_dir=config.output_dir,
+        )
+
         try:
             if cfg.coh_model == 0:
                 with _quiet_sulfurx():
@@ -798,7 +873,7 @@ class Backend(ModelBackend):
 
         cfg = resolve_sample_config(config.sulfurx, comp.sample)
         with _quiet_sulfurx():
-            df = _run_degassing(comp, cfg)
+            df = _run_degassing(comp, cfg, output_dir=config.output_dir)
 
         # Standardize columns
         df = convert(df)

@@ -478,7 +478,7 @@ def test_sulfurx_backend_passes_resolved_cfg_to_run_degassing(morb_comp):
 
     captured: dict = {}
 
-    def fake_run_degassing(comp, cfg):
+    def fake_run_degassing(comp, cfg, output_dir=None):
         captured["n_steps"] = cfg.n_steps
         return pd.DataFrame()
 

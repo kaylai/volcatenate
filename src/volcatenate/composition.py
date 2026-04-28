@@ -25,6 +25,7 @@ class MeltComposition:
     SiO2: float = 0.0
     TiO2: float = 0.0
     Al2O3: float = 0.0
+    Cr2O3: float = 0.0     # only used by MAGEC; default 0
     FeOT: float = 0.0      # total iron as FeO
     MnO: float = 0.0
     MgO: float = 0.0
@@ -37,6 +38,11 @@ class MeltComposition:
     H2O: float = 0.0
     CO2: float = 0.0
     S: float = 0.0
+
+    # Nitrogen (ppm — petrological convention; concentrations are
+    # typically too low for wt% to be a natural unit). Currently
+    # consumed only by EVo when ``EVoConfig.nitrogen_set`` is True.
+    N_ppm: float = 0.0
 
     # Speciated iron (optional; FeOT is used if these are absent)
     FeO: Optional[float] = None
@@ -69,6 +75,7 @@ class MeltComposition:
             "SiO2": self.SiO2,
             "TiO2": self.TiO2,
             "Al2O3": self.Al2O3,
+            "Cr2O3": self.Cr2O3,
             "FeOT": self.FeOT,
             "MnO": self.MnO,
             "MgO": self.MgO,
@@ -118,6 +125,7 @@ _COLUMN_ALIASES: dict[str, str] = {
     "SiO2": "SiO2",
     "TiO2": "TiO2",
     "Al2O3": "Al2O3",
+    "Cr2O3": "Cr2O3",
     "MnO": "MnO",
     "MgO": "MgO",
     "CaO": "CaO",
@@ -136,6 +144,11 @@ _COLUMN_ALIASES: dict[str, str] = {
     "H2O": "H2O",
     "CO2": "CO2",
     "S": "S",
+    # Nitrogen — accept several common spellings; canonical is N_ppm.
+    "N_ppm": "N_ppm",
+    "Nppm": "N_ppm",
+    "N (ppm)": "N_ppm",
+    "Nitrogen": "N_ppm",
     # Redox
     "Fe3FeT": "Fe3FeT",
     "dNNO": "dNNO",
@@ -180,6 +193,7 @@ def _mapped_to_composition(mapped: dict[str, object], fallback_name: str = "unkn
         SiO2=float(mapped.get("SiO2", 0)),
         TiO2=float(mapped.get("TiO2", 0)),
         Al2O3=float(mapped.get("Al2O3", 0)),
+        Cr2O3=float(mapped.get("Cr2O3", 0)),
         FeOT=feot,
         MnO=float(mapped.get("MnO", 0)),
         MgO=float(mapped.get("MgO", 0)),
@@ -190,6 +204,7 @@ def _mapped_to_composition(mapped: dict[str, object], fallback_name: str = "unkn
         H2O=float(mapped.get("H2O", 0)),
         CO2=float(mapped.get("CO2", 0)),
         S=float(mapped.get("S", 0)),
+        N_ppm=float(mapped.get("N_ppm", 0)),
         FeO=feo_spec,
         Fe2O3=fe2o3_spec,
         Fe3FeT=fe3fet,

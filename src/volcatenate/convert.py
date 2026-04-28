@@ -15,14 +15,14 @@ from volcatenate import columns as col
 def compute_cs_v_mf(df: pd.DataFrame) -> pd.DataFrame:
     """Compute elemental C/S ratio in the vapor phase.
 
-    Uses stoichiometric coefficients from :data:`columns.C_SPECIES` and
-    :data:`columns.S_SPECIES` to count carbon and sulfur **atoms**::
+    Uses stoichiometric coefficients from :data:`columns.C_SPECIES` and :data:`columns.S_SPECIES` to count carbon and sulfur atoms:
 
-        C/S = (1·X_CO₂ + 1·X_CO + 1·X_CH₄ + 1·X_OCS)
-            / (1·X_SO₂ + 1·X_H₂S + 2·X_S₂ + 1·X_OCS)
+    .. code-block:: text
 
-    Species columns missing from *df* or containing NaN are treated as
-    zero.  Sets ``CS_v_mf = NaN`` where the sulfur denominator is zero.
+        C/S = (1*X_CO2 + 1*X_CO + 1*X_CH4 + 1*X_OCS)
+            / (1*X_SO2 + 1*X_H2S + 2*X_S2 + 1*X_OCS)
+
+    Species columns missing from ``df`` or containing NaN are treated as zero. Sets ``CS_v_mf = NaN`` where the sulfur denominator is zero.
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def compute_cs_v_mf(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
-    """Add *_norm columns for H2O, CO2, S relative to initial (row 0) values.
+    """Add ``_norm`` columns for H2O, CO2, S relative to initial (row 0) values.
 
     Modifies *df* in place and returns it for chaining.
 
@@ -98,3 +98,29 @@ def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
         if c not in df.columns:
             df[c] = np.nan
     return df
+
+
+def to_standard_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Return *df* containing exactly the standard schema columns.
+
+    Adds any missing :data:`columns.STANDARD_COLUMNS` (filled with NaN),
+    keeps :data:`columns.OPTIONAL_COLUMNS` if present, and drops every
+    other column.  Use this immediately before writing degassing CSVs so
+    backend-specific intermediate columns (e.g. MAGEC's ``Run_ID``,
+    ``_sample``) never leak into the user-facing output.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Model output DataFrame, possibly with extra columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        New DataFrame restricted to the canonical schema, with column
+        order matching ``STANDARD_COLUMNS`` followed by any optional
+        columns that were present.
+    """
+    df = ensure_standard_columns(df)
+    keep = list(col.STANDARD_COLUMNS) + [c for c in col.OPTIONAL_COLUMNS if c in df.columns]
+    return df[keep].copy()

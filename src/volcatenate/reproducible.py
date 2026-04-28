@@ -39,7 +39,7 @@ import os
 import platform
 import subprocess
 import sys
-from dataclasses import dataclass, field, fields, asdict
+from dataclasses import dataclass, field, fields, is_dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
@@ -58,45 +58,26 @@ from volcatenate.log import logger
 class RunBundle:
     """Everything needed to reproduce a volcatenate run.
 
-    Attributes
-    ----------
-    volcatenate_version : str
-        Version of volcatenate that created this bundle.
-    timestamp : str
-        ISO 8601 timestamp of bundle creation.
-    python_version : str
-        Python version string (e.g. "3.11.5").
-    run_type : str
-        One of ``"saturation_pressure"``, ``"degassing"``, or
-        ``"comparison"``.
-    models : list[str]
-        Model backend names to run.
-    compositions : list[dict]
-        Each dict is a ``MeltComposition.to_dict()`` snapshot.
-    config : dict
-        Full ``RunConfig`` serialized as a nested dict.
-    satp_output : str or None
-        CSV output path for saturation pressures (comparison mode).
-    degassing_output_dir : str or None
-        Directory for degassing CSV output (comparison mode).
-    backend_versions : dict
-        Per-backend version info captured at bundle creation — keys are
-        backend names (e.g. ``"sulfurx"``) and values are the dicts
-        returned by ``volcatenate.backend_version_info``.
-    caller_git_state : dict or None
-        Git state of the *caller's* working directory at bundle creation.
-        Keys: ``repo_path``, ``sha``, ``dirty``, ``branch``.  ``None`` if
-        the caller is not inside a git repository (or detection failed).
-    pip_freeze : str or None
-        Full ``pip freeze`` output as a single string at bundle creation.
-        ``None`` if pip freeze failed to run.
-    comments : str
-        Free-text user notes describing this run.  Set via
-        ``RunConfig.bundle_comments`` or the ``comments`` kwarg on
-        :func:`create_bundle`.  Defaults to empty string.
-    platform_info : dict
-        OS and Python implementation info (``system``, ``release``,
-        ``machine``, ``python_implementation``).
+    A ``RunBundle`` is the persisted record of a single ``calculate_*`` invocation: the inputs (compositions + ``RunConfig``), enough provenance to identify the environment (versions, git state, pip freeze, platform), and the path of the standardized output CSVs. It serializes to JSON and is the artifact the :func:`replay` function consumes.
+
+    Notes
+    -----
+    Field highlights:
+
+    - ``volcatenate_version`` — version of volcatenate that created this bundle.
+    - ``timestamp`` — ISO 8601 timestamp of bundle creation.
+    - ``python_version`` — Python version string (e.g. ``"3.11.5"``).
+    - ``run_type`` — one of ``"saturation_pressure"``, ``"degassing"``, or ``"comparison"``.
+    - ``models`` — backend names to run (e.g. ``["EVo", "VolFe", "MAGEC"]``).
+    - ``compositions`` — list of dicts, each a :meth:`~volcatenate.composition.MeltComposition.to_dict` snapshot.
+    - ``config`` — full :class:`~volcatenate.config.RunConfig` serialized as a nested dict.
+    - ``satp_output`` — CSV output path for saturation pressures (comparison mode); ``None`` otherwise.
+    - ``degassing_output_dir`` — directory for degassing CSV output (comparison mode); ``None`` otherwise.
+    - ``backend_versions`` — per-backend version info captured at bundle creation. Keys are backend names (e.g. ``"sulfurx"``); values are the dicts returned by :func:`volcatenate.backend_version_info`.
+    - ``caller_git_state`` — git state of the *caller's* working directory at bundle creation. Keys: ``repo_path``, ``sha``, ``dirty``, ``branch``. ``None`` if the caller is not inside a git repository (or detection failed).
+    - ``pip_freeze`` — full ``pip freeze`` output as a single string at bundle creation. ``None`` if pip freeze failed to run.
+    - ``comments`` — free-text user notes describing this run. Set via :attr:`~volcatenate.config.RunConfig.bundle_comments` or the ``comments`` kwarg on :func:`create_bundle`.
+    - ``platform_info`` — OS and Python implementation info (``system``, ``release``, ``machine``, ``python_implementation``).
     """
 
     volcatenate_version: str
@@ -113,12 +94,19 @@ class RunBundle:
     pip_freeze: Optional[str] = None
     comments: str = ""
     platform_info: dict = None  # type: ignore[assignment]
+    # Per-(sample, backend) record of the actual inputs handed to each
+    # underlying model — populated by the orchestrator at end of run.
+    # Shape: {sample_name: {backend_name: {... resolved input ...}}}.
+    # Empty dict (not None) when no run has been executed yet.
+    resolved_inputs: dict = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.backend_versions is None:
             self.backend_versions = {}
         if self.platform_info is None:
             self.platform_info = {}
+        if self.resolved_inputs is None:
+            self.resolved_inputs = {}
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +166,8 @@ def _sanitize_value(val: Any) -> Any:
     - ``np.nan`` and ``float('nan')`` → ``None``
     - ``np.integer`` / ``np.floating`` → Python int/float
     - ``np.bool_`` → Python bool
-    - ``dict`` values are recursively sanitized
+    - nested dataclasses → dict (recursively sanitized)
+    - ``dict`` and ``list`` values are recursively sanitized
     - Everything else passes through unchanged
     """
     if val is None:
@@ -197,6 +186,10 @@ def _sanitize_value(val: Any) -> Any:
     # Python float NaN
     if isinstance(val, float) and np.isnan(val):
         return None
+
+    # Nested dataclass instance (e.g. SulfurXSulfideConfig)
+    if is_dataclass(val) and not isinstance(val, type):
+        return {f.name: _sanitize_value(getattr(val, f.name)) for f in fields(val)}
 
     # Recurse into dicts
     if isinstance(val, dict):
@@ -314,14 +307,14 @@ def create_bundle(
     satp_output: Optional[str] = None,
     degassing_output_dir: Optional[str] = None,
     comments: Optional[str] = None,
+    resolved_inputs: Optional[dict] = None,
 ) -> RunBundle:
     """Create a RunBundle from run inputs.
 
     Parameters
     ----------
     run_type : str
-        One of ``"saturation_pressure"``, ``"degassing"``, or
-        ``"comparison"``.
+        One of ``"saturation_pressure"``, ``"degassing"``, or ``"comparison"``.
     compositions : list[MeltComposition]
         The melt compositions being run.
     models : list[str]
@@ -332,6 +325,10 @@ def create_bundle(
         Saturation pressure CSV path (for comparison runs).
     degassing_output_dir : str, optional
         Degassing output directory (for comparison runs).
+    comments : str, optional
+        Free-text notes recorded in the bundle's ``comments`` field. If omitted, falls back to ``config.bundle_comments``.
+    resolved_inputs : dict, optional
+        Per-(sample, backend) record of the actual inputs handed to each model — captured at run time via :mod:`volcatenate.resolved_inputs`. Defaults to an empty dict; the orchestrator replaces it with a populated snapshot at end of run.
 
     Returns
     -------
@@ -359,6 +356,7 @@ def create_bundle(
         pip_freeze=_capture_pip_freeze(),
         comments=comments,
         platform_info=_capture_platform_info(),
+        resolved_inputs=_sanitize_value(resolved_inputs) if resolved_inputs else {},
     )
 
 
@@ -398,6 +396,7 @@ def save_bundle(bundle: RunBundle, path: str) -> str:
         "pip_freeze": bundle.pip_freeze,
         "comments": bundle.comments,
         "platform_info": bundle.platform_info,
+        "resolved_inputs": bundle.resolved_inputs,
     }
 
     with open(path, "w", encoding="utf-8") as fh:
@@ -437,6 +436,7 @@ def load_bundle(path: str) -> RunBundle:
         pip_freeze=data.get("pip_freeze"),
         comments=data.get("comments", "") or "",
         platform_info=data.get("platform_info") or {},
+        resolved_inputs=data.get("resolved_inputs") or {},
     )
 
 
