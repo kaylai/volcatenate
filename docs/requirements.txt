@@ -4,3 +4,4 @@ myst-parser>=2.0
 sphinx-copybutton>=0.5
 nbsphinx>=0.9
 ipykernel>=6.0
+sphinxcontrib-mermaid>=0.9

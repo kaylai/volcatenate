@@ -27,26 +27,116 @@ Throughout, when you see a redox indicator referenced in plain English:
 
 ---
 
-## What gets pulled from the sample, in every backend
+## What goes in the sample vs. what goes in the YAML
 
-Before diving in, here is the universal rule: **the sample composition provided via CSV or `MeltComposition` is always the source of truth for chemistry**, and the YAML config never shadows it. ("The sample" throughout this doc means one `MeltComposition` instance — built from a CSV row, a Python dict, or the class directly. See [sample_data.md](sample_data.md) for the full input reference.) Specifically, across every backend the following come from the sample, not the YAML:
+You provide volcatenate two kinds of input: **sample data** — a description of one melt's composition, temperature, and volatile content — and a **YAML config** that tells the wrapper which models to run and how to run them. Most fields belong cleanly to one or the other, but a handful of fields can live in either place, with rules about which wins. This section maps every field a new user will encounter so you know where each piece of information has to go.
 
-| Source on `MeltComposition`                                                                    | Used as                                                                                                                                                                                                                        |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `T_C`                                                                                          | Temperature for every backend (converted to Kelvin where needed).                                                                                                                                                              |
-| `SiO2`, `TiO2`, `Al2O3`, `Cr2O3`, `MnO`, `MgO`, `CaO`, `Na2O`, `K2O`, `P2O5` | Major-oxide chemistry. (`Cr2O3` is read by MAGEC; the other backends ignore it.)                                                                                                                                             |
-| `FeOT`                                                                                         | Total iron, split into FeO/Fe2O3 by each backend's own iron-redox handling (see[composition.py:55](../src/volcatenate/composition.py)).                                                                                           |
-| `H2O` (wt%)                                                                                    | Bulk H₂O, taken in as the neutral oxide H₂O (not as separate H2 / H₂O molecular / CH₄ melt species). Whether a backend then re-speciates it internally depends on the backend logic and on the user's COH-species setting. |
-| `CO2` (wt%)                                                                                    | Bulk CO2, taken in as neutral CO2.                                                                                                                                                                                             |
-| `S` (wt%)                                                                                      | Bulk sulfur, taken in as elemental S.                                                                                                                                                                                          |
-| `Fe3FeT`, `dNNO`, `dFMQ`                                                                   | Redox indicators. Whether a given backend uses Fe3+/FeT, dNNO, or dFMQ is controlled by a per-backend YAML setting — see each backend's "Field-by-field" table for the exact setting name and the per-backend fallback chain. |
-| `Xppm`                                                                                         | "Other" trace species (Ar/Ne) — VolFe only.                                                                                                                                                                                   |
+If you haven't read [sample_data.md](sample_data.md) yet, that file walks through the three ways to supply sample data (CSV file, Python dict, `MeltComposition` instance). They are equivalent — the CSV reader and the dict path both produce `MeltComposition` instances internally, so any field listed below by its `MeltComposition` name is the same field as the matching CSV column or dict key.
 
-Volcatenate consumes the volatile fields in different units depending on the backend: VolFe and SulfurX want CO2 and S in ppm, so the wrapper multiplies the wt% values by 10000 before passing them in; EVo wants mass fractions, so the wrapper divides the wt% values by 100; H2O is passed in as wt% directly to all backends that want it, except that EVo's H2O is also divided by 100 to a mass fraction. None of these rescalings change the underlying meaning — they are just the unit each backend's input format expects.
+```{mermaid}
+flowchart LR
+    subgraph SAMPLE["Sample data<br/>(CSV / dict / MeltComposition)"]
+        S1["T_C, major oxides"]
+        S2["H₂O, CO₂, S<br/>(volatile budget)"]
+        S3["Redox: Fe3FeT / dNNO / dFMQ<br/>(any one is enough)"]
+        S4["Optional: Cr2O3, N_ppm,<br/>Xppm, Reservoir"]
+    end
+    subgraph YAML["YAML config / RunConfig"]
+        Y1["Solubility & equilibrium<br/>model selections"]
+        Y2["Pressure stepping,<br/>gas system, run type"]
+        Y3["Redox-source rules<br/>(which sample value to use)"]
+        Y4["Output paths, logging,<br/>run-bundle settings"]
+    end
+    SAMPLE --> RUN["volcatenate run<br/>(EVo / VolFe / MAGEC / SulfurX / VESIcal)"]
+    YAML --> RUN
+    RUN --> OUT["Standardized CSVs<br/>+ run bundle JSON<br/>+ resolved-input YAMLs"]
+```
 
-Per-backend redox-indicator preference is controlled by these YAML fields: `evo.fo2_source` (auto / fe3fet / buffer / absolute); `volfe.fo2_column` (DNNO/Fe3FeT/DFMQ) plus `volfe.fo2_source` (auto / fe3fet / dnno / dfmq); `magec.redox_option` (logfO2 / dFMQ / Fe3+/FeT / S6+/ST) plus `magec.redox_source` (auto / fe3fet / dfmq / dnno / kc91_from_buffer); SulfurX has no equivalent setting — it always tries `dFMQ` first, then Fe3+/FeT (via KC91 inversion at 1 bar), then `dNNO` (via Frost-1991 buffer offset).
+### Required: data that must be in the sample
 
-When a wrapper says "from the composition," that's where it comes from.
+Without these, no run will start. They define *what* you're modeling.
+
+| Field on the sample (CSV column / dict key / `MeltComposition` field) | Used by | What it is |
+| --- | --- | --- |
+| `Sample` (alias `Label`) | All | Identifier — used as the row key in output CSVs and as the per-sample override key in YAML. |
+| `T_C` (alias `Temp`, `Temperature`) | All | Temperature in °C. Each backend converts to Kelvin internally where needed. |
+| `SiO2`, `TiO2`, `Al2O3`, `MnO`, `MgO`, `CaO`, `Na2O`, `K2O`, `P2O5` | All | Major-oxide composition, all wt%. |
+| `FeOT` *or* speciated `FeO` + `Fe2O3` | All | Total iron, wt%. You can supply `FeOT` directly, or supply both `FeO` and `Fe2O3` and let the wrapper compute `FeOT` and `Fe3+/FeT` from them. Don't mix the two forms. |
+| `H2O`, `CO2`, `S` | All | Bulk volatile budget, all wt%. Volcatenate rescales these per backend (some want ppm, some want mass fraction, some want wt% directly), but the underlying meaning is unchanged. |
+
+These fields **cannot** appear in the YAML config. The YAML has no `H2O` or `T_C` setting — your samples define those, period.
+
+One detail worth knowing: H₂O, CO₂, and S are taken in as **neutral oxides / elemental sulfur** (not as separately speciated melt species like H₂, CH₄, etc.). Whether a backend internally re-speciates them — splitting H₂O into H₂ and H₂Oₘₒₗ, or producing OCS / H₂S in the vapor — depends on the backend's own machinery and on its COH-species YAML setting (e.g. `volfe.coh_species`).
+
+### Optional: data that only the sample can carry
+
+These are sample fields some backends use and others ignore. The YAML has no equivalent — to include them in a run, they have to be on the sample.
+
+| Field on the sample | Used by | What it is | Default if absent |
+| --- | --- | --- | --- |
+| `Cr2O3` | MAGEC only | wt% Cr₂O₃, included in MAGEC's anhydrous renormalization | 0.0 (treated as absent) |
+| `Xppm` | VolFe only | "Other" trace species (Ar or Ne; species identity is set by `volfe.species_x`) | 0.0 |
+| `Reservoir` | none directly | Free-text grouping label propagated to output for plotting | empty string |
+
+### Redox indicators: value lives on the sample, choice lives in the YAML
+
+This is the case worth understanding carefully. You may have wondered "where does fO₂ live?" — the answer is **the value comes from the sample, the choice of which value to use comes from the YAML.**
+
+You supply one or more of `Fe3FeT`, `dNNO`, `dFMQ` on each sample (any one is enough; providing several is fine). Each backend then has YAML settings that control which of those gets used:
+
+| YAML setting | Purpose |
+| --- | --- |
+| `evo.fo2_source` | `auto` (default) prefers `Fe3FeT`, then falls back to `dNNO`, then `dFMQ`. The strict modes `fe3fet` / `buffer` / `absolute` force a specific path and raise if the sample lacks that data. |
+| `volfe.fo2_column` *and* `volfe.fo2_source` | `fo2_column` names the preferred indicator (`Fe3FeT` / `DNNO` / `DFMQ`); `fo2_source=auto` allows fallback through the others; strict modes (`fe3fet` / `dnno` / `dfmq`) raise on missing data. |
+| `magec.redox_option` *and* `magec.redox_source` | `redox_option` names the preferred indicator; `redox_source=auto` allows fallback (including a KC91 conversion from `dNNO`/`dFMQ` to `Fe3+/FeT`); strict modes raise. |
+| (SulfurX) | No setting — SulfurX always tries `dFMQ` first, then `Fe3+/FeT` (via KC91 inversion at 1 bar), then `dNNO` (via Frost-1991 buffer offset). |
+
+**Precedence rule:** the YAML can never substitute its own redox value. It can only narrow *which* of your supplied indicators each backend will look at. If you set `evo.fo2_source: fe3fet` but your sample has only `dFMQ`, EVo will raise rather than silently use `dFMQ`.
+
+The decision tree:
+
+```{mermaid}
+flowchart TD
+    Start["Each sample arrives at a backend"]
+    Q1{"Does the YAML's<br/>fo2_source / redox_source<br/>name a specific indicator?"}
+    Strict["Strict mode<br/>(fe3fet / buffer / dnno / dfmq /<br/>absolute / kc91_from_buffer)"]
+    SAvail{"Sample carries<br/>that indicator?"}
+    Auto["auto mode<br/>(default for every backend)"]
+    Cascade["Wrapper tries the indicators in<br/>backend-specific priority order;<br/>falls back if the preferred one<br/>is missing on the sample. Logs<br/>the choice."]
+    Use["Use that value"]
+    Raise["Raise ValueError"]
+
+    Start --> Q1
+    Q1 -- "yes" --> Strict --> SAvail
+    Q1 -- "no, auto" --> Auto --> Cascade --> Use
+    SAvail -- "yes" --> Use
+    SAvail -- "no" --> Raise
+```
+
+For the full per-backend redox cascade — including which auto-mode fallbacks are silent vs. logged at INFO vs. logged at WARNING — see the "Fallback chains" subsection in each per-backend section below.
+
+### The one field where the YAML can fill in for the sample
+
+EVo's nitrogen handling is the only field where, when sample data is absent, a YAML value takes its place. When `evo.nitrogen_set: True`:
+
+1. If the sample has `N_ppm > 0` (alias columns: `Nppm`, `Nitrogen`), EVo's `NITROGEN_START` is filled from that value (converted ppm → mass fraction).
+2. Otherwise the wrapper uses `evo.nitrogen_start` from the YAML (default `0.0001` — a tiny seed).
+
+`evo.nitrogen_set: False` (the default) bypasses nitrogen entirely. Every other piece of sample data has no YAML fallback — if it's not on the sample, it's not in the run.
+
+### Engine settings: fields that only the YAML can carry
+
+Solubility models, equilibrium-constant parameterizations, fugacity-coefficient choices, gas-system identity, pressure-stepping, run-bundle paths, log-file paths, model versions — these are all pure method/output choices and don't depend on what's in the sample. The CSV and `MeltComposition` have no fields for them. The full inventory is in the per-backend sections below and in the [top-level RunConfig settings](#top-level-runconfig-settings) section above.
+
+### Unit conventions
+
+Whatever unit you put on the sample, the wrapper converts to whatever each backend wants:
+
+- VolFe and SulfurX consume CO₂ and S as ppm. The wrapper multiplies your wt% values by 10000 before passing them in.
+- EVo consumes volatiles as mass fractions. The wrapper divides your wt% values by 100.
+- H₂O is passed as wt% directly to backends that want it, then divided by 100 for EVo.
+
+These rescalings preserve the underlying chemistry — they're just the format each backend's input expects. You don't need to think about them when supplying the sample.
 
 ### Logging
 

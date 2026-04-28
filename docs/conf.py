@@ -32,6 +32,7 @@ extensions = [
     "myst_parser",
     "sphinx_copybutton",
     "nbsphinx",
+    "sphinxcontrib.mermaid",
 ]
 
 # Don't execute notebooks at build time; render them as authored. The
