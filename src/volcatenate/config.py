@@ -397,8 +397,8 @@ class EVoConfig:
     atomic_n: float = 10
 
     # Nitrogen and graphite
-    nitrogen_set: bool = False        # Set N from composition (if True, uses N from MeltComposition)
-    nitrogen_start: float = 0.0001    # Starting N mass fraction when nitrogen_set is True and comp.N missing
+    nitrogen_set: bool = False        # Track N as a system component. When True, EVo's NITROGEN_START is filled from comp.N_ppm (if present), otherwise from nitrogen_start below.
+    nitrogen_start: float = 0.0001    # Starting N mass fraction. Used when nitrogen_set=True and comp.N_ppm is 0 (or missing), as a tiny seed.
     graphite_saturated: bool = False  # Graphite saturation at start
     graphite_start: float = 0.0001    # Initial graphite mass fraction when graphite_saturated is True
 
@@ -816,8 +816,8 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("evo", "atomic_c"):             "Atomic C (ppm) — only used when atomic_mass_set=true",
     ("evo", "atomic_s"):             "Atomic S (ppm) — only used when atomic_mass_set=true",
     ("evo", "atomic_n"):             "Atomic N (ppm) — only used when atomic_mass_set=true",
-    ("evo", "nitrogen_set"):         "Set N from composition",
-    ("evo", "nitrogen_start"):       "Starting N mass fraction (used when nitrogen_set=true)",
+    ("evo", "nitrogen_set"):         "Track N as a system component. When true, NITROGEN_START is taken from comp.N_ppm (else nitrogen_start below)",
+    ("evo", "nitrogen_start"):       "Starting N mass fraction (used when nitrogen_set=true and comp.N_ppm is 0)",
     ("evo", "graphite_saturated"):   "Graphite saturation at start",
     ("evo", "graphite_start"):       "Initial graphite mass fraction (used when graphite_saturated=true)",
     ("evo", "fo2_source"):           "'auto' | 'fe3fet' | 'buffer' | 'absolute' — see EVoConfig docstring",

@@ -490,7 +490,14 @@ def _write_yaml_configs(
         "SULFUR_START": comp.S / 100.0,
 
         "NITROGEN_SET": cfg.nitrogen_set,
-        "NITROGEN_START": cfg.nitrogen_start,
+        # When the user has enabled nitrogen, prefer the sample's N
+        # (ppm → mass fraction); fall back to ``cfg.nitrogen_start``
+        # if the sample doesn't carry it.
+        "NITROGEN_START": (
+            float(comp.N_ppm) * 1e-6
+            if cfg.nitrogen_set and getattr(comp, "N_ppm", 0.0) > 0
+            else cfg.nitrogen_start
+        ),
 
         "GRAPHITE_SATURATED": cfg.graphite_saturated,
         "GRAPHITE_START": cfg.graphite_start,

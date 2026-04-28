@@ -39,6 +39,11 @@ class MeltComposition:
     CO2: float = 0.0
     S: float = 0.0
 
+    # Nitrogen (ppm — petrological convention; concentrations are
+    # typically too low for wt% to be a natural unit). Currently
+    # consumed only by EVo when ``EVoConfig.nitrogen_set`` is True.
+    N_ppm: float = 0.0
+
     # Speciated iron (optional; FeOT is used if these are absent)
     FeO: Optional[float] = None
     Fe2O3: Optional[float] = None
@@ -139,6 +144,11 @@ _COLUMN_ALIASES: dict[str, str] = {
     "H2O": "H2O",
     "CO2": "CO2",
     "S": "S",
+    # Nitrogen — accept several common spellings; canonical is N_ppm.
+    "N_ppm": "N_ppm",
+    "Nppm": "N_ppm",
+    "N (ppm)": "N_ppm",
+    "Nitrogen": "N_ppm",
     # Redox
     "Fe3FeT": "Fe3FeT",
     "dNNO": "dNNO",
@@ -194,6 +204,7 @@ def _mapped_to_composition(mapped: dict[str, object], fallback_name: str = "unkn
         H2O=float(mapped.get("H2O", 0)),
         CO2=float(mapped.get("CO2", 0)),
         S=float(mapped.get("S", 0)),
+        N_ppm=float(mapped.get("N_ppm", 0)),
         FeO=feo_spec,
         Fe2O3=fe2o3_spec,
         Fe3FeT=fe3fet,
