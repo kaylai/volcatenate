@@ -50,6 +50,66 @@ def test_bundle_has_new_provenance_fields():
     assert hasattr(bundle, "pip_freeze")
     assert hasattr(bundle, "comments")
     assert hasattr(bundle, "platform_info")
+    assert hasattr(bundle, "resolved_inputs")
+
+
+def test_resolved_inputs_round_trips_through_json(tmp_path):
+    payload = {
+        "Sample1": {
+            "EVo": {"env": {"COMPOSITION": "basalt"}, "chem": {"SIO2": 50.0}},
+            "VolFe": {"setup": {"Sample": "Sample1"}, "models": {"fO2": "Kress91A"}},
+        }
+    }
+    bundle = create_bundle(
+        run_type="comparison",
+        compositions=[_minimal_comp()],
+        models=["EVo", "VolFe"],
+        config=RunConfig(),
+        resolved_inputs=payload,
+    )
+    path = tmp_path / "bundle.json"
+    save_bundle(bundle, str(path))
+    loaded = load_bundle(str(path))
+    assert loaded.resolved_inputs == payload
+
+
+def test_resolved_inputs_capture_helper_writes_sidecar(tmp_path):
+    from volcatenate import resolved_inputs as ri
+
+    ri.reset()
+    ri.capture(
+        sample="Sample1",
+        backend="TestBackend",
+        data={"a": 1, "b": [1, 2, 3], "nested": {"x": 1.5}},
+        output_dir=str(tmp_path),
+    )
+    snap = ri.snapshot()
+    assert snap == {"Sample1": {"TestBackend": {"a": 1, "b": [1, 2, 3], "nested": {"x": 1.5}}}}
+    sidecar = tmp_path / "resolved_inputs" / "Sample1" / "TestBackend.yaml"
+    assert sidecar.is_file()
+
+
+def test_resolved_inputs_sanitizes_numpy_and_nan(tmp_path):
+    import numpy as np
+    from volcatenate import resolved_inputs as ri
+
+    ri.reset()
+    ri.capture(
+        sample="X",
+        backend="B",
+        data={
+            "int": np.int64(7),
+            "float": np.float64(3.14),
+            "nan": float("nan"),
+            "bool": np.bool_(True),
+        },
+        output_dir=None,
+    )
+    snap = ri.snapshot()
+    assert snap["X"]["B"]["int"] == 7
+    assert snap["X"]["B"]["float"] == 3.14
+    assert snap["X"]["B"]["nan"] is None
+    assert snap["X"]["B"]["bool"] is True
 
 
 def test_platform_info_populated():

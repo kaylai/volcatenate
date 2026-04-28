@@ -91,6 +91,18 @@ class Backend(ModelBackend):
         models_df = _build_models_df(cfg)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_satp")
 
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        _capture_resolved(
+            sample=comp.sample,
+            backend="VolFe",
+            data={
+                "setup": setup_df.iloc[0].to_dict() if len(setup_df) else {},
+                "models": dict(zip(models_df.index, models_df["option"])),
+                "run_type": "satp",
+            },
+            output_dir=config.output_dir,
+        )
+
         try:
             with _quiet_volfe(work_dir):
                 result = vf.calc_Pvsat(setup_df, models=models_df)
@@ -128,6 +140,18 @@ class Backend(ModelBackend):
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
         work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_degas")
+
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        _capture_resolved(
+            sample=comp.sample,
+            backend="VolFe",
+            data={
+                "setup": setup_df.iloc[0].to_dict() if len(setup_df) else {},
+                "models": dict(zip(models_df.index, models_df["option"])),
+                "run_type": "degassing",
+            },
+            output_dir=config.output_dir,
+        )
 
         with _quiet_volfe(work_dir):
             result = vf.calc_gassing(setup_df, models=models_df, suppress_warnings=True)

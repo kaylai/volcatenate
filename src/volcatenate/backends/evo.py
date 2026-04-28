@@ -12,6 +12,7 @@ import io
 import os
 import shutil
 import warnings
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -129,6 +130,7 @@ class Backend(ModelBackend):
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
             comp, cfg, work_dir, run_type="closed",
+            output_dir=config.output_dir,
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
@@ -181,6 +183,7 @@ class Backend(ModelBackend):
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
             comp, cfg, work_dir, run_type=cfg.run_type,
+            output_dir=config.output_dir,
         )
 
         evo_output_folder = os.path.join(work_dir, "output")
@@ -377,10 +380,11 @@ def _write_yaml_configs(
     cfg,
     work_dir: str,
     run_type: str = "closed",
+    output_dir: Optional[str] = None,
 ) -> tuple[str, str, str]:
     """Write chem.yaml, env.yaml, and output.yaml for an EVo run.
 
-    Returns (chem_path, env_path, output_yaml_path).
+    Returns (chem_path, env_path, output_yaml_path). When ``output_dir`` is provided, also captures the resolved env / chem / output dicts via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks them up.
     """
     # --- chem.yaml ---
     oxide_map = {
@@ -508,5 +512,15 @@ def _write_yaml_configs(
     output_yaml_path = os.path.join(work_dir, "output.yaml")
     with open(output_yaml_path, "w") as f:
         yaml.dump(output_data, f, Dumper=_EvoDumper, default_flow_style=False)
+
+    # Capture the resolved input for the run-bundle and the per-run
+    # resolved-inputs sidecar yaml.
+    from volcatenate.resolved_inputs import capture as _capture_resolved
+    _capture_resolved(
+        sample=comp.sample,
+        backend="EVo",
+        data={"env": env_data, "chem": chem_data, "output": output_data},
+        output_dir=output_dir,
+    )
 
     return chem_path, env_path, output_yaml_path

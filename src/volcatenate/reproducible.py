@@ -94,12 +94,19 @@ class RunBundle:
     pip_freeze: Optional[str] = None
     comments: str = ""
     platform_info: dict = None  # type: ignore[assignment]
+    # Per-(sample, backend) record of the actual inputs handed to each
+    # underlying model — populated by the orchestrator at end of run.
+    # Shape: {sample_name: {backend_name: {... resolved input ...}}}.
+    # Empty dict (not None) when no run has been executed yet.
+    resolved_inputs: dict = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.backend_versions is None:
             self.backend_versions = {}
         if self.platform_info is None:
             self.platform_info = {}
+        if self.resolved_inputs is None:
+            self.resolved_inputs = {}
 
 
 # ---------------------------------------------------------------------------
@@ -300,14 +307,14 @@ def create_bundle(
     satp_output: Optional[str] = None,
     degassing_output_dir: Optional[str] = None,
     comments: Optional[str] = None,
+    resolved_inputs: Optional[dict] = None,
 ) -> RunBundle:
     """Create a RunBundle from run inputs.
 
     Parameters
     ----------
     run_type : str
-        One of ``"saturation_pressure"``, ``"degassing"``, or
-        ``"comparison"``.
+        One of ``"saturation_pressure"``, ``"degassing"``, or ``"comparison"``.
     compositions : list[MeltComposition]
         The melt compositions being run.
     models : list[str]
@@ -318,6 +325,10 @@ def create_bundle(
         Saturation pressure CSV path (for comparison runs).
     degassing_output_dir : str, optional
         Degassing output directory (for comparison runs).
+    comments : str, optional
+        Free-text notes recorded in the bundle's ``comments`` field. If omitted, falls back to ``config.bundle_comments``.
+    resolved_inputs : dict, optional
+        Per-(sample, backend) record of the actual inputs handed to each model — captured at run time via :mod:`volcatenate.resolved_inputs`. Defaults to an empty dict; the orchestrator replaces it with a populated snapshot at end of run.
 
     Returns
     -------
@@ -345,6 +356,7 @@ def create_bundle(
         pip_freeze=_capture_pip_freeze(),
         comments=comments,
         platform_info=_capture_platform_info(),
+        resolved_inputs=_sanitize_value(resolved_inputs) if resolved_inputs else {},
     )
 
 
@@ -384,6 +396,7 @@ def save_bundle(bundle: RunBundle, path: str) -> str:
         "pip_freeze": bundle.pip_freeze,
         "comments": bundle.comments,
         "platform_info": bundle.platform_info,
+        "resolved_inputs": bundle.resolved_inputs,
     }
 
     with open(path, "w", encoding="utf-8") as fh:
@@ -423,6 +436,7 @@ def load_bundle(path: str) -> RunBundle:
         pip_freeze=data.get("pip_freeze"),
         comments=data.get("comments", "") or "",
         platform_info=data.get("platform_info") or {},
+        resolved_inputs=data.get("resolved_inputs") or {},
     )
 
 

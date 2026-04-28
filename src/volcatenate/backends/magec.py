@@ -140,7 +140,7 @@ class Backend(ModelBackend):
         in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
         out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_csv(comp, cfg, in_csv)
+        _create_magec_input_csv(comp, cfg, in_csv, output_dir=config.output_dir)
         _run_magec_matlab(in_csv, out_csv, cfg)
 
         if not os.path.isfile(out_csv):
@@ -223,7 +223,7 @@ class Backend(ModelBackend):
         for i, comp in enumerate(comps):
             try:
                 sample_cfg = resolve_sample_config(config.magec, comp.sample)
-                rows = _build_sample_input_rows(comp, sample_cfg)
+                rows = _build_sample_input_rows(comp, sample_cfg, output_dir=config.output_dir)
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
                 sample_cfgs[comp.sample] = sample_cfg
@@ -335,7 +335,7 @@ class Backend(ModelBackend):
         in_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_input.csv"))
         out_csv = os.path.abspath(os.path.join(work_dir, f"{safe_name}_output.csv"))
 
-        _create_magec_input_csv(comp, cfg, in_csv)
+        _create_magec_input_csv(comp, cfg, in_csv, output_dir=config.output_dir)
         _run_magec_matlab(in_csv, out_csv, cfg)
 
         if not os.path.isfile(out_csv):
@@ -505,11 +505,13 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
 def _build_sample_input_rows(
     comp: MeltComposition,
     cfg,
+    output_dir: str | None = None,
 ) -> list[dict]:
     """Build MAGEC input rows for a single sample (one row per pressure step).
 
-    Returns a list of row dicts ready for ``pd.DataFrame(rows)``.
-    Raises ``ValueError`` if no usable redox indicator is available.
+    Returns a list of row dicts ready for ``pd.DataFrame(rows)``. Raises ``ValueError`` if no usable redox indicator is available.
+
+    When ``output_dir`` is provided, also captures the resolved input via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
     """
 
     redox_option, redox_value = _resolve_magec_redox(comp, cfg)
@@ -592,6 +594,40 @@ def _build_sample_input_rows(
             "Reference":               "auto_satP",
         })
 
+    # Capture resolved input (first row + settings) for the bundle and sidecar yaml.
+    if output_dir:
+        from volcatenate.resolved_inputs import capture as _capture_resolved
+        settings = {
+            "solver_opt": float(cfg.solver),
+            "sat_sulfide": float(cfg.sulfide_sat),
+            "sat_sulfate": float(cfg.sulfate_sat),
+            "sat_graphite": float(cfg.graphite_sat),
+            "Fe32_opt": float(cfg.fe_redox),
+            "S62_opt": float(cfg.s_redox),
+            "SCSS_opt": float(cfg.scss),
+            "S2max_opt": float(cfg.sulfide_cap),
+            "CO2_opt": float(cfg.co2_sol),
+            "H2O_opt": float(cfg.h2o_sol),
+            "CO_opt": float(cfg.co_sol),
+            "adiabat_r": float(cfg.adiabatic),
+            "ideal": float(cfg.gas_behavior),
+            "buffer": float(cfg.o2_balance),
+        }
+        _capture_resolved(
+            sample=comp.sample,
+            backend="MAGEC",
+            data={
+                "input_first_row": input_rows[0] if input_rows else {},
+                "n_pressure_steps": len(input_rows),
+                "p_grid_kbar_first_last": (
+                    [input_rows[0]["P_degas (kbar)"], input_rows[-1]["P_degas (kbar)"]]
+                    if input_rows else []
+                ),
+                "settings": settings,
+            },
+            output_dir=output_dir,
+        )
+
     return input_rows
 
 
@@ -635,14 +671,15 @@ def _create_magec_input_csv(
     comp: MeltComposition,
     cfg,
     csv_path: str,
+    output_dir: str | None = None,
 ) -> None:
     """Generate the MAGEC input CSV file.
 
-    Column names and structure must match exactly what the MAGEC
-    solver expects — see the original example files distributed
-    with the MAGEC supplement.
+    Column names and structure must match exactly what the MAGEC solver expects — see the original example files distributed with the MAGEC supplement.
+
+    When ``output_dir`` is provided, the wrapper also captures the resolved input via :mod:`volcatenate.resolved_inputs`.
     """
-    _write_magec_csv(_build_sample_input_rows(comp, cfg), cfg, csv_path)
+    _write_magec_csv(_build_sample_input_rows(comp, cfg, output_dir=output_dir), cfg, csv_path)
 
 
 def _run_magec_matlab(
