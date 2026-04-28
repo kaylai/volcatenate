@@ -3,10 +3,9 @@
 This is a plain-English reference explaining what each setting in your
 volcatenate YAML config actually *does* once it reaches the underlying
 model. It complements [configuration.md](configuration.md) (which
-documents the YAML structure) and the
-[hidden-values audit](../.claude/notes/config_audit.md) (which lists
-every value that volcatenate hardcodes or pulls silently from the
-sample composition).
+documents the YAML structure) and the hidden-values audit kept in the
+project's internal notes (which lists every value that volcatenate
+hardcodes or pulls silently from the sample composition).
 
 The doc is organized one backend per section, ordered from simplest to
 most involved:
@@ -177,7 +176,7 @@ or fall through to VolFe's built-in defaults via
 | `P_variation`                                                                                                                                                                                                                                                                       | `"polybaric"` (default)  | Pressure varies (vs. isobaric).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `T_variation`                                                                                                                                                                                                                                                                       | `"isothermal"` (default) | Temperature held fixed (vs. polythermal).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `eq_Fe`                                                                                                                                                                                                                                                                             | `"yes"` (default)        | **Major behaviour switch.** When `"yes"`, VolFe enforces Fe redox equilibrium with fO2 at every pressure step — i.e. fO2 is computed from melt species (`mdv.f_O2`), and Fe3+/FeT is recomputed from fO2 each step ([VolFe/calculations.py:435](../../Volatile_Models/VolFe/src/VolFe/calculations.py)). When `"no"`, fO2 is taken from the gas (`gas_mf["O2"] * y_O2 * P`) and Fe is held fixed ([VolFe/calculations.py:433](../../Volatile_Models/VolFe/src/VolFe/calculations.py)). For natural degassing studies, `"yes"` is essentially always correct. |
-| `crystallisation`, `isotopes`, `sulfur_is_sat`, `melt composition`, `NNObuffer`, `Hspeciation`, `solve_species`, `density`, `mass_volume`, `calc_sat`, `bulk_O`, `setup`, `high precision`, isotope `alpha_*`/`beta_factors`, single-option K constants | VolFe defaults             | Pass-through; volcatenate doesn't set them. The audit ([config_audit.md](../.claude/notes/config_audit.md)) lists planned promotions.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `crystallisation`, `isotopes`, `sulfur_is_sat`, `melt composition`, `NNObuffer`, `Hspeciation`, `solve_species`, `density`, `mass_volume`, `calc_sat`, `bulk_O`, `setup`, `high precision`, isotope `alpha_*`/`beta_factors`, single-option K constants | VolFe defaults             | Pass-through; volcatenate doesn't set them. The internal config audit lists planned promotions.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 > ⚠️ TODO: `solve_species`, `mass_volume`, `calc_sat`, and `bulk_O` are
 > listed as "internal" by VolFe but their semantic effect on the
@@ -476,7 +475,7 @@ volcatenate. Logic at [backends/magec.py:378-443](../src/volcatenate/backends/ma
 > - It is logged as a warning but the user might not see warnings in
 >   their notebook.
 >
-> The audit ([config_audit.md](../.claude/notes/config_audit.md))
+> The internal config audit
 > proposes a `redox_source` knob to make this explicit.
 
 ---
@@ -658,10 +657,9 @@ VESIcal is omitted (no sulfur, and only one solubility law per variant).
   loading.
 - [`run_bundles.md`](run_bundles.md) — reproducible run bundles
   (which include the resolved config so you can replay).
-- [`.claude/notes/config_audit.md`](../.claude/notes/config_audit.md) —
-  full audit of every hardcoded literal, every silent fallback, and
-  the proposed promotions for upcoming releases.
-- The wrapper modules under
-  [`src/volcatenate/backends/`](../src/volcatenate/backends/) —
-  read these whenever the doc above is unclear; they are short and
-  the source of truth.
+- The wrapper modules under `src/volcatenate/backends/` — read these
+  whenever the doc above is unclear; they are short and are the source
+  of truth.
+- The project's internal config audit — full list of every hardcoded
+  literal, every silent fallback, and proposed promotions for upcoming
+  releases (kept alongside the repo, not published).
