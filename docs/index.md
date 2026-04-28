@@ -39,6 +39,14 @@ config_propagation
 
 ```{toctree}
 :maxdepth: 2
+:caption: Examples
+
+examples/minimal_config
+examples/full_config
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Reference
 
 api/index

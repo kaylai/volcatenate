@@ -220,7 +220,7 @@ class VolFeConfig:
     sulfur_is_sat: Literal["yes", "no"] = "no"  # Treat melt as sulfur-saturated at start
 
     # ── Redox input ──────────────────────────────────────────────────
-    # ``fo2_column`` is the volcatenate-specific knob for which redox
+    # ``fo2_column`` is the volcatenate-specific setting for which redox
     # column to feed into VolFe's ``setup_df`` (DNNO / Fe3FeT / DFMQ).
     # ``fo2_source`` controls how strictly that choice is enforced:
     #   "auto" — fall back through the priority chain if the requested
@@ -349,7 +349,7 @@ class EVoConfig:
 
     Always managed by volcatenate (you cannot set these here):
       - ``WTH2O_SET`` / ``WTCO2_SET`` / ``SULFUR_SET`` are always True — volatiles are always supplied as melt mass fractions from the composition.
-      - ``FO2_buffer_SET`` / ``FO2_buffer`` / ``FO2_buffer_START`` / ``FO2_SET`` / ``FO2_START`` are computed by :func:`~volcatenate.backends.evo._resolve_fo2_source` from the ``fo2_source`` knob below.
+      - ``FO2_buffer_SET`` / ``FO2_buffer`` / ``FO2_buffer_START`` / ``FO2_SET`` / ``FO2_START`` are computed by :func:`~volcatenate.backends.evo._resolve_fo2_source` from the ``fo2_source`` setting below.
       - All ``output.yaml`` plot flags are False — volcatenate emits its own standardized DataFrames, not EVo's plot CSVs.
 
     Notes

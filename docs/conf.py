@@ -31,7 +31,17 @@ extensions = [
     "sphinx.ext.viewcode",
     "myst_parser",
     "sphinx_copybutton",
+    "nbsphinx",
 ]
+
+# Don't execute notebooks at build time; render them as authored. The
+# example notebooks intentionally do not require every backend to be
+# installed, so they will not always run cleanly on the docs builder.
+nbsphinx_execute = "never"
+# Render Markdown cells via MyST so they get the same parser as our
+# .md docs (admonitions, deflists, etc.).
+nbsphinx_custom_formats: dict = {}
+exclude_patterns_nb = [".ipynb_checkpoints"]
 
 # Auto-generate stub pages for autosummary entries.
 autosummary_generate = True
@@ -72,7 +82,7 @@ source_suffix = {
     ".md": "markdown",
 }
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "**/.ipynb_checkpoints"]
 
 # -- HTML output -------------------------------------------------------------
 
