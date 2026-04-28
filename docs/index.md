@@ -17,7 +17,9 @@ distributed under the GPL.
 ## What you can do with it
 
 - Compute saturation pressures for a batch of melt compositions using any
-  combination of backends.
+  combination of backends. Compositions can be supplied as a CSV, a Python
+  dict, or a `MeltComposition` instance — see [sample_data.md](sample_data.md)
+  for the full input options.
 - Run degassing paths for one composition through every backend and get
   back DataFrames with standardized column names.
 - Save a single JSON **run bundle** that captures the resolved
@@ -32,6 +34,7 @@ distributed under the GPL.
 :caption: User guide
 
 getting_started
+sample_data
 configuration
 run_bundles
 config_propagation

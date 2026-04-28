@@ -26,7 +26,10 @@ volcatenate.list_models(available_only=True)
 ## Saturation pressure (batch of compositions)
 
 Calculate volatile saturation pressures for several melt compositions
-from a CSV file:
+from a CSV file. (CSV is the most common input shape; volcatenate also
+accepts a Python dict or a `MeltComposition` instance — see
+[sample_data.md](sample_data.md) for the full input reference, including
+required and optional columns and accepted aliases.)
 
 ```python
 import volcatenate

@@ -2,7 +2,9 @@
 
 A *run bundle* is a single JSON file that captures everything needed to
 reproduce a `volcatenate` run: the resolved configuration, every input
-composition, the model list, backend versions, and machine/environment
+composition (each one a `MeltComposition` snapshot — see
+[sample_data.md](sample_data.md) for how those get built from CSV, dict, or
+class input), the model list, backend versions, and machine/environment
 provenance. Drop the JSON onto another machine, call
 [`volcatenate.replay`](#replaying-a-bundle), and you get the same run back.
 

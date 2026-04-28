@@ -75,10 +75,7 @@ there is no `vesical.model` config field.
 
 ## Per-sample overrides
 
-A single global default does not always fit every sample. For example, EVo's
-default `dp_max: 100` (bar) works fine for most basalts but causes the solver
-to bail out partway through degassing for reduced MORB at low pressure. The
-fix is `dp_max: 25` for that one sample only.
+A single global default does not always fit every sample. ("Sample" here means one `MeltComposition` instance — see [sample_data.md](sample_data.md) for how those are built from a CSV row, a Python dict, or the class directly.) For example, EVo's default `dp_max: 100` (bar) works fine for most basalts but causes the solver to bail out partway through degassing for reduced MORB at low pressure. The fix is `dp_max: 25` for that one sample only.
 
 Every backend config (`VESIcalConfig`, `VolFeConfig`, `EVoConfig`, `MAGECConfig`, `SulfurXConfig`) carries an `overrides` dict shaped like `{sample_name: {field_name: value}}`:
 
