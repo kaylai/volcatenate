@@ -76,7 +76,15 @@ results = volcatenate.replay("run_bundle.json")
     "machine": "arm64", "python_implementation": "CPython"
   },
   "comments": "Initial run for the Fuego sample set.",
-  "pip_freeze": "absl-py==2.1.0\nanthropic==0.34.2\n... (truncated) ..."
+  "pip_freeze": "absl-py==2.1.0\nanthropic==0.34.2\n... (truncated) ...",
+  "resolved_inputs": {
+    "Fuego": {
+      "EVo":     {"env": {"...": "..."}, "chem": {"...": "..."}, "output": {"...": "..."}},
+      "VolFe":   {"setup": {"...": "..."}, "models": {"...": "..."}, "run_type": "degassing"},
+      "MAGEC":   {"input_first_row": {"...": "..."}, "n_pressure_steps": 100, "settings": {"...": "..."}},
+      "SulfurX": {"composition_oxides": {"...": "..."}, "params": {"...": "..."}, "sulfide": {"...": "..."}}
+    }
+  }
 }
 ```
 
@@ -95,6 +103,7 @@ results = volcatenate.replay("run_bundle.json")
 | `platform_info` | OS / arch / Python implementation. |
 | `comments` | Free-text notes from `config.bundle_comments` or the `comments` kwarg. |
 | `pip_freeze` | Full `pip freeze` output for the active environment. `None` if pip freeze failed. |
+| `resolved_inputs` | Per-`(sample, backend)` snapshot of the actual inputs each backend handed to its underlying model. Populated at end of run from the in-process capture buffer in `volcatenate.resolved_inputs`. Captured shapes: EVo `{env, chem, output}`, VolFe `{setup, models, run_type}`, MAGEC `{input_first_row, n_pressure_steps, p_grid_kbar_first_last, settings}`, SulfurX `{composition_oxides, T_K, H2O_wt, CO2_ppm, [S_ppm,] delta_FMQ, params, [sulfide]}`. The same data is also written as one human-readable yaml per sample/backend at `<output_dir>/resolved_inputs/<sample>/<backend>.yaml` (these sidecars survive `keep_raw_output=False`). Empty `{}` if no run has executed yet. |
 
 ## Replaying a bundle
 
@@ -141,6 +150,7 @@ The bundle is the single source of truth for *what was run*. It records:
   `RunConfig.bundle_comments` or the `comments` kwarg on `create_bundle`.
   This is where you describe *why* the run exists, what changed, what
   bugs you patched in a backend, etc.
+- **Resolved inputs** (`resolved_inputs`) — per-`(sample, backend)` record of the actual inputs that each backend handed to its underlying model. This is the only honest answer to "what did MAGEC / EVo / VolFe / SulfurX actually see for this sample?" — it's the combination of the YAML config and the per-sample composition after every fallback, normalization, and override has been applied. Mirrored on disk at `<output_dir>/resolved_inputs/<sample>/<backend>.yaml`.
 
 Together these fields replace the hand-rolled `manifest.txt` files that
 downstream projects used to write next to their results.
