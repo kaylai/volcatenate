@@ -157,16 +157,14 @@ class VESIcalConfig:
 
     The solubility model is **not** selected via this dataclass. Instead, you choose it by the backend name you pass to ``calculate_*`` (e.g. ``"VESIcal_Iacono"``, ``"VESIcal_Dixon"``, ``"VESIcal_MS"``). See ``VARIANT_MAP`` in :mod:`volcatenate.backends.vesical`.
 
-    Attributes
-    ----------
-    steps : int
-        Number of pressure steps in the degassing path. More steps means smoother curves but slower runs. VESIcal divides the (P_sat → ``final_pressure``) range into this many steps.
-    final_pressure : float
-        Lowest pressure (bar) in the degassing run. Set to ~1 bar for full atmospheric degassing, or higher to stop early.
-    fractionate_vapor : float
-        Vapor extraction per step, 0 to 1. ``0`` = closed system (vapor stays in equilibrium), ``1`` = open system (vapor fully removed each step). Intermediate values are physically unusual but allowed by VESIcal.
-    overrides : dict[str, dict[str, Any]]
-        Per-sample overrides, e.g. ``{"Fogo": {"steps": 50}}``. Unknown field names emit a warning and are skipped at resolve time.
+    Notes
+    -----
+    Field highlights:
+
+    - ``steps`` — number of pressure steps in the degassing path. More steps means smoother curves but slower runs. VESIcal divides the (P_sat → ``final_pressure``) range into this many steps.
+    - ``final_pressure`` — lowest pressure (bar) in the degassing run. Set to ~1 bar for full atmospheric degassing, or higher to stop early.
+    - ``fractionate_vapor`` — vapor extraction per step, 0 to 1. ``0`` = closed system (vapor stays in equilibrium), ``1`` = open system (vapor fully removed each step). Intermediate values are physically unusual but allowed by VESIcal.
+    - ``overrides`` — per-sample overrides, e.g. ``{"Fogo": {"steps": 50}}``. Unknown field names emit a warning and are skipped at resolve time.
 
     See Also
     --------
@@ -548,18 +546,15 @@ class SulfurXSulfideConfig:
 
     SulfurX needs an explicit sulfide composition to compute sulfide-saturation behavior. Default values follow ``main_Fuego.py`` from the SulfurX distribution (Fe 65.43, S 36.47 — a near-stoichiometric pyrrhotite). All values are weight percent of **the sulfide phase**, not of the melt.
 
-    Attributes
-    ----------
-    fe : float
-        Fe wt% of the sulfide phase. Default 65.43.
-    ni : float
-        Ni wt% of the sulfide phase. Default 0.0.
-    cu : float
-        Cu wt% of the sulfide phase. Default 0.0.
-    o : float
-        O wt% of the sulfide phase. Default 0.0.
-    s : float
-        S wt% of the sulfide phase. Default 36.47.
+    Notes
+    -----
+    Field highlights:
+
+    - ``fe`` — Fe wt% of the sulfide phase. Default 65.43.
+    - ``ni`` — Ni wt% of the sulfide phase. Default 0.0.
+    - ``cu`` — Cu wt% of the sulfide phase. Default 0.0.
+    - ``o`` — O wt% of the sulfide phase. Default 0.0.
+    - ``s`` — S wt% of the sulfide phase. Default 36.47.
 
     See Also
     --------
@@ -641,24 +636,18 @@ class RunConfig:
 
     Build one in Python with the dataclass constructors, or load it from YAML with :func:`load_config` / :func:`save_config`.
 
-    Attributes
-    ----------
-    output_dir : str
-        Root directory for all output files — standardized result CSVs, figures, and the raw tool output subdirectory. Default ``"."`` (current working directory).
-    raw_output_dir : str
-        Subdirectory (relative to ``output_dir``) for raw per-backend files — EVo YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
-    keep_raw_output : bool
-        If ``True`` (default), all raw tool output files are retained for inspection. If ``False``, they are cleaned up after each model run completes, keeping only the final standardized DataFrames in memory.
-    verbose : bool
-        Print progress at INFO level to the terminal.
-    log_file : str
-        Path to a file that captures all DEBUG-level log output. The file is truncated on the first call within a process and appended thereafter, so multiple ``calculate_*`` calls in the same notebook accumulate into one log instead of clobbering each other. Use :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string disables file logging.
-    show_progress : bool
-        Show rich progress bars during multi-sample runs.
-    save_bundle : str
-        Path at which to write a reproducible run bundle (JSON). Empty string disables bundle saving. See ``docs/run_bundles.md``.
-    bundle_comments : str
-        Free-text notes recorded in the bundle's ``comments`` field for provenance only — ignored on replay.
+    Notes
+    -----
+    Field highlights:
+
+    - ``output_dir`` — root directory for all output files (standardized result CSVs, figures, raw tool output subdirectory). Default ``"."`` (current working directory).
+    - ``raw_output_dir`` — subdirectory (relative to ``output_dir``) for raw per-backend files: EVo YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
+    - ``keep_raw_output`` — when ``True`` (default), all raw tool output files are retained for inspection. ``False`` cleans them up after each run, keeping only the standardized DataFrames in memory.
+    - ``verbose`` — print progress at INFO level to the terminal.
+    - ``log_file`` — path to a file that captures all DEBUG-level log output. The file is truncated on the first call within a Python process and appended thereafter, so multiple ``calculate_*`` calls in the same notebook accumulate into one log instead of clobbering each other. Use :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string disables file logging.
+    - ``show_progress`` — show rich progress bars during multi-sample runs.
+    - ``save_bundle`` — path at which to write a reproducible run bundle (JSON). Empty string disables bundle saving. See ``docs/run_bundles.md``.
+    - ``bundle_comments`` — free-text notes recorded in the bundle's ``comments`` field; provenance only, ignored on replay.
 
     See Also
     --------

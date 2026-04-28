@@ -1,15 +1,11 @@
 """MAGEC backend — Magma And Gas Equilibrium Calculator (Sun & Yao, 2024).
 
-Runs MAGEC's compiled MATLAB solver (.p) via subprocess, using a bundled
-CSV wrapper for fast I/O.  Requires:
-  1. MATLAB installed (with the bundled fsolve/lsqnonlin shims if the
-     Optimization Toolbox is not available)
-  2. MAGEC_Solver_v1b.p in the configured solver directory
+Runs MAGEC's compiled MATLAB solver (``.p``) via subprocess, using a bundled CSV wrapper for fast I/O. Requires:
 
-The backend generates CSV input files, writes a MATLAB batch script that
-passes settings as a struct, and calls MAGEC_CSV_Wrapper.m which handles
-CSV↔xlsx conversion inside MATLAB before calling the .p solver.  Python-
-side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
+- MATLAB installed (with the bundled fsolve / lsqnonlin shims if the Optimization Toolbox is not available).
+- ``MAGEC_Solver_v1b.p`` in the configured solver directory.
+
+The backend generates CSV input files, writes a MATLAB batch script that passes settings as a struct, and calls ``MAGEC_CSV_Wrapper.m`` which handles CSV↔xlsx conversion inside MATLAB before calling the ``.p`` solver. Python-side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
 """
 
 from __future__ import annotations

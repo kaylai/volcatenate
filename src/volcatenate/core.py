@@ -490,8 +490,10 @@ def run_comparison(
     Returns
     -------
     dict
-        ``{"satp_df": DataFrame or None,
-           "degassing": {sample_name: {model: DataFrame}} or None}``
+        Result dict shaped like::
+
+            {"satp_df": DataFrame or None,
+             "degassing": {sample_name: {model: DataFrame}} or None}
 
     Example
     -------

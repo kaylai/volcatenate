@@ -79,6 +79,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md"]
 html_theme = "furo"
 html_title = f"volcatenate {version}"
 html_static_path = ["_static"]
+templates_path = ["_templates"]
 
 # Don't fail the build if _static is empty.
 html_css_files: list[str] = []
