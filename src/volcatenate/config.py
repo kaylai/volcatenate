@@ -603,7 +603,7 @@ class SulfurXConfig:
     constant_h2o: float = 2.7
     n_steps: int = 600                # Pressure grid steps for degassing
     fo2_tracker: int = 1              # 0 = buffered fO2, 1 = redox evolution
-    s_fe_choice: int = 1              # S speciation model: 0=Nash, 1=O'Neill&Mavrogenes
+    s_fe_choice: int | float = 1      # S speciation model: 0=Nash, 1=O'Neill&Mavrogenes, 100=Muth&Wallace, other float = modified MW
     sigma: float = 0.005              # log10fO2 tolerance for redox calculation
     sulfide_pre: int = 0              # 0 = no sulfide precipitation, 1 = enabled
 
