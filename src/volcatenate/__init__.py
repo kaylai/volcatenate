@@ -95,7 +95,20 @@ def list_models(available_only: bool = False) -> list[str]:
     return list_backends(available_only=available_only)
 
 
-__version__ = "0.4.0"
+# Single source of truth: derive __version__ from the installed package
+# metadata so it always matches `version` in pyproject.toml. Falls back
+# to "unknown" when imported from a checkout that has not been
+# pip-installed (rare; mostly affects ad-hoc `python -c` invocations
+# from the source tree).
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+
+try:
+    __version__ = _pkg_version("volcatenate")
+except _PackageNotFoundError:
+    __version__ = "unknown"
+
+del _pkg_version, _PackageNotFoundError
 
 __all__ = [
     # Core API
