@@ -60,7 +60,7 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 **Citations:**
 
-- _Sulfur solubility framework underpinning VolFe._ Hughes, E. C., Saper, L. M., Liggins, P., O'Neill, H. S. C. & Stolper, E. M. (2023). The sulfur solubility minimum and maximum in silicate melt. _Journal of the Geological Society_, 180(3), jgs2021–125. [doi:10.1144/jgs2021-125](https://doi.org/10.1144/jgs2021-125) — {download}`PDF <papers/volfe/Huges2023.pdf>`
+- _Sulfur solubility framework underpinning VolFe._ Hughes, E. C., Saper, L. M., Liggins, P., O'Neill, H. S. C. & Stolper, E. M. (2023). The sulfur solubility minimum and maximum in silicate melt. _Journal of the Geological Society_, 180(3), jgs2021–125. [doi:10.1144/jgs2021-125](https://doi.org/10.1144/jgs2021-125) — {download}`PDF <papers/volfe/Hughes2023.pdf>`
 - _Effects of fO₂ and S on vapor-saturation pressure._ Hughes, E. C., Liggins, P., Saper, L. & Stolper, E. M. (2024). The effects of oxygen fugacity and sulfur on the pressure of vapor-saturation of magma. _American Mineralogist_. [doi:10.2138/am-2022-8739](https://doi.org/10.2138/am-2022-8739) — {download}`PDF <papers/volfe/Hughes2024.pdf>`
 
 ---

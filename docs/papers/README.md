@@ -27,7 +27,7 @@ docs/papers/
 │   ├── Wieser2022_PartII.pdf             # Wieser et al. (2022), Earth & Space Sci.
 │   └── Wieser2022_PartII_Supplement.pdf  # Supporting information for Part II
 └── volfe/
-    ├── Huges2023.pdf                     # Hughes et al. (2023), JGS 180(3), jgs2021–125  (NB: filename is "Huges", not "Hughes")
+    ├── Hughes2023.pdf                     # Hughes et al. (2023), JGS 180(3), jgs2021–125
     └── Hughes2024.pdf                    # Hughes et al. (2024), Am. Min.
 ```
 
