@@ -968,6 +968,161 @@ These are sent to SulfurX by volcatenate but are not in the YAML. They are eithe
 
 ---
 
+## Worked examples — fO2 initialization
+
+Five common scenarios showing how each backend handles redox initialization. For all examples, the sample is a generic basalt at `T_C = 1100` (so `T_K = 1373.15`) and the run starts at saturation pressure near 1 bar. The Frost-1991 buffer values at this T are reused throughout:
+
+| Buffer    | log₁₀ fO2 |
+| --------- | --------- |
+| FMQ       | −9.541    |
+| NNO       | −8.795    |
+| NNO − FMQ | +0.746    |
+
+The Kress & Carmichael (1991) Eq. A-5/A-6 (KC91A) Fe3+/FeT ↔ logfO2 mapping is composition-dependent and is shown symbolically as `KC91A(Fe3FeT, T, P, comp)` (or its inverse). The numerical answers in the tables below are exact for the buffer expressions; KC91A values are symbolic because they depend on the full melt composition.
+
+### Example 1 — sample has only `Fe3FeT`, all backends in `auto` mode
+
+(Most common case for melt-inclusion data.)
+
+**Sample data** (in CSV / `MeltComposition` / dict):
+
+- `Sample = "Fuego"`, `T_C = 1100`
+- All major oxides (basalt-like)
+- `H2O`, `CO2`, `S` (volatile budget)
+- `Fe3FeT = 0.18`
+- `dNNO`, `dFMQ` not set
+
+**YAML config** (defaults shown):
+
+```yaml
+evo:
+  fo2_source: auto
+volfe:
+  fo2_column: Fe3FeT
+  fo2_source: auto
+magec:
+  redox_option: Fe3+/FeT
+  redox_source: auto
+sulfurx: {}
+```
+
+**Per-backend behavior:**
+
+| Backend | Indicator sent to model                                                                 | Conversion path                                                                                                                                                                                  | Initial `Fe3Fet_m`           | Initial `logfO2`                          | Initial `dFMQ`                |
+| ------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- | ----------------------------------------- | ----------------------------- |
+| EVo     | `chem.yaml` carries the `FeOT → FeO + Fe2O3` split per `Fe3FeT = 0.18`; `FO2_SET = False` | EVo computes `sys.FO2 = ln(fO2)` from Fe3+/FeT via KC91A (`evo.fo2_model = kc1991`)                                                                                                              | 0.18                         | KC91A(0.18, 1373.15, P, comp)             | logfO2 − FMQ(T, P)            |
+| VolFe   | `setup_df["Fe3FeT"] = 0.18`                                                             | VolFe sets `Fe3FeT_i = 0.18` directly; per-step uses `mdv.f_O2` (default `volfe.fo2_model = Kress91A`) when reporting                                                                            | 0.18                         | KC91A(0.18, 1373.15, P, comp)             | logfO2 − FMQ(T, P)            |
+| MAGEC   | input CSV: `Initial redox options = "Fe3+/FeT"`, `Initial redox values = 0.18`          | MAGEC applies its own Fe3+/FeT ↔ fO2 model (`magec.fe_redox = 1`, Sun & Yao 2024 by default) at run time                                                                                          | 0.18                         | Sun-Yao-2024(0.18, 1373.15, P, comp)      | logfO2 − FMQ(T, P)            |
+| SulfurX | `delta_FMQ` = wrapper-side KC91 inversion of 0.18 at 1 bar, then subtract Frost-1991 FMQ at T | SulfurX uses `delta_FMQ` to set initial Fe3+/FeT via `OxygenFugacity.fe_ratio(fmq + delta_FMQ)` (round-trips ~0.18 numerically)                                                                | ≈ 0.18 (numerically round-tripped) | KC91A⁻¹(0.18, 1373.15, **1 bar**, comp) | KC91A⁻¹(0.18, 1373.15, 1, comp) − FMQ(T, 1) |
+
+All four backends start at the same redox state, modulo (i) which Fe3+/FeT ↔ fO2 equation each uses internally (KC91A vs. Sun-Yao-2024) and (ii) the pressure used for the wrapper-side Fe3+/FeT ↔ fO2 conversion (1 bar in SulfurX, run-pressure elsewhere).
+
+### Example 2 — sample has only `dNNO`, all backends in `auto` mode
+
+(Per-backend behavior diverges here.)
+
+**Sample data:**
+
+- `Sample = "Sample-A"`, `T_C = 1100`, basalt oxides, volatiles
+- `dNNO = +0.5`
+- `Fe3FeT`, `dFMQ` not set
+
+**YAML config:** same as Example 1 (all `auto`).
+
+**Per-backend behavior:**
+
+| Backend | Indicator sent to model                                                                                                                  | Conversion path                                                                                                                                                                                                                                       | Initial `dFMQ`                                | Notes                                                                                                                                                                                  |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EVo     | `env.yaml`: `FO2_buffer = "NNO"`, `FO2_buffer_SET = True`, `FO2_buffer_START = 0.5`                                                       | EVo converts dNNO → log₁₀ fO2 → `sys.FO2` via Frost-1991 NNO at run T, P                                                                                                                                                                              | 0.5 + (NNO − FMQ) = 0.5 + 0.746 = **+1.246**  | Wrapper picks `"NNO"` based on `comp.dNNO`, regardless of `evo.fo2_buffer` setting. Logged at INFO.                                                                                |
+| VolFe   | `setup_df["DNNO"] = 0.5` (because `fo2_column = Fe3FeT` is missing on the sample, the cascade Fe3FeT → dNNO → dFMQ falls through to dNNO) | VolFe converts dNNO → fO2 via Frost-1991 NNO (`volfe.nno_buffer = Frost91`); then fO2 → `Fe3FeT_i` via `volfe.fo2_model = Kress91A`                                                                                                                  | **+1.246**                                    | Logged at INFO ("falling back to DNNO").                                                                                                                                              |
+| MAGEC   | input CSV: `Initial redox options = "Fe3+/FeT"`, `Initial redox values = KC91⁻¹(NNO + 0.5)`                                                | Wrapper computes `Fe3+/FeT` via wrapper-side KC91 inversion at **1 bar** (not run P), Frost-1991 NNO at T. MAGEC then re-applies its own `magec.fe_redox` model at run P, T.                                                                          | **+1.246** (initial), but the value MAGEC receives is `Fe3+/FeT` | **Logged at WARNING.** The pointer `redox_source = "kc91_from_buffer"` is named in the warning message to make the choice explicit. Substantively different — MAGEC never sees `dNNO`. |
+| SulfurX | `delta_FMQ = +1.246` directly                                                                                                            | Cascade priority `dFMQ → Fe3FeT → dNNO`; sample has only dNNO, hits priority 3. Computes `delta_FMQ = dNNO + (NNO − FMQ)` at 1 bar. SulfurX then sets initial Fe3+/FeT via `fe_ratio(fmq + delta_FMQ)`.                                              | **+1.246**                                    | Logged at INFO.                                                                                                                                                                       |
+
+Three backends arrive at `dFMQ ≈ +1.246` cleanly; MAGEC's wrapper-side KC91 inversion in `auto` mode is the divergent case — the wrapper converts `dNNO` to a `Fe3+/FeT` value at 1 bar before MAGEC ever sees the redox state, which is why the wrapper logs at WARNING and points at `redox_source = "kc91_from_buffer"`.
+
+### Example 3 — sample has both `Fe3FeT` and `dFMQ`, all backends in `auto` mode
+
+(SulfurX's cascade priority diverges from the other three.)
+
+**Sample data:**
+
+- `Sample = "Sample-B"`, `T_C = 1100`, basalt oxides, volatiles
+- `Fe3FeT = 0.18` AND `dFMQ = +1.246`
+
+**YAML config:** same as Example 1 (all `auto`).
+
+**Per-backend behavior:**
+
+| Backend | Wins by priority                                                                            | Indicator sent to model                                                            | Comment                                                                                                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EVo     | `Fe3FeT` (priority 1 in EVo's `auto` cascade Fe3FeT → dNNO → dFMQ)                          | speciated `FeO + Fe2O3` in `chem.yaml`                                              | dFMQ on the sample is ignored.                                                                                                                                                                                                     |
+| VolFe   | `Fe3FeT` (matches default `fo2_column = Fe3FeT`)                                             | `setup_df["Fe3FeT"] = 0.18`                                                         | dFMQ on the sample is ignored.                                                                                                                                                                                                     |
+| MAGEC   | `Fe3+/FeT` (matches default `redox_option = "Fe3+/FeT"`)                                     | input CSV `Initial redox options = "Fe3+/FeT"`, `values = 0.18`                     | dFMQ on the sample is ignored.                                                                                                                                                                                                     |
+| SulfurX | `dFMQ` (priority 1 in SulfurX's fixed cascade `dFMQ → Fe3FeT → dNNO`)                       | `delta_FMQ = +1.246` directly                                                       | **Fe3FeT on the sample is ignored.** This is the single place where SulfurX's cascade priority diverges from the other three.                                                                                                       |
+
+If `Fe3FeT` and `dFMQ` are mutually consistent (both derived from the same fO2 measurement), all four backends arrive at the same redox state. If they disagree, three backends use `Fe3FeT` and SulfurX uses `dFMQ` — set only one indicator on the sample if you want byte-identical initialization across backends.
+
+### Example 4 — sample has only `dNNO`, strict-mode `fe3fet`
+
+(Three backends raise; SulfurX has no strict mode.)
+
+**Sample data:** same as Example 2 (only `dNNO = +0.5`).
+
+**YAML config:**
+
+```yaml
+evo:
+  fo2_source: fe3fet
+volfe:
+  fo2_source: fe3fet
+magec:
+  redox_source: fe3fet
+sulfurx: {}     # no strict-mode setting exposed
+```
+
+**Per-backend behavior:**
+
+| Backend | Behavior                                                                                                                                                            |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EVo     | Raises `ValueError` ("requires Fe3+/FeT on sample, but none was provided").                                                                                          |
+| VolFe   | Raises `ValueError` ("requires Fe3+/FeT on sample, but none was provided").                                                                                          |
+| MAGEC   | Raises `ValueError` ("requires Fe3+/FeT on sample, but none was provided").                                                                                          |
+| SulfurX | No strict-mode setting exists. SulfurX's fixed cascade falls through to dNNO at priority 3, computing `delta_FMQ = +1.246` as in Example 2. **Run proceeds normally.** |
+
+Strict modes are the right tool when running a batch where you want to fail loudly if a sample lacks the redox indicator you expect — but SulfurX cannot participate in that contract today.
+
+### Example 5 — `evo.fo2_source = "absolute"` with `evo.fo2_start`
+
+(Only EVo exposes an absolute-fO2 entry point.)
+
+**Sample data:**
+
+- `Sample = "Sample-C"`, `T_C = 1100`, basalt oxides, volatiles
+- Any combination of `Fe3FeT` / `dNNO` / `dFMQ` (all ignored by EVo in `absolute` mode; the wrapper deliberately skips the FeOT split in `chem.yaml`)
+
+**YAML config:**
+
+```yaml
+evo:
+  fo2_source: absolute
+  fo2_set: true
+  fo2_start: 1.0e-9    # absolute fO2 in bar
+volfe: {}              # no `absolute` mode in volfe.fo2_source enum (allowed: auto, fe3fet, dnno, dfmq)
+magec: {}              # no `absolute` mode in magec.redox_source enum; MAGEC natively accepts logfO2 as a column, but volcatenate has no sample-side source for it
+sulfurx: {}            # no equivalent
+```
+
+**Per-backend behavior:**
+
+| Backend                  | Behavior                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EVo                      | `env.yaml`: `FO2_SET = True`, `FO2_START = 1.0e-9`. EVo sets `sys.FO2 = ln(1.0e-9) ≈ −20.72`. EVo also back-computes `sys.FO2_buffer = log₁₀(1e-9) − FMQ(T, P) = −9 − (−9.541) = +0.541`. The wrapper deliberately sends `FEO = FeOT, FE2O3 = 0` in `chem.yaml` (skipping the Fe3+/FeT split) because EVo refuses to run with both an absolute fO2 and a speciated iron entry. |
+| VolFe, MAGEC, SulfurX | These backends have no volcatenate-exposed absolute-fO2 entry point. To match Example 5 across backends, the user computes the equivalent `dFMQ` at the run's T, P (here `+0.541`) and places it on the sample as the `dFMQ` field, then uses Example 1-style `auto` (or the relevant strict mode) on those backends.                                                                                       |
+
+If you need consistent absolute-fO2 initialization across all four backends in a comparison run, set `dFMQ` on the sample (computed from your absolute fO2 at the run's T, P) and let the other three backends use it via their normal cascades; only EVo bypasses that route via `fo2_source = "absolute"`.
+
+---
+
 ## Quick cross-reference
 
 How to set specific run parameters across all back-ends, either with the YAML configuration or in the sample composition (passed as MeltComposition class or from a csv file).
