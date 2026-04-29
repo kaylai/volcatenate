@@ -1,5 +1,7 @@
 # volcatenate
 
+[![Documentation Status](https://readthedocs.org/projects/volcatenate/badge/?version=latest)](https://volcatenate.readthedocs.io/en/latest/?badge=latest)
+
 Unified volcanic degassing model comparison toolkit for Python. The purpose is for this to be a usable library for python scripting and some simple CLI use, with the specific goal of obtaining a clean single pipeline to run degassing simluation rungs with EVo, MAGEC, Sulfur_X, and VolFe (C-O-H-S+), VESIcal (C-O-H; with MagmaSat, Iacono-Marziano, and Dixon (VolatileCalc) solubility models), and D-Compress. The latter is separatated out simply because we cannot easily run it programmatically due to its use of a GUI, but plotting functions within volcatenate do ingest D-Compress outputs pre-formatted with certain columns.
 
 This library was developed based on original messy python scripts written by K. Iacovino (me) to parse existing modeling tool outputs, create plots for an in-prep manuscript, and bootstrap python wrappers for recalculating those outputs with the tools. This library was develoed with substantial help from Anthropic's Claude AI: Claude for Mac Version 1.1.4498 (24f768), particularly for handling MAGEC, debugging my bootstrapped wrappers, and coding workarounds for solvers internal to tools when they failed to converge. "We" (this pronoun is easierst - me and Claude) kept a running list of "model quirks", things we stumbled over when trying to implement them in this python mega wrapper.
