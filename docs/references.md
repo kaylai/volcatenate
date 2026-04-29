@@ -14,7 +14,7 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 **Citation:**
 
-- Burgisser, A., Alleti, M. & Scaillet, B. (2015). Simulating the behavior of volatiles belonging to the C–O–H–S system in silicate melts under magmatic conditions with the software D-Compress. _Computers & Geosciences_. [doi:10.1016/j.cageo.2015.03.002](https://doi.org/10.1016/j.cageo.2015.03.002) — {download}`PDF <papers/dcompress/Burgisser2015.pdf>`
+- Burgisser, A., Alleti, M. & Scaillet, B. (2015). Simulating the behavior of volatiles belonging to the C–O–H–S system in silicate melts under magmatic conditions with the software D-Compress. _Computers & Geosciences_. [doi:10.1016/j.cageo.2015.03.002](https://doi.org/10.1016/j.cageo.2015.03.002) — {download}`PDF <papers/dcompress/Burgisser2015.pdf>` · {download}`Appendix B <papers/dcompress/Burgisser2015_Appendix_B.pdf>`
 
 ---
 
@@ -48,7 +48,7 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 **Citation:**
 
-- Ding, S., Plank, T., Wallace, P. J. & Rasmussen, D. J. (2023). Sulfur_X: A model of sulfur degassing during magma ascent. _Geochemistry, Geophysics, Geosystems_, 24. [doi:10.1029/2022GC010552](https://doi.org/10.1029/2022GC010552) — {download}`PDF <papers/sulfurx/Ding2023.pdf>`
+- Ding, S., Plank, T., Wallace, P. J. & Rasmussen, D. J. (2023). Sulfur_X: A model of sulfur degassing during magma ascent. _Geochemistry, Geophysics, Geosystems_, 24. [doi:10.1029/2022GC010552](https://doi.org/10.1029/2022GC010552) — {download}`PDF <papers/sulfurx/Ding2023.pdf>` · {download}`Supplement <papers/sulfurx/Ding2023_supplement.pdf>`
 
 ---
 
@@ -60,8 +60,8 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 **Citations:**
 
-- _Sulfur solubility framework underpinning VolFe._ Hughes, E. C., Saper, L. M., Liggins, P., O'Neill, H. S. C. & Stolper, E. M. (2023). The sulfur solubility minimum and maximum in silicate melt. _Journal of the Geological Society_, 180(3), jgs2021–125. [doi:10.1144/jgs2021-125](https://doi.org/10.1144/jgs2021-125) — {download}`PDF <papers/volfe/Hughes2023_jgs.pdf>`
-- _Effects of fO₂ and S on vapor-saturation pressure (accepted)._ Hughes, E. C., Liggins, P., Saper, L. & Stolper, E. M. (accepted). The effects of oxygen fugacity and sulfur on the pressure of vapor-saturation of magma. _American Mineralogist_. [doi:10.2138/am-2022-8739](https://doi.org/10.2138/am-2022-8739) — {download}`PDF <papers/volfe/Hughes_accepted_AmMin.pdf>`
+- _Sulfur solubility framework underpinning VolFe._ Hughes, E. C., Saper, L. M., Liggins, P., O'Neill, H. S. C. & Stolper, E. M. (2023). The sulfur solubility minimum and maximum in silicate melt. _Journal of the Geological Society_, 180(3), jgs2021–125. [doi:10.1144/jgs2021-125](https://doi.org/10.1144/jgs2021-125) — {download}`PDF <papers/volfe/Huges2023.pdf>`
+- _Effects of fO₂ and S on vapor-saturation pressure._ Hughes, E. C., Liggins, P., Saper, L. & Stolper, E. M. (2024). The effects of oxygen fugacity and sulfur on the pressure of vapor-saturation of magma. _American Mineralogist_. [doi:10.2138/am-2022-8739](https://doi.org/10.2138/am-2022-8739) — {download}`PDF <papers/volfe/Hughes2024.pdf>`
 
 ---
 
@@ -75,8 +75,8 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 **Citations:**
 
-- _Model description._ Iacovino, K., Matthews, S., Wieser, P. E., Moore, G. M. & Bégué, F. (2021). VESIcal Part I: An open-source thermodynamic model engine for mixed volatile (H₂O–CO₂) solubility in silicate melts. _Earth and Space Science_. [doi:10.1029/2020EA001584](https://doi.org/10.1029/2020EA001584) — {download}`PDF <papers/vesical/Iacovino2021_PartI.pdf>`
-- _Overview of solubility models and intercomparison._ Wieser, P. E., Iacovino, K., Matthews, S., Moore, G. & Allison, C. M. (2022). VESIcal Part II: A critical approach to volatile solubility modelling using an open-source Python3 engine. _Earth and Space Science_. [doi:10.1029/2021EA001932](https://doi.org/10.1029/2021EA001932) — {download}`PDF <papers/vesical/Wieser2022_PartII.pdf>`
+- _Model description._ Iacovino, K., Matthews, S., Wieser, P. E., Moore, G. M. & Bégué, F. (2021). VESIcal Part I: An open-source thermodynamic model engine for mixed volatile (H₂O–CO₂) solubility in silicate melts. _Earth and Space Science_. [doi:10.1029/2020EA001584](https://doi.org/10.1029/2020EA001584) — {download}`PDF <papers/vesical/Iacovino2021_PartI.pdf>` · {download}`Supplement <papers/vesical/Iacovino2021_PartI_Supplement.pdf>`
+- _Overview of solubility models and intercomparison._ Wieser, P. E., Iacovino, K., Matthews, S., Moore, G. & Allison, C. M. (2022). VESIcal Part II: A critical approach to volatile solubility modelling using an open-source Python3 engine. _Earth and Space Science_. [doi:10.1029/2021EA001932](https://doi.org/10.1029/2021EA001932) — {download}`PDF <papers/vesical/Wieser2022_PartII.pdf>` · {download}`Supplement <papers/vesical/Wieser2022_PartII_Supplement.pdf>`
 
 ---
 
