@@ -20,8 +20,9 @@ import glob
 import os
 import platform
 import shutil
+import subprocess
 from dataclasses import dataclass, field, fields, is_dataclass, replace, MISSING as dataclass_field_missing
-from typing import Any, Literal, Type, TypeVar
+from typing import Any, Literal, Optional, Type, TypeVar
 
 from volcatenate.log import logger
 
@@ -112,13 +113,72 @@ def _find_magec_solver() -> str:
     return ""
 
 
+def _sulfurx_candidates() -> list[str]:
+    """Return all directories on disk that look like a SulfurX install.
+
+    "Looks like" = contains an ``Iacono_Marziano_COH.py`` marker file.
+    Searches the same well-known locations as :func:`_find_sulfurx` but
+    returns every match instead of stopping at the first.  Used by both
+    :func:`_find_sulfurx` (to prefer a checkout at the tested version)
+    and :func:`prepare_sulfurx_tested` (to pick a source for the
+    worktree).  Does not consult the ``SULFURX_PATH`` env var — callers
+    handle that separately.
+    """
+    home = os.path.expanduser("~")
+    search_roots = [
+        os.path.join(home, "PythonGit", "Volatile_Models", "Sulfur*"),
+        os.path.join(home, "Sulfur*"),
+        os.path.join(home, "Documents", "Sulfur*"),
+        os.path.join(home, "Desktop", "Sulfur*"),
+    ]
+    found: list[str] = []
+    for pattern in search_roots:
+        for root in sorted(glob.glob(pattern), reverse=True):
+            marker = os.path.join(root, "Iacono_Marziano_COH.py")
+            if os.path.isfile(marker):
+                found.append(root)
+                continue
+            # Check one level deeper
+            matches = glob.glob(os.path.join(root, "*", "Iacono_Marziano_COH.py"))
+            for m in matches:
+                found.append(os.path.dirname(m))
+    return found
+
+
+def _git_head_sha(path: str) -> Optional[str]:
+    """Return the HEAD commit SHA of the git checkout at ``path``, or ``None``.
+
+    ``None`` means "not a git checkout" or "git invocation failed."
+
+    Works for both regular repos (``.git`` is a directory) and
+    worktrees (``.git`` is a file containing a ``gitdir:`` pointer).
+    The ``os.path.exists`` check skips non-git directories cheaply
+    before paying for the subprocess invocation.
+    """
+    if not os.path.exists(os.path.join(path, ".git")):
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "-C", path, "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        return result.stdout.strip() or None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
 def _find_sulfurx() -> str:
     """Try to locate the SulfurX installation directory automatically.
 
     Search order:
-      1. ``SULFURX_PATH`` environment variable
-      2. Directory containing ``Iacono_Marziano_COH.py`` under
-         common locations.
+      1. ``SULFURX_PATH`` environment variable.
+      2. Among directories containing ``Iacono_Marziano_COH.py`` under
+         common locations: prefer one whose git HEAD matches the
+         tested-version SHA in :data:`volcatenate.versions.KNOWN_SULFURX`.
+         This helps users with multiple SulfurX checkouts (e.g. one at
+         a feature branch and one at ``v.1.2``) without forcing them to
+         configure the path explicitly.
+      3. Otherwise the first checkout discovered (current behavior).
 
     Returns ``""`` if nothing is found.
     """
@@ -127,26 +187,160 @@ def _find_sulfurx() -> str:
     if env and os.path.isdir(env):
         return env
 
-    # 2. Search common locations
-    home = os.path.expanduser("~")
-    search_roots = [
-        os.path.join(home, "PythonGit", "Volatile_Models", "Sulfur*"),
-        os.path.join(home, "Sulfur*"),
-        os.path.join(home, "Documents", "Sulfur*"),
-        os.path.join(home, "Desktop", "Sulfur*"),
-    ]
+    candidates = _sulfurx_candidates()
+    if not candidates:
+        return ""
 
-    for pattern in search_roots:
-        for root in sorted(glob.glob(pattern), reverse=True):
-            marker = os.path.join(root, "Iacono_Marziano_COH.py")
-            if os.path.isfile(marker):
-                return root
-            # Check one level deeper
-            matches = glob.glob(os.path.join(root, "*", "Iacono_Marziano_COH.py"))
-            if matches:
-                return os.path.dirname(matches[0])
+    # 2. Prefer a candidate whose HEAD is the tested-version SHA.
+    from volcatenate.versions import KNOWN_SULFURX, TESTED_SULFURX_VERSION
+    tested_sha = next(
+        (sha for sha, tag in KNOWN_SULFURX.items()
+         if tag == TESTED_SULFURX_VERSION),
+        None,
+    )
+    if tested_sha:
+        for cand in candidates:
+            if _git_head_sha(cand) == tested_sha:
+                return cand
 
-    return ""
+    # 3. Fall back to the first candidate (legacy behavior).
+    return candidates[0]
+
+
+def _volcatenate_cache_dir() -> str:
+    """Return the volcatenate per-user cache directory, honoring XDG.
+
+    Used as the parent for worktrees materialized by
+    :func:`prepare_sulfurx_tested`.  Created on demand by callers.
+    """
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(base, "volcatenate")
+
+
+def prepare_sulfurx_tested(source_path: str = "") -> str:
+    """Return a path to a SulfurX checkout at ``TESTED_SULFURX_VERSION``.
+
+    The fast path: if ``source_path`` (or the auto-detected SulfurX
+    install) is already at the tested-version SHA, return it as-is —
+    no worktree is created.
+
+    The slow path (only when the configured / detected install is *not*
+    already at the tested version): materialize a clean ``git worktree``
+    at the tested-version tag under ``<cache>/sulfurx_<tag>/`` and
+    return that path.  The worktree is cached across runs (created once,
+    reused thereafter) so repeat invocations are cheap.
+
+    Parameters
+    ----------
+    source_path : str, optional
+        Path to an existing SulfurX checkout to use as the source for
+        the worktree.  If empty, auto-detected via :func:`_find_sulfurx`.
+
+    Returns
+    -------
+    str
+        Path to a SulfurX install at the tested version.
+
+    Raises
+    ------
+    FileNotFoundError
+        No SulfurX install was found and ``source_path`` was empty.
+    RuntimeError
+        ``source_path`` exists but lacks the git metadata (no ``.git/``
+        or the tested-version tag is not fetched) needed to materialize
+        a worktree.
+    """
+    from volcatenate.versions import KNOWN_SULFURX, TESTED_SULFURX_VERSION
+
+    src = source_path or _find_sulfurx()
+    if not src or not os.path.isdir(src):
+        raise FileNotFoundError(
+            "SulfurX install location not found. Either:\n"
+            "  • Clone it: git clone https://github.com/sdecho/Sulfur_X "
+            "~/PythonGit/Volatile_Models/Sulfur_X\n"
+            "  • Or set the SULFURX_PATH environment variable to your "
+            "existing checkout\n"
+            "  • Or set config.sulfurx.path explicitly"
+        )
+
+    tested_sha = next(
+        (sha for sha, tag in KNOWN_SULFURX.items()
+         if tag == TESTED_SULFURX_VERSION),
+        None,
+    )
+    if tested_sha is None:
+        raise RuntimeError(
+            f"TESTED_SULFURX_VERSION={TESTED_SULFURX_VERSION!r} has no "
+            f"matching SHA in KNOWN_SULFURX (volcatenate.versions); "
+            f"versions.py is internally inconsistent."
+        )
+
+    # Fast path: source already at the tested version → use directly.
+    if _git_head_sha(src) == tested_sha:
+        return src
+
+    # Slow path: need a worktree.  Source must have .git and the tag.
+    if not os.path.exists(os.path.join(src, ".git")):
+        raise RuntimeError(
+            f"SulfurX source at {src!r} has no .git/ directory, so a "
+            f"{TESTED_SULFURX_VERSION} worktree cannot be materialized. "
+            f"Re-install via 'git clone https://github.com/sdecho/Sulfur_X' "
+            f"to enable tested-version mode, or set "
+            f"config.sulfurx.use_tested_version=False to use this install "
+            f"as-is."
+        )
+
+    tag_check = subprocess.run(
+        ["git", "-C", src, "rev-parse", "--verify", TESTED_SULFURX_VERSION],
+        capture_output=True, text=True,
+    )
+    if tag_check.returncode != 0:
+        raise RuntimeError(
+            f"SulfurX checkout at {src!r} is missing tag "
+            f"{TESTED_SULFURX_VERSION!r}. Fix with: "
+            f"git -C {src} fetch --tags  (then re-run)."
+        )
+    actual_tag_sha = tag_check.stdout.strip()
+    if actual_tag_sha != tested_sha:
+        raise RuntimeError(
+            f"Tag {TESTED_SULFURX_VERSION!r} in your SulfurX checkout "
+            f"resolves to {actual_tag_sha}, but KNOWN_SULFURX expects "
+            f"{tested_sha}. Did upstream force-push the tag? Update "
+            f"volcatenate.versions.KNOWN_SULFURX if intentional."
+        )
+
+    # Materialize / reuse the worktree under the volcatenate cache dir.
+    cache_dir = _volcatenate_cache_dir()
+    os.makedirs(cache_dir, exist_ok=True)
+    worktree = os.path.join(cache_dir, f"sulfurx_{TESTED_SULFURX_VERSION}")
+
+    # If a worktree already exists at the right SHA, reuse it.
+    if os.path.isdir(worktree) and _git_head_sha(worktree) == tested_sha:
+        return worktree
+
+    # If a stale directory (or wrong-SHA worktree) is in the way, clear
+    # it so `git worktree add` can succeed.
+    if os.path.exists(worktree):
+        # Try graceful removal first; fall back to forced rmtree.
+        subprocess.run(
+            ["git", "-C", src, "worktree", "remove", "--force", worktree],
+            capture_output=True, text=True,
+        )
+        if os.path.exists(worktree):
+            import shutil
+            shutil.rmtree(worktree, ignore_errors=True)
+
+    add = subprocess.run(
+        ["git", "-C", src, "worktree", "add", "--detach",
+         worktree, TESTED_SULFURX_VERSION],
+        capture_output=True, text=True,
+    )
+    if add.returncode != 0:
+        raise RuntimeError(
+            f"`git worktree add` failed for {TESTED_SULFURX_VERSION!r} "
+            f"at source {src!r}: {add.stderr.strip()}"
+        )
+    return worktree
 
 
 @dataclass
@@ -599,6 +793,7 @@ class SulfurXConfig:
     """
 
     path: str = field(default_factory=_find_sulfurx)
+    use_tested_version: bool = True   # default True and `path` is ignored: auto-detect a SulfurX install and (worktree if needed) run against TESTED_SULFURX_VERSION. Set False to use the install at `path` (auto-detected if empty) as-is.
     coh_model: int = 0                # 0 = Iacono-Marziano, 1 = VolatileCalc
     slope_h2o: float = -0.3396        # K2O-H2O relationship: K2O = a * H2O + b
     constant_h2o: float = 2.7

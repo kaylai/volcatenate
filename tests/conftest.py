@@ -90,6 +90,15 @@ def sulfurx_tested_path(tmp_path_factory):
             "skipping tested-version SulfurX tests"
         )
 
+    if not os.path.isdir(os.path.join(src, ".git")):
+        pytest.skip(
+            f"SulfurX install at {src} has no .git/ directory (probably "
+            f"a zip download). The test fixture needs git history to "
+            f"materialize a worktree at {TESTED_SULFURX_VERSION!r}. "
+            f"Re-install via `git clone https://github.com/sdecho/Sulfur_X` "
+            f"to enable SulfurX-touching tests."
+        )
+
     tag_check = subprocess.run(
         ["git", "-C", src, "rev-parse", "--verify", TESTED_SULFURX_VERSION],
         capture_output=True, text=True,

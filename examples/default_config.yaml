@@ -151,7 +151,8 @@ sulfurx:
   # omitted here.
   #
   # Path is auto-detected. Set here to override, or use env var SULFURX_PATH.
-  path: ""  # Path to SulfurX installation (auto-detected)
+  path: ""  # Path to SulfurX installation (auto-detected). Ignored when use_tested_version=true.
+  use_tested_version: true  # default true and `path` ignored; set to false to use install at `path` (if empty, fall back to auto detect)
   coh_model: 0  # 0 = Iacono-Marziano, 1 = VolatileCalc
   slope_h2o: -0.3396  # K2O-H2O relationship slope: K2O = a*H2O + b
   constant_h2o: 2.7  # K2O-H2O relationship intercept

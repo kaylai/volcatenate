@@ -102,6 +102,17 @@ pytest tests/
 
 The fixture handles the worktree from there.
 
+## Production runs also use a tested-version worktree
+
+The wrapper's runtime behavior mirrors this fixture by default. With `config.sulfurx.use_tested_version: true` (the YAML default), `Backend.calculate_degassing` calls `volcatenate.config.prepare_sulfurx_tested()` which:
+
+- Auto-detects the user's SulfurX install.
+- If its HEAD is already at the tested-version SHA, returns the install path directly (no worktree).
+- Otherwise materializes one worktree at `~/.cache/volcatenate/sulfurx_<version>/` (or `$XDG_CACHE_HOME/volcatenate/...`), reused across runs.
+- Falls back to the user's install with a clear WARNING if the install lacks `.git/` (zip download) or the tag is not fetched.
+
+Power users can set `use_tested_version: false` in their YAML / Python config to bypass all of this and use whatever install `path` points at.
+
 ## What about MAGEC, EVo, VolFe?
 
 - **MAGEC** is distributed as supplementary material to Sun & Yao (2024) EPSL — it is not a git repo, so version detection happens via SHA256 of the compiled `.p` solver file. The single tested version is recorded in `TESTED_MAGEC` in `versions.py`. Test gating happens via per-test `pytest.skip` when the path or MATLAB binary is unavailable; there is no worktree-style fixture because there is no upstream git repo to check a tag out of.

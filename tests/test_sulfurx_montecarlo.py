@@ -42,10 +42,17 @@ def _basalt_sample(name: str) -> MeltComposition:
 
 def _smoke_config(tmp_path, sulfurx_path: str, *,
                   monte_carlo: int, n_iter: int) -> RunConfig:
-    """Tiny config: 10 steps, 4 MC iterations → runs in a few seconds."""
+    """Tiny config: 10 steps, 4 MC iterations → runs in a few seconds.
+
+    Sets ``use_tested_version=False`` so the wrapper honors the
+    fixture's worktree path instead of materializing its own.  The
+    fixture is the source of truth for the tested-version source in
+    these tests.
+    """
     config = RunConfig()
     config.output_dir = str(tmp_path)
     config.sulfurx.path = sulfurx_path
+    config.sulfurx.use_tested_version = False
     config.sulfurx.n_steps = 10
     config.sulfurx.monte_carlo = monte_carlo
     config.sulfurx.monte_carlo_n_iter = n_iter

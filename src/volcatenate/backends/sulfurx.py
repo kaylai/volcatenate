@@ -807,17 +807,84 @@ class Backend(ModelBackend):
         return True  # Always register; will fail with clear error if path is wrong
 
     def _ensure_on_path(self, config: RunConfig) -> None:
-        """Add SulfurX to sys.path if not already present."""
-        sx_path = config.sulfurx.path
-        if not sx_path:
-            raise FileNotFoundError(
-                "SulfurX path not configured. "
-                "Set config.sulfurx.path to the SulfurX source directory."
-            )
-        if not os.path.isdir(sx_path):
-            raise FileNotFoundError(
-                f"SulfurX directory not found at '{sx_path}'."
-            )
+        """Add SulfurX to sys.path if not already present.
+
+        When ``config.sulfurx.use_tested_version`` is ``True`` (the
+        default), the configured ``path`` is ignored: the wrapper
+        auto-detects a SulfurX install and resolves it to a checkout
+        at ``TESTED_SULFURX_VERSION`` (creating a ``git worktree``
+        under ``~/.cache/volcatenate/`` only when the auto-detected
+        install is not already at the tested version).  If that
+        resolution fails (no install found, no ``.git/``, tag not
+        fetched), the wrapper logs a clear actionable warning and
+        falls back to the configured / auto-detected path as-is so
+        the run can proceed.
+
+        When ``use_tested_version`` is ``False``, the configured
+        ``path`` is used (auto-detected if empty) without any version
+        enforcement.
+        """
+        from volcatenate.config import (
+            _find_sulfurx, prepare_sulfurx_tested,
+        )
+
+        if config.sulfurx.use_tested_version:
+            # Per the documented contract, `path` is ignored in
+            # tested-version mode — pass empty so prepare_sulfurx_tested
+            # auto-detects via _find_sulfurx().
+            try:
+                sx_path = prepare_sulfurx_tested(source_path="")
+            except FileNotFoundError:
+                # No SulfurX install found at all — nothing to fall back to.
+                raise FileNotFoundError(
+                    "SulfurX install location not found. Either:\n"
+                    "  • Clone it: git clone "
+                    "https://github.com/sdecho/Sulfur_X "
+                    "~/PythonGit/Volatile_Models/Sulfur_X\n"
+                    "  • Or set the SULFURX_PATH environment variable to "
+                    "your existing checkout\n"
+                    "  • Or set config.sulfurx.path explicitly and "
+                    "config.sulfurx.use_tested_version=False"
+                )
+            except RuntimeError as exc:
+                # Install exists but tested-version mode can't materialize
+                # it (no .git/, tag missing, etc.).  Fall back gracefully.
+                fallback = config.sulfurx.path or _find_sulfurx()
+                logger.warning(
+                    "[SulfurX] Could not use tested version "
+                    "(%s) — falling back to %s. Reason: %s",
+                    "TESTED_SULFURX_VERSION", fallback or "(none found)",
+                    str(exc).splitlines()[0],
+                )
+                if not fallback or not os.path.isdir(fallback):
+                    raise FileNotFoundError(
+                        "SulfurX install location not found. Either:\n"
+                        "  • Clone it: git clone "
+                        "https://github.com/sdecho/Sulfur_X "
+                        "~/PythonGit/Volatile_Models/Sulfur_X\n"
+                        "  • Or set the SULFURX_PATH environment variable\n"
+                        "  • Or set config.sulfurx.path explicitly"
+                    )
+                sx_path = fallback
+        else:
+            sx_path = config.sulfurx.path or _find_sulfurx()
+            if not sx_path:
+                raise FileNotFoundError(
+                    "SulfurX install location not found. Either:\n"
+                    "  • Clone it: git clone "
+                    "https://github.com/sdecho/Sulfur_X "
+                    "~/PythonGit/Volatile_Models/Sulfur_X\n"
+                    "  • Or set the SULFURX_PATH environment variable\n"
+                    "  • Or set config.sulfurx.path to your existing "
+                    "checkout"
+                )
+            if not os.path.isdir(sx_path):
+                raise FileNotFoundError(
+                    f"SulfurX install location {sx_path!r} does not exist. "
+                    f"Set config.sulfurx.path to a valid checkout, or set "
+                    f"config.sulfurx.use_tested_version=True to auto-detect."
+                )
+
         if sx_path not in sys.path:
             sys.path.insert(0, sx_path)
             self._log_version(sx_path)
@@ -827,11 +894,16 @@ class Backend(ModelBackend):
         """Log the detected SulfurX version; advisory warnings for dirty/unknown/untested."""
         from volcatenate.versions import backend_version_info
 
+        from volcatenate.versions import TESTED_SULFURX_VERSION
+
         info = backend_version_info("sulfurx", path=sx_path)
         if info["status"] == "no_version_info":
             logger.warning(
-                "[SulfurX] Source at %s is not a git checkout — "
-                "version cannot be identified.", sx_path,
+                "[SulfurX] Source at %s has no git metadata — version "
+                "cannot be verified. To enable version checks, re-install "
+                "via 'git clone https://github.com/sdecho/Sulfur_X' and "
+                "'git fetch --tags'. Proceeding anyway.",
+                sx_path,
             )
             return
 
@@ -849,13 +921,22 @@ class Backend(ModelBackend):
         if info["tag"] is None:
             logger.warning(
                 "[SulfurX] Commit %s does not match any known release tag. "
-                "Results produced with this version have not been validated "
-                "against volcatenate's SulfurX wrapper.", info["id"],
+                "volcatenate is validated against SulfurX %s; results from "
+                "this commit have not been validated against the wrapper. "
+                "To use the tested version: cd %s && git fetch --tags && "
+                "git checkout %s  (or set "
+                "config.sulfurx.use_tested_version=True to auto-create a "
+                "worktree at the tested version).",
+                info["id"], TESTED_SULFURX_VERSION, sx_path,
+                TESTED_SULFURX_VERSION,
             )
         elif not info["tested"]:
             logger.warning(
                 "[SulfurX] %s has not been validated against volcatenate's "
-                "SulfurX wrapper. Proceeding anyway.", tag,
+                "SulfurX wrapper. volcatenate is validated against %s. "
+                "To switch: cd %s && git checkout %s  (or set "
+                "config.sulfurx.use_tested_version=True).",
+                tag, TESTED_SULFURX_VERSION, sx_path, TESTED_SULFURX_VERSION,
             )
 
     # ----------------------------------------------------------------
