@@ -640,7 +640,7 @@ How EVo's initial fO2 is set at the top of the degassing run. Default `auto`. Al
 
 #### EVo's internal representation of fO2
 
-EVo represents fO2 internally as `sys.FO2 = ln(absolute fO2 in bar)` — natural log, not log10 (atypical compared to most petrological conventions; see [`backends/evo.py` and `EVo/conversions.py` notes](#evo-fo2-source-internal-representation-followup)). EVo also tracks `sys.FO2_buffer` (the offset relative to a chosen reference buffer — FMQ, NNO, or IW) for reporting. Volcatenate's standardized output reports `logfO2` (= log10 of absolute fO2) and `dFMQ` columns; both are derived from those internal quantities.
+EVo represents fO2 internally as `sys.FO2 = ln(absolute fO2 in bar)` — natural log, not log10. EVo also tracks `sys.FO2_buffer` (the offset relative to a chosen reference buffer — FMQ, NNO, or IW) for reporting. Volcatenate's standardized output reports `logfO2` (= log10 of absolute fO2) and `dFMQ` columns; both are derived from those internal quantities.
 
 Whatever sample field you use to initialize the run, EVo converts it to that internal `sys.FO2` (= ln fO2 in bar) via one of three equations. The equation used in each path is itself selected by other YAML keys (`evo.fo2_model`, `evo.fmq_model`); the user controls both the input pathway (via `fo2_source`) and the conversion equation (via `fo2_model` / `fmq_model`):
 
@@ -686,8 +686,6 @@ The choice of `fo2_source` directly determines the initial values of the `logfO2
 #### Which other EVo YAML keys interact with this one
 
 `evo.fo2_source` is the dispatch switch for redox initialization, and several other EVo keys are read or ignored conditional on its value (`evo.fo2_buffer`, `evo.fo2_set`/`fo2_start`, `evo.fo2_model`, `evo.fmq_model`, the `evo.fh*_set` fields). For the complete map of which keys are read in which mode and which are ignored, see [fO2-related YAML keys: precedence and which keys are ignored when others are set](#fo2-related-yaml-keys-precedence-and-which-keys-are-ignored-when-others-are-set) in the universal Redox section above.
-
-(`<a id="evo-fo2-source-internal-representation-followup"></a>`**Follow-up note:** EVo's choice of `ln(fO2)` (natural log) for its internal representation is unusual — most of the petrological literature uses `log10(fO2)`. This is purely an internal storage choice; volcatenate's reported `logfO2` column is in `log10` and matches the literature convention. Worth confirming with the EVo authors that this is intentional rather than a typo we should flag upstream.)
 
 ### Wrapper-managed values not in the YAML — EVo
 
