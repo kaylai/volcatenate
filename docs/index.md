@@ -50,6 +50,13 @@ examples/full_config
 
 ```{toctree}
 :maxdepth: 2
+:caption: Gallery
+
+gallery/index
+```
+
+```{toctree}
+:maxdepth: 2
 :caption: Reference
 
 api/index
