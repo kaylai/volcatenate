@@ -1,6 +1,7 @@
 """Session-level pytest fixtures shared across the test suite."""
 from __future__ import annotations
 
+import importlib.metadata as _md
 import os
 import subprocess
 import sys
@@ -9,6 +10,47 @@ import pytest
 
 from volcatenate.config import _find_sulfurx
 from volcatenate.versions import KNOWN_SULFURX, TESTED_SULFURX_VERSION
+
+
+def pytest_report_header(config) -> list[str]:
+    """Print volcatenate + every backend's version at the top of the
+    pytest session header (under "platform / rootdir / configfile").
+
+    Reuses the same version-detection pipeline that ``run_bundle`` uses
+    (``volcatenate.versions.all_backend_versions`` for the manually
+    tracked non-pip backends like SulfurX and MAGEC, plus
+    ``importlib.metadata.version`` for the pip-installable ones).
+    """
+    from volcatenate import __version__ as vc_version
+    from volcatenate.versions import all_backend_versions
+
+    lines = [f"volcatenate: {vc_version}"]
+
+    # SulfurX and MAGEC: live at user-configured paths, version detected
+    # via git SHA / file hash. Same dict shape run_bundle records.
+    for name, info in all_backend_versions().items():
+        if info.get("status") == "installed":
+            tag = info.get("tag") or "unknown"
+            ident = info.get("id") or "?"
+            dirty = ", DIRTY" if info.get("dirty") else ""
+            tested = " [TESTED]" if info.get("tested") else ""
+            lines.append(f"  {name}: {tag} ({ident}{dirty}){tested}")
+        else:
+            lines.append(f"  {name}: {info.get('status', 'unknown')}")
+
+    # Pip-installable backends: distribution name → display name.
+    pip_backends = [
+        ("VolFe", "volfe"),
+        ("VESIcal", "vesical"),
+        ("EVo", "evo"),
+    ]
+    for display, dist in pip_backends:
+        try:
+            lines.append(f"  {display}: {_md.version(dist)}")
+        except _md.PackageNotFoundError:
+            lines.append(f"  {display}: not installed")
+
+    return lines
 
 
 def _purge_sulfurx_modules(prefix: str | None = None) -> None:

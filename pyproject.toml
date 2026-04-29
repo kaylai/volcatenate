@@ -28,6 +28,19 @@ volcatenate = "volcatenate.cli:main"
 markers = [
     "integration: requires external library (EVo, VolFe, VESIcal, SulfurX, or MAGEC)",
 ]
+filterwarnings = [
+    # SulfurX's residual functions handed to scipy.optimize.root probe
+    # infeasible regions (negative pressures, zero mole fractions) during
+    # iteration — numpy emits RuntimeWarnings ("invalid value in scalar
+    # power", "invalid value in log") for the NaN intermediates.  The
+    # solver discards them and converges to a valid answer; the wrapper's
+    # own NaN guard at backends/sulfurx.py catches the rare case where
+    # NaN survives convergence.  Suppress just these two known-noisy
+    # SulfurX modules so the pytest summary stays useful for surfacing
+    # warnings from our own code or other backends.
+    "ignore::RuntimeWarning:Iacono_Marziano_COH",
+    "ignore::RuntimeWarning:sulfur_fO2_degassing_test",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
