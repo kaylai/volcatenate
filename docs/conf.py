@@ -99,7 +99,7 @@ source_suffix = {
     ".md": "markdown",
 }
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "**/.ipynb_checkpoints"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "**/README.md", "**/.ipynb_checkpoints"]
 
 # -- HTML output -------------------------------------------------------------
 

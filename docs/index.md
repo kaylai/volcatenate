@@ -38,6 +38,7 @@ sample_data
 configuration
 run_bundles
 config_options
+references
 ```
 
 ```{toctree}
