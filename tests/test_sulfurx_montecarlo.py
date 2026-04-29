@@ -1,11 +1,11 @@
 """Monte Carlo behavior tests for the SulfurX backend.
 
-Tests run against the SulfurX version pinned in
-``volcatenate.versions.TESTED_SULFURX_VERSION`` via the
-``sulfurx_pinned_path`` session fixture in ``tests/conftest.py`` —
+Tests run against the SulfurX version recorded in
+``volcatenate.versions.TESTED_SULFURX_VERSION``, materialized via the
+``sulfurx_tested_path`` session fixture in ``tests/conftest.py`` —
 NOT against whatever the developer's local SulfurX checkout has
 progressed to. Skips cleanly if SulfurX is not installed locally or if
-the pinned tag is missing from the local checkout.
+the tested-version tag is missing from the local checkout.
 
 - File-shape contract: when ``monte_carlo=1`` the wrapper writes
   ``<sample>_montecarlo_S.csv`` and ``_CS.csv`` with the expected columns.
@@ -52,12 +52,12 @@ def _smoke_config(tmp_path, sulfurx_path: str, *,
     return config
 
 
-def test_monte_carlo_writes_expected_csvs(tmp_path, sulfurx_pinned_path):
+def test_monte_carlo_writes_expected_csvs(tmp_path, sulfurx_tested_path):
     """File-shape contract: monte_carlo=1 produces both summary CSVs
     with columns ``pressure, 0, 1, ..., N-1, mean, std, variance``.
     """
     comp = _basalt_sample("MC_Smoke")
-    config = _smoke_config(tmp_path, sulfurx_pinned_path,
+    config = _smoke_config(tmp_path, sulfurx_tested_path,
                            monte_carlo=1, n_iter=4)
 
     Backend().calculate_degassing(comp, config)
@@ -74,10 +74,10 @@ def test_monte_carlo_writes_expected_csvs(tmp_path, sulfurx_pinned_path):
     )
 
 
-def test_monte_carlo_off_writes_no_csvs(tmp_path, sulfurx_pinned_path):
+def test_monte_carlo_off_writes_no_csvs(tmp_path, sulfurx_tested_path):
     """Silent-when-off contract: monte_carlo=0 produces no MC files."""
     comp = _basalt_sample("MC_Off")
-    config = _smoke_config(tmp_path, sulfurx_pinned_path,
+    config = _smoke_config(tmp_path, sulfurx_tested_path,
                            monte_carlo=0, n_iter=0)
 
     Backend().calculate_degassing(comp, config)
@@ -88,7 +88,7 @@ def test_monte_carlo_off_writes_no_csvs(tmp_path, sulfurx_pinned_path):
     assert not cs_csv.exists(), f"{cs_csv} should not exist when monte_carlo=0"
 
 
-def test_monte_carlo_iterations_actually_differ(tmp_path, sulfurx_pinned_path):
+def test_monte_carlo_iterations_actually_differ(tmp_path, sulfurx_tested_path):
     """Failure-mode check: per-iteration columns must differ.
 
     If monte_c were silently wired to 0, every iteration would hit the
@@ -97,7 +97,7 @@ def test_monte_carlo_iterations_actually_differ(tmp_path, sulfurx_pinned_path):
     without claiming anything about the magnitude of the variation.
     """
     comp = _basalt_sample("MC_Diff")
-    config = _smoke_config(tmp_path, sulfurx_pinned_path,
+    config = _smoke_config(tmp_path, sulfurx_tested_path,
                            monte_carlo=1, n_iter=4)
 
     Backend().calculate_degassing(comp, config)
@@ -112,7 +112,7 @@ def test_monte_carlo_iterations_actually_differ(tmp_path, sulfurx_pinned_path):
 
 
 def test_monte_carlo_does_not_pollute_deterministic_output(
-    tmp_path, sulfurx_pinned_path,
+    tmp_path, sulfurx_tested_path,
 ):
     """Failure-mode check: enabling MC must not change ``df_results``.
 
@@ -126,12 +126,12 @@ def test_monte_carlo_does_not_pollute_deterministic_output(
 
     df_off = Backend().calculate_degassing(
         comp_off,
-        _smoke_config(tmp_path, sulfurx_pinned_path,
+        _smoke_config(tmp_path, sulfurx_tested_path,
                       monte_carlo=0, n_iter=0),
     )
     df_on = Backend().calculate_degassing(
         comp_on,
-        _smoke_config(tmp_path, sulfurx_pinned_path,
+        _smoke_config(tmp_path, sulfurx_tested_path,
                       monte_carlo=1, n_iter=4),
     )
 

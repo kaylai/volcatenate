@@ -9,11 +9,11 @@ pytest tests/ -m '...'  # specific markers (none defined yet)
 
 The full suite takes ~100s on a developer laptop. Most of that is real backend invocations (SulfurX, MAGEC, EVo) at deliberately tiny problem sizes; the rest is sub-second config / converter / unit work.
 
-## Backend version pinning
+## Test-suite SulfurX version
 
-volcatenate wraps several volcanic-degassing models that are not pip-installable — they live as plain git checkouts (SulfurX) or supplementary-material files (MAGEC) at user-configured paths. To keep test results reproducible across developer machines and CI, the test suite **pins SulfurX to a specific tagged release** rather than running against whatever the developer's local checkout happens to point at.
+volcatenate wraps several volcanic-degassing models that are not pip-installable — they live as plain git checkouts (SulfurX) or supplementary-material files (MAGEC) at user-configured paths. To keep test results reproducible across developer machines and CI, the test suite **always runs SulfurX-touching tests against a specific tagged release** (currently `v.1.2`) rather than against whatever the developer's local checkout happens to point at.
 
-### How the pin works
+### How the fixture works
 
 The single source of truth is in [`src/volcatenate/versions.py`](../src/volcatenate/versions.py):
 
@@ -26,14 +26,14 @@ KNOWN_SULFURX: dict[str, str] = {
 }
 ```
 
-The session-scoped `sulfurx_pinned_path` fixture in [`tests/conftest.py`](conftest.py) does the following at the start of each pytest session:
+The session-scoped `sulfurx_tested_path` fixture in [`tests/conftest.py`](conftest.py) does the following at the start of each pytest session:
 
 1. Locate the developer's existing SulfurX checkout via `SULFURX_PATH` env var or `_find_sulfurx()` auto-discovery.
 2. Verify `TESTED_SULFURX_VERSION` resolves to a known tag in that checkout.
 3. Assert the SHA the local tag points to matches the SHA recorded in `KNOWN_SULFURX` — catches the (rare) case where upstream force-pushes a tag.
-4. `git worktree add --detach <tmp> <tag>` to materialize the pinned source in a temp directory.
-5. Purge cached SulfurX modules from `sys.modules` and any stale SulfurX entries from `sys.path` so re-imports come from the pinned worktree.
-6. Yield the worktree path; tests set `cfg.sulfurx.path = sulfurx_pinned_path`.
+4. `git worktree add --detach <tmp> <tag>` to materialize the tested-version source in a temp directory.
+5. Purge cached SulfurX modules from `sys.modules` and any stale SulfurX entries from `sys.path` so re-imports come from the tested-version worktree.
+6. Yield the worktree path; tests set `cfg.sulfurx.path = sulfurx_tested_path`.
 7. On teardown: restore `sys.path`, purge again, remove the worktree.
 
 The worktree creation is sub-second on local SSDs.
@@ -41,14 +41,14 @@ The worktree creation is sub-second on local SSDs.
 Tests that touch SulfurX (e.g. [`test_sulfurx_montecarlo.py`](test_sulfurx_montecarlo.py)) consume the fixture as a regular pytest argument:
 
 ```python
-def test_monte_carlo_writes_expected_csvs(tmp_path, sulfurx_pinned_path):
-    config.sulfurx.path = sulfurx_pinned_path  # pinned, not auto-discovered
+def test_monte_carlo_writes_expected_csvs(tmp_path, sulfurx_tested_path):
+    config.sulfurx.path = sulfurx_tested_path  # tested version, not auto-discovered
     ...
 ```
 
 Pure config-shape tests that don't actually run SulfurX (e.g. [`test_sulfurx_config.py`](test_sulfurx_config.py)) don't need the fixture and run regardless of whether SulfurX is installed.
 
-### Why pin?
+### Why a fixed tested version?
 
 - **Reproducibility.** Every developer and CI runner sees byte-identical SulfurX source for any given volcatenate commit. No "works on my machine" because of an upstream rebase.
 - **Wrapper-not-fork philosophy.** We don't vendor SulfurX into this repo. We don't publish it to PyPI on volcatenate's behalf. We just point tests at a tagged release.
@@ -68,7 +68,7 @@ If SulfurX lives somewhere else, set `SULFURX_PATH=/your/path/to/Sulfur_X` in yo
 
 If a SulfurX-touching test skips with `"missing tag 'v.1.2'"`, run `git -C $SULFURX_PATH fetch --tags` and re-run the test.
 
-### Updating the pin to a new SulfurX release
+### Updating to a new tested SulfurX release
 
 When SulfurX cuts a new release that we want to validate against (let's say `v.1.3`):
 
@@ -80,14 +80,14 @@ When SulfurX cuts a new release that we want to validate against (let's say `v.1
 
 ### Skip behavior
 
-The `sulfurx_pinned_path` fixture **skips** (does not fail) when:
+The `sulfurx_tested_path` fixture **skips** (does not fail) when:
 
 - SulfurX is not found via `SULFURX_PATH` or auto-discovery.
-- The pinned tag is not present in the local checkout (developer hasn't run `git fetch --tags`).
+- The tested-version tag is not present in the local checkout (developer hasn't run `git fetch --tags`).
 
 It **fails loudly** when:
 
-- The pinned tag's SHA in the local checkout does not match the SHA recorded in `KNOWN_SULFURX` (upstream force-pushed the tag, or `versions.py` is wrong).
+- The tested-version tag's SHA in the local checkout does not match the SHA recorded in `KNOWN_SULFURX` (upstream force-pushed the tag, or `versions.py` is wrong).
 - `git worktree add` fails for any other reason.
 
 ### CI
@@ -104,8 +104,8 @@ The fixture handles the worktree from there.
 
 ## What about MAGEC, EVo, VolFe?
 
-- **MAGEC** is distributed as supplementary material to Sun & Yao (2024) EPSL — it is not a git repo, so version detection happens via SHA256 of the compiled `.p` solver file. The single tested version is recorded in `TESTED_MAGEC` in `versions.py`. Test gating happens via per-test `pytest.skip` when the path or MATLAB binary is unavailable; there is no worktree-style pinning because there is no upstream git repo to pin against.
-- **EVo** is a `pip install -e`-able Python package — version pinning happens via `pyproject.toml` extras, not via a fixture.
+- **MAGEC** is distributed as supplementary material to Sun & Yao (2024) EPSL — it is not a git repo, so version detection happens via SHA256 of the compiled `.p` solver file. The single tested version is recorded in `TESTED_MAGEC` in `versions.py`. Test gating happens via per-test `pytest.skip` when the path or MATLAB binary is unavailable; there is no worktree-style fixture because there is no upstream git repo to check a tag out of.
+- **EVo** is a `pip install -e`-able Python package — version selection happens via `pyproject.toml` extras, not via a fixture.
 - **VolFe** likewise.
 
-If a SulfurX-style git-pinning fixture later becomes useful for one of these, the pattern in `tests/conftest.py` generalizes — extract the SulfurX-specific bits into a `_pin_git_backend(repo_path, tag, expected_sha, modules_to_purge)` helper and reuse it.
+If a SulfurX-style worktree fixture later becomes useful for one of these, the pattern in `tests/conftest.py` generalizes — extract the SulfurX-specific bits into a `_use_tested_git_backend(repo_path, tag, expected_sha, modules_to_purge)` helper and reuse it.

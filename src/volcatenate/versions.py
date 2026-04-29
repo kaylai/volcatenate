@@ -69,7 +69,7 @@ KNOWN_SULFURX: dict[str, str] = {
     "df38e6f550e3891c220411285a13299e7f81f09c": "v.1.0",
 }
 
-# Single source of truth for the SulfurX version the test suite pins to.
+# Single source of truth for the SulfurX version the test suite always uses.
 # `tests/conftest.py` imports this and creates a `git worktree` of the
 # corresponding tag on every test session, so SulfurX-touching tests run
 # against byte-identical source regardless of the developer's HEAD.

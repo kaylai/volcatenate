@@ -18,7 +18,7 @@ def _purge_sulfurx_modules(prefix: str | None = None) -> None:
     module like ``oxygen_fugacity`` is in ``sys.modules`` it will be reused
     even if ``sys.path`` later points at a different SulfurX checkout.
     Without this purge, swapping the configured ``cfg.sulfurx.path`` to a
-    pinned worktree would have no effect inside the same pytest session.
+    tested-version worktree would have no effect inside the same pytest session.
 
     If ``prefix`` is given, only modules whose ``__file__`` starts with that
     prefix are purged; otherwise every module that looks like a SulfurX
@@ -59,35 +59,35 @@ def _strip_sulfurx_paths_from_sys_path() -> list[str]:
 
 
 @pytest.fixture(scope="session")
-def sulfurx_pinned_path(tmp_path_factory):
-    """Yield a path to a clean SulfurX checkout pinned at ``TESTED_SULFURX_VERSION``.
+def sulfurx_tested_path(tmp_path_factory):
+    """Yield a path to a clean SulfurX checkout at ``TESTED_SULFURX_VERSION``.
 
     Uses ``git worktree add`` from the developer's existing SulfurX repo
     (auto-discovered via :func:`volcatenate.config._find_sulfurx` or
     overridden by the ``SULFURX_PATH`` environment variable). The worktree
-    is detached at the pinned tag so SulfurX-touching tests run against
+    is detached at the tested-version tag so SulfurX-touching tests run against
     byte-identical source regardless of what the parent checkout has
     progressed to.
 
-    Skips cleanly if SulfurX is not installed locally or if the pinned
-    tag is not in the local checkout (run ``git -C $SULFURX_PATH fetch
-    --tags`` to fix the latter).
+    Skips cleanly if SulfurX is not installed locally or if
+    ``TESTED_SULFURX_VERSION`` is not in the local checkout (run
+    ``git -C $SULFURX_PATH fetch --tags`` to fix the latter).
 
     Asserts that the SHA the local tag points to matches the SHA recorded
     in :data:`volcatenate.versions.KNOWN_SULFURX` — this catches the rare
     but real case where upstream force-pushes a tag and silently changes
-    what ``v.1.2`` (or whichever tag is pinned) means.
+    what ``v.1.2`` (or whichever tag is currently set as ``TESTED_SULFURX_VERSION``) means.
 
     Also purges any cached SulfurX modules from ``sys.modules`` and any
     SulfurX-shaped entries from ``sys.path`` at setup and teardown, so
-    re-imports inside the pinned worktree are not shadowed by an earlier
+    re-imports inside the tested-version worktree are not shadowed by an earlier
     bare-checkout import in the same session.
     """
     src = os.environ.get("SULFURX_PATH") or _find_sulfurx()
     if not src or not os.path.isdir(src):
         pytest.skip(
             "SulfurX not found via SULFURX_PATH or auto-discovery — "
-            "skipping pinned-version SulfurX tests"
+            "skipping tested-version SulfurX tests"
         )
 
     tag_check = subprocess.run(
