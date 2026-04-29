@@ -11,6 +11,9 @@ The doc is organized in two layers:
   3. [EVo](#evo)
   4. [MAGEC](#magec)
   5. [SulfurX](#sulfurx)
+- **Cross-backend syntheses** at the end:
+  - [Worked examples — fO2 initialization](#worked-examples-fo2-initialization) — five common scenarios showing how each backend handles redox initialization side-by-side.
+  - [Sulfur deep-dive](#sulfur-deep-dive-cross-backend-model-choices) — cross-backend mapping of S²⁻ / S⁶⁺ solubility, S6+/ST speciation, SCSS, SCAS, and saturation enforcement; ends with a recipe for running all four backends with the O'Neill family.
 
 Each per-backend section has the same structure:
 
@@ -1120,6 +1123,143 @@ sulfurx: {}            # no equivalent
 | VolFe, MAGEC, SulfurX | These backends have no volcatenate-exposed absolute-fO2 entry point. To match Example 5 across backends, the user computes the equivalent `dFMQ` at the run's T, P (here `+0.541`) and places it on the sample as the `dFMQ` field, then uses Example 1-style `auto` (or the relevant strict mode) on those backends.                                                                                       |
 
 If you need consistent absolute-fO2 initialization across all four backends in a comparison run, set `dFMQ` on the sample (computed from your absolute fO2 at the run's T, P) and let the other three backends use it via their normal cascades; only EVo bypasses that route via `fo2_source = "absolute"`.
+
+---
+
+## Sulfur deep-dive — cross-backend model choices
+
+Sulfur is the second most consequential modelling choice in volcatenate after fO2. The four backends each carry sulfur as some combination of dissolved S²⁻ (sulfide), dissolved S⁶⁺ (sulfate), exsolved gas-phase S (S2, SO2, H2S, OCS), and a separately-tracked sulfide phase if the SCSS is exceeded. The models that govern each piece — S²⁻ solubility / capacity, S⁶⁺ solubility / capacity, the S6+/ST relationship as a function of fO2, the sulfide saturation curve (SCSS), the sulfate saturation curve (SCAS), and whether saturation is enforced — are exposed in the YAML at different granularities and with different default citations across backends. This section is the cross-walk so that like-for-like comparisons are possible.
+
+### What each backend tracks
+
+- **EVo:** `S` total sulfur in the melt is split into S²⁻ (sulfide-capacity model) and S⁶⁺ (sulfate-capacity model) at every step; the gas phase carries S2, SO2, H2S, and (optionally) OCS. SCSS is the only saturation curve consulted (no SCAS path), and EVo aborts the run if the melt becomes sulfide-saturated *and* the user opted into the saturation check via `evo.s_sat_warn = true`. By default (`evo.s_sat_warn = false`) EVo runs past saturation without checking.
+- **VolFe:** Tracks dissolved S²⁻ (`sulfide_sol` choice) and dissolved S⁶⁺ (`sulfate_sol` choice); the gas phase carries S2, SO2, H2S, and optionally OCS. Both SCSS and SCAS are exposed as separate model choices; the saturation check is gated by `volfe.sulfur_saturation = true` (default false), which clips melt S to the saturation curve and continues.
+- **MAGEC:** Tracks total S, with the S6+/ST split governed by `magec.s_redox` and the S²⁻ component sized by `magec.sulfide_cap`. SCSS is exposed as `magec.scss`; SCAS has no YAML choice (MAGEC handles it internally). Sulfide and sulfate saturation are independently toggled by `magec.sulfide_sat` and `magec.sulfate_sat` (both default 0, off).
+- **SulfurX:** Tracks dissolved S explicitly as S²⁻ + S⁶⁺ via `Sulfur_Iron`, with the S6+/ST split chosen by `sulfurx.s_fe_choice` (Nash 2019 vs. O'Neill & Mavrogenes 2022). SCSS and SCAS are hardcoded in the upstream `Sulfur_Saturation` class as Smythe et al. (2017) and Zajacz & Tsay (2019) respectively; volcatenate does not surface a YAML override. The saturation check is gated by `sulfurx.sulfide_pre = 1`.
+
+### Cross-backend mapping: which YAML key controls each piece of S behavior
+
+| S concept                           | EVo                                          | VolFe                                              | MAGEC                                                          | SulfurX                                                |
+| ----------------------------------- | -------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------ |
+| Sulfide capacity / solubility (Cs²⁻ / S²⁻) | `evo.sulfide_capacity`                       | `volfe.sulfide_sol`                                | `magec.sulfide_cap`                                            | (Sulfur_Iron internal; not a YAML field)               |
+| Sulfate capacity / solubility (Cs⁶⁺ / S⁶⁺) | `evo.sulfate_capacity`                       | `volfe.sulfate_sol`                                | (rolled into `magec.s_redox`)                                  | (Sulfur_Iron internal; not a YAML field)               |
+| S6+/ST relationship                 | implicit in `sulfide_capacity` + `sulfate_capacity` | implicit in `sulfide_sol` + `sulfate_sol`            | `magec.s_redox`                                                | `sulfurx.s_fe_choice`                                  |
+| SCSS (sulfide saturation)           | `evo.scss`                                   | `volfe.scss`                                       | `magec.scss`                                                   | (Smythe17 hardcoded internally)                        |
+| SCAS (sulfate saturation)           | (not exposed)                                | `volfe.scas`                                       | (not exposed)                                                  | (Zajacz-Tsay 2019 hardcoded internally)                |
+| Saturation enforcement toggle       | `evo.s_sat_warn` (controls *both* check and warning) | `volfe.sulfur_saturation` (and `volfe.graphite_saturation`) | `magec.sulfide_sat`, `magec.sulfate_sat`, `magec.graphite_sat` | `sulfurx.sulfide_pre`                                  |
+
+EVo's `evo.s_sat_warn` is the unusual one: when `false` (volcatenate's default), EVo never checks SCSS; when `true`, EVo checks at every step *and* terminates the run if SCSS is exceeded (rather than clipping). The other three backends decouple "check" from "terminate": VolFe and MAGEC clip-and-continue, SulfurX precipitates a sulfide phase and continues.
+
+### Sulfide capacity / solubility — model choices
+
+| Model family                         | EVo (`sulfide_capacity`)         | VolFe (`sulfide_sol`)                                                                           | MAGEC (`sulfide_cap`)            |
+| ------------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------- |
+| Nzotta et al. (1999)                 | (not exposed)                    | (not exposed)                                                                                   | `1` (default)                    |
+| O'Neill & Mavrogenes (2002)          | `oneill2002`                     | (not exposed)                                                                                   | (not exposed)                    |
+| O'Neill (2020) / (2021)              | `oneill2020` (default)           | `ONeill21dil` (default; with H2O dilution), `ONeill21` (no dilution), `ONeill21hyd` (hydrous)   | `2`                              |
+| Boulliung & Wood (2023)              | (not exposed)                    | `Boulliung23_eq6`, `Boulliung23_eq7`, `Boulliung23_eq7_12` (eq. 7 + P-effect)                  | `3`                              |
+| Gorojovsky & Wood (pre-print)        | (not exposed)                    | `GorojovskyPP_eq8`, `GorojovskyPP_eq9`                                                           | (not exposed)                    |
+| Thomas & Wood (2026)                 | (not exposed)                    | `Thomas26_eq15`                                                                                  | (not exposed)                    |
+
+EVo's lineage is O'Neill 2002 / 2020; VolFe and MAGEC additionally expose Boulliung-Wood 2023. SulfurX has no YAML knob for sulfide capacity — the model is folded into `Sulfur_Iron` and `Sulfur_Saturation` upstream.
+
+### Sulfate capacity / solubility — model choices
+
+| Model family                         | EVo (`sulfate_capacity`)        | VolFe (`sulfate_sol`)                                                                           | MAGEC                            |
+| ------------------------------------ | ------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------- |
+| Nash et al. (2019)                   | `nash2019` (default)            | (not exposed; the Nash-2019 S6+/ST is implicit in some sulfate-capacity options)               | (rolled into `s_redox = 2`)      |
+| O'Neill & Mavrogenes (2022)          | (not exposed)                   | `ONeill22dil` (default; with H2O dilution), `ONeill22` (no dilution)                            | (rolled into `s_redox = 4`)      |
+| Boulliung & Wood (2022) / (2023)     | (not exposed)                   | `Boulliung22nP`, `Boulliung22wP`, `Boulliung23_eq9`, `Boulliung23_eq9_12`, `Boulliung23_eq11`   | (rolled into `s_redox = 5`)      |
+| Gorojovsky & Wood (pre-print)        | (not exposed)                   | `GorojovskyPP_eq10`, `GorojovskyPP_eq11`                                                         | (not exposed)                    |
+| Thomas & Wood (2026)                 | (not exposed)                   | `Thomas26_eq21`, `Thomas26_eq22`                                                                 | (not exposed)                    |
+| Sun & Yao (2024)                     | (not exposed)                   | (not exposed)                                                                                   | (rolled into `s_redox = 1`, default) |
+| Jugo (2010)                          | (not exposed)                   | (not exposed)                                                                                   | (rolled into `s_redox = 3`)      |
+
+MAGEC merges its sulfate model with its S6+/ST equation into a single `magec.s_redox` integer; volcatenate documents the integer-to-citation map in the [MAGEC field-by-field table](#field-by-field-magec). SulfurX's `s_fe_choice` is the equivalent: `0` = Nash 2019, `1` = O'Neill & Mavrogenes 2022.
+
+### S6+/ST relationship — cross-backend
+
+EVo and VolFe compute S6+/ST implicitly as `S⁶⁺ / (S²⁻ + S⁶⁺)` from the chosen sulfide and sulfate capacity / solubility laws — there is no separate "S speciation" YAML key in those two backends. MAGEC and SulfurX expose explicit S speciation choices:
+
+| Family                       | MAGEC (`s_redox`) | SulfurX (`s_fe_choice`) | EVo equivalent (via `sulfate_capacity`) | VolFe equivalent (via `sulfate_sol`)                              |
+| ---------------------------- | ----------------- | ----------------------- | --------------------------------------- | ----------------------------------------------------------------- |
+| Sun & Yao (2024)             | `1` (default)     | (not exposed)           | (not exposed)                           | (not exposed)                                                     |
+| Nash et al. (2019)           | `2`               | `0`                     | `nash2019` (default)                    | (implicit in some sulfate-capacity options)                       |
+| Jugo (2010)                  | `3`               | (not exposed)           | (not exposed)                           | (not exposed)                                                     |
+| O'Neill & Mavrogenes (2022)  | `4`               | `1` (default)           | (not exposed)                           | `ONeill22dil` (default), `ONeill22`                               |
+| Boulliung & Wood (2023)      | `5`               | (not exposed)           | (not exposed)                           | `Boulliung23_eq9` etc.                                            |
+
+For a like-for-like S speciation across all four backends, O'Neill & Mavrogenes (2022) is the only family with an explicit option in MAGEC (`s_redox = 4`), VolFe (`sulfate_sol = ONeill22dil`), and SulfurX (`s_fe_choice = 1`). EVo's volcatenate default is Nash 2019 (`sulfate_capacity = nash2019`) and there is no ONeill22 sulfate-capacity option exposed for EVo today.
+
+### SCSS — sulfide saturation models
+
+| Model family                 | EVo (`scss`)                | VolFe (`scss`)                                                                                                                     | MAGEC (`scss`)             |
+| ---------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| Liu et al. (2007)            | `liu2007` (default)         | `Liu07`                                                                                                                            | (not exposed)              |
+| Fortin et al. (2015)         | (not exposed)               | `Fortin15_pss`                                                                                                                     | `2`                        |
+| Smythe et al. (2017)         | (not exposed)               | `Smythe17_pss`                                                                                                                     | `3`                        |
+| O'Neill (2021)               | (not exposed)               | `ONeill21hyd` (default), `ONeill21`, `ONeill21dil`, `ONeill21_pss`                                                                  | `4`                        |
+| Blanchard et al. (2021)      | (not exposed)               | `Blanchard21_eq11_pss`, `Blanchard21_eq12_pss`                                                                                      | `1` (default)              |
+| Liu et al. (2021)            | (not exposed)               | `Liu21_pss`                                                                                                                        | (not exposed)              |
+| O'Neill & Mavrogenes (2022)  | (not exposed)               | `ONeill22_pss`                                                                                                                     | (not exposed)              |
+| Li & Zhang (2022)            | (not exposed)               | `Li22_pss`                                                                                                                         | (not exposed)              |
+
+SulfurX hardcodes Smythe et al. (2017) as `SCSS_smythe()` in the upstream `Sulfur_Saturation` class (read in [`backends/sulfurx.py`](../src/volcatenate/backends/sulfurx.py)); volcatenate does not expose a YAML override. To match SulfurX in VolFe, set `volfe.scss = "Smythe17_pss"`; in MAGEC, `magec.scss = 3`. EVo cannot be matched today.
+
+### SCAS — sulfate saturation models
+
+| Model family                  | VolFe (`scas`)            | EVo, MAGEC, SulfurX                                                                                                                                                                                                                  |
+| ----------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Chowdhury & Dasgupta (2019)   | `Chowdhury19_pss`         | (not exposed)                                                                                                                                                                                                                        |
+| Zajacz & Tsay (2019)          | `Zajacz19_pss` (default)  | EVo: not exposed (no SCAS handling at all). MAGEC: not exposed (sulfate saturation toggled via `sulfate_sat = 1`, but the SCAS model is selected internally). SulfurX: hardcoded as `SCAS_Zajacz_Tsay()` in upstream `Sulfur_Saturation`. |
+| Masotta & Keppler (2015)      | `Masotta15_pss`           | (not exposed)                                                                                                                                                                                                                        |
+| Liu et al. (2023)             | `Liu23`                   | (not exposed)                                                                                                                                                                                                                        |
+
+VolFe is the only backend with a YAML choice of SCAS model. SulfurX hardcodes Zajacz-Tsay 2019, which happens to match VolFe's default — so the two are like-for-like out of the box.
+
+### Saturation enforcement — when each backend clips or terminates
+
+| Backend  | Default behavior                                      | YAML key to enable enforcement                                              | What "enforce" means upstream                                                                                                                                                                                                                                                            |
+| -------- | ----------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EVo      | **No saturation check at all** (`s_sat_warn = false`) | `evo.s_sat_warn = true`                                                     | When `s_sat_warn = true` and gas system is `SOH` / `COHS` / `COHSN`, EVo computes SCSS at every step and **terminates the run** if S > SCSS or if S6+/(S²⁻+S⁶⁺) ≥ 0.1. The standardized output therefore stops at the saturation pressure rather than continuing with a sulfide phase. |
+| VolFe    | **No saturation check** (`sulfur_saturation = false`)  | `volfe.sulfur_saturation = true`                                            | When true, VolFe checks SCSS / SCAS at every pressure step and **clips** dissolved S to the saturation curve, treating excess S as a separate sulfide / sulfate phase. The degassing path continues normally past saturation.                                                          |
+| MAGEC    | **No saturation check** (`sulfide_sat = sulfate_sat = 0`) | `magec.sulfide_sat = 1` (and / or `magec.sulfate_sat = 1`) — independent toggles | When 1, MAGEC's solver consults SCSS / SCAS at every pressure step and clips melt S to the saturation curve, similar to VolFe.                                                                                                                                                            |
+| SulfurX  | **No saturation check** (`sulfide_pre = 0`)            | `sulfurx.sulfide_pre = 1`                                                    | When 1, SulfurX checks SCSS at every step and precipitates a sulfide phase (clipping melt S); the per-step output reports `sulfide_frac` as the mass fraction precipitated. SCAS handling is internal regardless of this toggle.                                                          |
+
+This is the single biggest source of "why don't the four backends agree" in S behavior. By default, *none* of the four backends check sulfide saturation. For a like-for-like comparison that includes saturation, set `evo.s_sat_warn = true`, `volfe.sulfur_saturation = true`, `magec.sulfide_sat = 1` (and `magec.sulfate_sat = 1` if needed), and `sulfurx.sulfide_pre = 1` — and be aware that EVo will *terminate* the run at saturation rather than continuing with a sulfide phase the way the other three do.
+
+### Cross-backend recipe — O'Neill family across all four backends
+
+A common comparison setup is to run the four backends with O'Neill 2021 sulfide capacity / SCSS and O'Neill & Mavrogenes 2022 sulfate equilibrium / S6+/ST. The closest YAML configuration to that intent:
+
+```yaml
+evo:
+  sulfide_capacity: oneill2020   # O'Neill (2020) — paper-of-record before the 2021 chapter
+  sulfate_capacity: nash2019     # EVo does not expose ONeill22 sulfate-capacity; default Nash19 stands
+  scss: liu2007                  # EVo does not expose ONeill21 SCSS; default Liu07 stands
+  s_sat_warn: true               # turns on the saturation check (and run-termination at saturation)
+
+volfe:
+  sulfide_sol: ONeill21dil       # O'Neill (2021) inc. H2O dilution
+  sulfate_sol: ONeill22dil       # O'Neill & Mavrogenes (2022) inc. H2O dilution
+  scss: ONeill21_pss             # O'Neill (2021) via PySulfSat
+  scas: Zajacz19_pss             # closest cross-backend match; no ONeill SCAS exposed
+  sulfur_saturation: true        # required for SCSS / SCAS to be consulted
+
+magec:
+  sulfide_cap: 2                 # O'Neill (2021)
+  s_redox: 4                     # O'Neill & Mavrogenes (2022)
+  scss: 4                        # O'Neill (2021)
+  sulfide_sat: 1
+  sulfate_sat: 1
+
+sulfurx:
+  s_fe_choice: 1                 # O'Neill & Mavrogenes (2022)
+  sulfide_pre: 1                 # required for SCSS to trigger
+  # SulfurX uses Smythe17 SCSS and Zajacz-Tsay 2019 SCAS internally; no YAML override.
+```
+
+EVo has the fewest cross-backend matches in the O'Neill / ONeill22 family — only `sulfide_capacity` is in that lineage; SCSS and sulfate-capacity choices stay at their volcatenate defaults. EVo's run will additionally terminate at sulfide saturation (because of `s_sat_warn = true`) where VolFe / MAGEC / SulfurX continue with a sulfide phase, so EVo's standardized output will be shorter past the saturation pressure.
 
 ---
 
