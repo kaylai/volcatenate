@@ -68,3 +68,5 @@ def test_monte_carlo_fields_loadable_from_yaml(tmp_path):
     cfg = load_config(str(yaml_path))
     assert cfg.sulfurx.monte_carlo == 1
     assert cfg.sulfurx.monte_carlo_n_iter == 50
+
+
