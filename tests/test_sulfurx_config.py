@@ -37,3 +37,34 @@ def test_s_fe_choice_float_via_yaml(tmp_path):
     yaml_path.write_text("sulfurx:\n  s_fe_choice: 99.5\n")
     cfg = load_config(str(yaml_path))
     assert cfg.sulfurx.s_fe_choice == pytest.approx(99.5)
+
+
+# ── monte_carlo config fields ─────────────────────────────────────
+
+
+def test_monte_carlo_field_default_zero():
+    cfg = SulfurXConfig()
+    assert cfg.monte_carlo == 0
+
+
+def test_monte_carlo_n_iter_field_default_zero():
+    cfg = SulfurXConfig()
+    assert cfg.monte_carlo_n_iter == 0
+
+
+def test_monte_carlo_fields_settable():
+    cfg = SulfurXConfig(monte_carlo=1, monte_carlo_n_iter=10)
+    assert cfg.monte_carlo == 1
+    assert cfg.monte_carlo_n_iter == 10
+
+
+def test_monte_carlo_fields_loadable_from_yaml(tmp_path):
+    yaml_path = tmp_path / "cfg.yaml"
+    yaml_path.write_text(
+        "sulfurx:\n"
+        "  monte_carlo: 1\n"
+        "  monte_carlo_n_iter: 50\n"
+    )
+    cfg = load_config(str(yaml_path))
+    assert cfg.sulfurx.monte_carlo == 1
+    assert cfg.sulfurx.monte_carlo_n_iter == 50

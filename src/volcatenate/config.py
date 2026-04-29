@@ -590,6 +590,7 @@ class SulfurXConfig:
     - ``fo2_tracker`` — ``1`` (default) lets fO2 evolve with the gas chemistry each step; ``0`` holds it buffered at the starting value.
     - ``sulfide`` — the nested :class:`SulfurXSulfideConfig` describing the sulfide phase composition (Fe/Ni/Cu/O/S wt% of the sulfide, not the melt). Defaults to a near-stoichiometric pyrrhotite.
     - ``crystallization``, ``open_degassing``, ``d34s_initial`` — set to ``0`` by default; SulfurX can in principle take other values but they are not exercised by the comparison-paper workflow.
+    - ``monte_carlo`` / ``monte_carlo_n_iter`` — set ``monte_carlo = 1`` and ``monte_carlo_n_iter = N`` to run an N-iteration Monte Carlo over partition-coefficient (Kd) error; produces ``<output_dir>/SulfurX/<sample>_montecarlo_S.csv`` and ``_CS.csv``. Default ``0`` (off).
 
     See Also
     --------
@@ -611,6 +612,14 @@ class SulfurXConfig:
     crystallization: int = 0          # 0 = no crystallization (the only path SulfurX exercises today)
     open_degassing: int = 0           # 0 = closed-system degassing, 1 = open-system
     d34s_initial: float = 0.0         # Initial bulk d34S (only used when isotope tracking is wired up)
+
+    # Monte Carlo Kd-error propagation for S degassing.  When
+    # monte_carlo == 1, _run_degassing executes a second loop with
+    # monte_c=1 (which makes PartitionCoefficient sample randomly within
+    # the Kd error bars) for monte_carlo_n_iter iterations and writes
+    # per-sample summary CSVs to <output_dir>/SulfurX/.
+    monte_carlo: int = 0              # 0 = no MC sim, 1 = run MC sim
+    monte_carlo_n_iter: int = 0       # number of MC iterations when monte_carlo=1
 
     # Sulfide phase composition (SulfurX uses this for sulfide saturation).
     sulfide: SulfurXSulfideConfig = field(default_factory=SulfurXSulfideConfig)
