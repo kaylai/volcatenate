@@ -68,7 +68,15 @@ KNOWN_SULFURX: dict[str, str] = {
     "0109e9a5de07d8f7cf05265742483deef583f21e": "v.1.1",
     "df38e6f550e3891c220411285a13299e7f81f09c": "v.1.0",
 }
-TESTED_SULFURX: set[str] = {"v.1.2"}
+
+# Single source of truth for the SulfurX version the test suite pins to.
+# `tests/conftest.py` imports this and creates a `git worktree` of the
+# corresponding tag on every test session, so SulfurX-touching tests run
+# against byte-identical source regardless of the developer's HEAD.
+# When you add a new tested release: bump this constant, add the new
+# SHA → tag entry to KNOWN_SULFURX above, and the set below stays in sync.
+TESTED_SULFURX_VERSION: str = "v.1.2"
+TESTED_SULFURX: set[str] = {TESTED_SULFURX_VERSION}
 
 # MAGEC — SHA256 of MAGEC_Solver_v*.p (the compiled MATLAB solver) → label.
 # MAGEC is distributed as supplementary material to Sun & Yao (2024) EPSL,

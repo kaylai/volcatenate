@@ -741,6 +741,8 @@ The pressure grid sent to MAGEC is log-spaced (not linear) from `cfg.p_start_kba
 
 SulfurX is a Python C-O-H-S degassing model that bundles an Iacono-Marziano (or VolatileCalc) C-O-H solubility front-end with its own sulfur-saturation and redox-evolution machinery. It is not pip-installable — its source must be on `sys.path` via `config.sulfurx.path` (auto-detected; settable via the `SULFURX_PATH` env var). Volcatenate calls into SulfurX's internal modules directly (`Iacono_Marziano_COH`, `degassingrun`, `OxygenFugacity`, `Sulfur_Iron`, `Sulfur_Saturation`, etc.) rather than invoking a single entry point. SulfurX prints to stdout during the satP search and the per-step degassing solver; the wrapper's `_quiet_sulfurx()` context routes that to the volcatenate logger at DEBUG.
 
+> **Validated against SulfurX `v.1.2`.** The wrapper accepts any version the user configures, but the test suite pins to `v.1.2` via a `git worktree` fixture so test results are reproducible across machines. The canonical list of known and tested versions lives in [`src/volcatenate/versions.py`](../src/volcatenate/versions.py); the test pinning mechanism is documented in [`tests/README.md`](../tests/README.md). Running against an unrecognized commit logs a WARNING but does not stop the run.
+
 ### Files saved per SulfurX run
 
 SulfurX is called inline (no subprocess, no script files), so unlike EVo, VolFe, or MAGEC it does not produce any per-run intermediate files on disk. For one degassing run on a sample called `Fuego`, the on-disk layout is therefore minimal:
