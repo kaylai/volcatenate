@@ -594,6 +594,91 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
                     delta_FMQ=delta_FMQ, sulfide_pre=sulfide_pre,
                 )
 
+    # ── Step 6: Optional Monte Carlo (Kd error propagation) ────────
+    # When monte_carlo=1, run COHS_degassing with monte_c=1 for
+    # monte_carlo_n_iter iterations.  monte_c=1 makes
+    # PartitionCoefficient sample randomly within each Kd's error
+    # bars, so the per-iteration wS_melt and accCO2_S columns differ.
+    # Per-iteration columns are aggregated into <sample>_montecarlo_S.csv
+    # and <sample>_montecarlo_CS.csv with mean/std/variance summary
+    # columns appended.  This block mirrors upstream main_Fuego.py's
+    # Monte Carlo loop (lines 413-425) so MC outputs stay comparable
+    # with results published from main_Fuego.py.
+    if cfg.monte_carlo == 1 and cfg.monte_carlo_n_iter > 0 and output_dir is not None:
+        df_S_m = df_results[["pressure"]].copy()
+        df_C_S = df_results[["pressure"]].copy()
+        with _patch_composition(composition):
+            for k in range(cfg.monte_carlo_n_iter):
+                # Fresh copy per iteration so the deterministic results
+                # in df_results are not overwritten.
+                df_iter = df_results.copy()
+                for i in range(1, n_steps):
+                    degas = COHS_degassing(
+                        pressure=df_iter["pressure"][i],
+                        temperature=temperature,
+                        COH_model=coh_model,
+                        xlt_choice=choice,
+                        S_Fe_choice=s_fe_choice,
+                        H2O_initial=h2o_wt,
+                        CO2_initial=co2_ppm,
+                        S_initial=s_ppm,
+                        d34s_initial=d34s_initial,
+                        a=slope_h2o,
+                        b=constant_h2o,
+                        monte_c=1,            # <- the only difference vs. deterministic loop
+                        op=open_degassing,
+                    )
+                    if fo2_tracker == 1:
+                        # Note on e_balance_initial:
+                        # We pass the OUTER-SCOPE e_balance_initial here
+                        # (the value computed once at saturation pressure),
+                        # mirroring upstream main_Fuego.py:418-422.  Keeping
+                        # the upstream pattern means MC outputs stay
+                        # numerically comparable with results produced by
+                        # main_Fuego.py.
+                        #
+                        # An alternative is to pass the previous step's
+                        # value, i.e.
+                        #     e_balance_initial=df_iter["electron_balance"][i - 1]
+                        # which is what the deterministic loop in this
+                        # wrapper already does.  That keeps the redox
+                        # solver anchored to the most recent state and may
+                        # converge more reliably when a long run drifts
+                        # far from the initial conditions.  If a future
+                        # upstream release adopts the per-step pattern (or
+                        # if you decide that is the more physically
+                        # consistent choice), swap the line below.
+                        df_iter.iloc[i] = degas.degassing_redox(
+                            df_results=df_iter, index=i,
+                            e_balance_initial=e_balance_initial,
+                            sigma=sigma, sulfide_pre=sulfide_pre,
+                        )
+                    else:
+                        df_iter.iloc[i] = degas.degassing_noredox(
+                            df_results=df_iter, index=i,
+                            delta_FMQ=delta_FMQ, sulfide_pre=sulfide_pre,
+                        )
+                df_S_m[str(k)] = df_iter["wS_melt"].values
+                df_C_S[str(k)] = df_iter["accCO2_S"].values
+
+        # Mean / std / variance across the N iteration columns
+        iter_cols = [str(k) for k in range(cfg.monte_carlo_n_iter)]
+        for df_mc in (df_S_m, df_C_S):
+            df_mc["mean"] = df_mc[iter_cols].mean(axis=1)
+            df_mc["std"] = df_mc[iter_cols].std(axis=1)
+            df_mc["variance"] = df_mc[iter_cols].var(axis=1)
+
+        sx_dir = os.path.join(output_dir, "SulfurX")
+        os.makedirs(sx_dir, exist_ok=True)
+        s_path = os.path.join(sx_dir, f"{comp.sample}_montecarlo_S.csv")
+        cs_path = os.path.join(sx_dir, f"{comp.sample}_montecarlo_CS.csv")
+        df_S_m.to_csv(s_path, index=False)
+        df_C_S.to_csv(cs_path, index=False)
+        logger.info(
+            "[SulfurX] Monte Carlo: wrote %d-iteration summaries to %s and %s",
+            cfg.monte_carlo_n_iter, s_path, cs_path,
+        )
+
     return df_results
 
 
