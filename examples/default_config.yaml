@@ -146,9 +146,9 @@ sulfurx:
   # temperature, delta_FMQ, H2O_initial, CO2_initial, and S_initial set in sample, not here.
   #
   # SulfurX options that exist upstream but are NOT implemented in volcatenate
-  # (n_runs / m, monte_carlo, monte_carlo_n_iter / m_run, monte_name, mi_name)
-  # are documented in docs/config_options.md under "SulfurX options not
-  # implemented in volcatenate" and intentionally omitted here.
+  # (n_runs / m, monte_name, mi_name) are documented in docs/config_options.md
+  # under "SulfurX options not implemented in volcatenate" and intentionally
+  # omitted here.
   #
   # Path is auto-detected. Set here to override, or use env var SULFURX_PATH.
   path: ""  # Path to SulfurX installation (auto-detected)
@@ -161,6 +161,8 @@ sulfurx:
   sigma: 0.005  # log10fO2 tolerance for redox calculation
   sulfide_pre: 0  # 0 = no sulfide precipitation, 1 = enabled
   crystallization: 0  # 0 = no crystallization, 1 = fractional crystallization (only 0 exercised today)
+  monte_carlo: 0  # 0 = no MC sim, 1 = run MC sim (writes <output_dir>/SulfurX/<sample>_montecarlo_*.csv)
+  monte_carlo_n_iter: 0  # number of MC iterations when monte_carlo=1
   open_degassing: 0  # 0 = closed-system, 1 = open system
   d34s_initial: 0.0  # Initial bulk delta34S; passed to SulfurX but isotopes are not propagated through degassing, so has no effect on output beyond the initial row
   sulfide:  # Sulfide phase composition (wt% of the sulfide phase, NOT the melt). Only consulted when sulfide_pre=1 or when SCSS is reported.
