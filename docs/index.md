@@ -38,6 +38,7 @@ sample_data
 configuration
 run_bundles
 config_options
+references
 ```
 
 ```{toctree}
@@ -46,6 +47,13 @@ config_options
 
 examples/minimal_config
 examples/full_config
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Gallery
+
+gallery/index
 ```
 
 ```{toctree}
