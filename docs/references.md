@@ -1,14 +1,12 @@
 # Backend models, repos, and citations
 
-volcatenate is a thin Python wrapper. Every numerical result it produces comes from one of the underlying model packages listed below. **If you use volcatenate in published work, please cite both volcatenate _and_ the upstream model(s) whose results you reported.** This page collects the code repositories, online docs (where they exist), and the manuscripts that introduce or update each model — with downloadable PDFs of the papers themselves.
-
-The information on this page mirrors the model-citation block in the [Sulfur Comparison Paper](https://github.com/PennyWieser/Sulfur_Comparison_Paper) README.
+volcatenate is a thin Python wrapper. Every numerical result it produces comes from one of the underlying model packages listed below. **If you use volcatenate in published work, please cite both volcatenate _and_ the upstream model(s) whose results you reported.** This page collects the code repositories, online docs (where they exist), and the manuscripts that introduce or update each model — with downloadable PDFs of the papers themselves
 
 ---
 
 ## D-Compress
 
-**Code / executable:** <https://www.isterre.fr/annuaire/pages-web-du-personnel/alain-burgisser/article/software.html>
+**Code / executable:** [https://www.isterre.fr/annuaire/pages-web-du-personnel/alain-burgisser/article/software.html](https://www.isterre.fr/annuaire/pages-web-du-personnel/alain-burgisser/article/software.html)
 
 **Manual:** {download}`DCompress User Manual <papers/dcompress/DCompress_User_Manual.pdf>` — _bundled with the D-Compress distribution._
 
@@ -20,9 +18,9 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 ## EVo
 
-**Code:** <https://github.com/pipliggins/EVo>
+**Code:** [https://github.com/pipliggins/EVo](https://github.com/pipliggins/EVo)
 
-**Online documentation:** <https://evo-outgas.readthedocs.io/en/latest/>
+**Online documentation:** [https://evo-outgas.readthedocs.io/en/latest/](https://evo-outgas.readthedocs.io/en/latest/)
 
 **Citations:**
 
@@ -44,7 +42,7 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 ## Sulfur_X
 
-**Code:** <https://github.com/sdecho/Sulfur_X>
+**Code:** [https://github.com/sdecho/Sulfur_X](https://github.com/sdecho/Sulfur_X)
 
 **Citation:**
 
@@ -54,7 +52,7 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 ## VolFe
 
-**Code:** <https://github.com/eryhughes/VolFe>
+**Code:** [https://github.com/eryhughes/VolFe](https://github.com/eryhughes/VolFe)
 
 **Online documentation:** see the `docs/` directory in the VolFe repository.
 
@@ -67,11 +65,11 @@ The information on this page mirrors the model-citation block in the [Sulfur Com
 
 ## VESIcal
 
-**Code:** <https://github.com/kaylai/VESIcal>
+**Code:** [https://github.com/kaylai/VESIcal](https://github.com/kaylai/VESIcal)
 
-**Online documentation:** <https://vesical.readthedocs.io/en/latest/>
+**Online documentation:** [https://vesical.readthedocs.io/en/latest/](https://vesical.readthedocs.io/en/latest/)
 
-**Web app:** <https://vesical.anvil.app>
+**Web app:** [https://vesical.anvil.app](https://vesical.anvil.app)
 
 **Citations:**
 

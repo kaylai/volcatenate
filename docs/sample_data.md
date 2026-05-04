@@ -19,28 +19,28 @@ The CSV has one row per sample.
 
 ### Required columns
 
-| Column | Meaning |
-| --- | --- |
-| `Sample` (or `Label`) | Sample identifier — used as the row key in the output. |
-| `T_C` (or `Temp`, `Temperature`) | Temperature in °C. |
-| Major oxides | `SiO2`, `TiO2`, `Al2O3`, `MgO`, `CaO`, `Na2O`, `K2O`, `P2O5`, `MnO`, plus iron (see below) — all wt%. |
-| `H2O` | Bulk H₂O, wt%. |
-| `CO2` | Bulk CO₂, wt%. |
-| `S` | Bulk sulfur, wt%. |
+| Column                                 | Meaning                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Sample` (or `Label`)              | Sample identifier — used as the row key in the output.                                                                         |
+| `T_C` (or `Temp`, `Temperature`) | Temperature in °C.                                                                                                             |
+| Major oxides                           | `SiO2`, `TiO2`, `Al2O3`, `MnO`, `MgO `, `CaO `, `Na2O `, `K2O `, `P2O5 `, plus iron (see below) — all wt%. |
+| `H2O`                                | Bulk H₂O, wt%.                                                                                                                 |
+| `CO2`                                | Bulk CO₂, wt%.                                                                                                                 |
+| `S`                                  | Bulk sulfur, wt%.                                                                                                               |
 
 ### Optional columns
 
-| Column | Meaning |
-| --- | --- |
-| `FeOT` (or `FeO*`) | Total iron as FeO, wt%. The most common form. |
-| `FeO`, `Fe2O3` | Speciated iron, both wt%. Supply both *or* just `FeOT`, not a mix. |
-| `Fe3FeT` | Ferric ratio (0–1). Used for redox initialization on every backend. |
-| `dFMQ` (or `DFMQ`) | log fO₂ relative to FMQ buffer. |
-| `dNNO` (or `DNNO`) | log fO₂ relative to NNO buffer. |
-| `Cr2O3` | Used by MAGEC's anhydrous renormalization; ignored by every other backend. |
-| `N_ppm` (or `Nppm`, `Nitrogen`) | Bulk nitrogen in ppm. Used by EVo when `evo.nitrogen_set=True`. |
-| `Xppm` | Inert trace species (Ar/Ne) — VolFe only. |
-| `Reservoir` | Free-text grouping label. Propagated to output for plotting. |
+| Column                                | Meaning                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| `FeOT` (or `FeO*`)                | Total iron as FeO, wt%. The most common form.                              |
+| `FeO`, `Fe2O3`                    | Speciated iron, both wt%. Supply both*or* just `FeOT`, not a mix.      |
+| `Fe3FeT`                            | Ferric ratio (0–1). Used for redox initialization on every backend.       |
+| `dFMQ` (or `DFMQ`)                | log fO₂ relative to FMQ buffer.                                           |
+| `dNNO` (or `DNNO`)                | log fO₂ relative to NNO buffer.                                           |
+| `Cr2O3`                             | Used by MAGEC's anhydrous renormalization; ignored by every other backend. |
+| `N_ppm` (or `Nppm`, `Nitrogen`) | Bulk nitrogen in ppm. Used by EVo when `evo.nitrogen_set=True`.          |
+| `Xppm`                              | Inert trace species (Ar/Ne) — VolFe only.                                 |
+| `Reservoir`                         | Free-text grouping label. Propagated to output for plotting.               |
 
 Header matching is exact for canonical names but accepts the common aliases shown above. If a column you expect isn't being picked up, the alias map in [composition.py](https://github.com/kaylai/volcatenate/blob/main/src/volcatenate/composition.py) is the source of truth.
 
