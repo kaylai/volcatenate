@@ -64,7 +64,7 @@ class RunBundle:
     -----
     Field highlights:
 
-    - ``volcatenate_version`` — version of volcatenate that created this bundle.
+    - ``volcatenate_version`` — version info for the volcatenate install that created this bundle. Dict with the same shape as a :func:`volcatenate.backend_version_info` entry: ``status``, ``source``, ``id`` (short SHA), ``full_id`` (full SHA), ``dirty``, ``branch``, ``describe``, ``tag``, ``tested``, ``package_version`` (from ``__version__``). Old bundles where this is a plain string are loaded as ``{"package_version": <string>, "source": "legacy"}``.
     - ``timestamp`` — ISO 8601 timestamp of bundle creation.
     - ``python_version`` — Python version string (e.g. ``"3.11.5"``).
     - ``run_type`` — one of ``"saturation_pressure"``, ``"degassing"``, or ``"comparison"``.
@@ -80,7 +80,7 @@ class RunBundle:
     - ``platform_info`` — OS and Python implementation info (``system``, ``release``, ``machine``, ``python_implementation``).
     """
 
-    volcatenate_version: str
+    volcatenate_version: dict
     timestamp: str
     python_version: str
     run_type: str
@@ -334,15 +334,14 @@ def create_bundle(
     -------
     RunBundle
     """
-    from volcatenate import __version__
-    from volcatenate.versions import all_backend_versions
+    from volcatenate.versions import all_backend_versions, volcatenate_version_info
 
     # Comments precedence: explicit kwarg > config.bundle_comments > "".
     if comments is None:
         comments = getattr(config, "bundle_comments", "") or ""
 
     return RunBundle(
-        volcatenate_version=__version__,
+        volcatenate_version=_sanitize_value(volcatenate_version_info()),
         timestamp=datetime.now(timezone.utc).isoformat(),
         python_version=platform.python_version(),
         run_type=run_type,
@@ -383,6 +382,7 @@ def save_bundle(bundle: RunBundle, path: str) -> str:
 
     data = {
         "volcatenate_version": bundle.volcatenate_version,
+        "backend_versions": bundle.backend_versions,
         "timestamp": bundle.timestamp,
         "python_version": bundle.python_version,
         "run_type": bundle.run_type,
@@ -391,7 +391,6 @@ def save_bundle(bundle: RunBundle, path: str) -> str:
         "config": bundle.config,
         "satp_output": bundle.satp_output,
         "degassing_output_dir": bundle.degassing_output_dir,
-        "backend_versions": bundle.backend_versions,
         "caller_git_state": bundle.caller_git_state,
         "pip_freeze": bundle.pip_freeze,
         "comments": bundle.comments,
@@ -421,8 +420,19 @@ def load_bundle(path: str) -> RunBundle:
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
+    # Backward-compat: older bundles store volcatenate_version as a plain
+    # string (e.g. "0.4.0"). Wrap it in the dict shape so downstream
+    # consumers can treat it uniformly.
+    raw_vv = data.get("volcatenate_version")
+    if isinstance(raw_vv, str):
+        vv: dict = {"source": "legacy", "package_version": raw_vv}
+    elif isinstance(raw_vv, dict):
+        vv = raw_vv
+    else:
+        vv = {"source": "legacy", "package_version": None}
+
     return RunBundle(
-        volcatenate_version=data.get("volcatenate_version", "unknown"),
+        volcatenate_version=vv,
         timestamp=data.get("timestamp", ""),
         python_version=data.get("python_version", ""),
         run_type=data["run_type"],
@@ -530,10 +540,16 @@ def replay(
     )
 
     bundle = load_bundle(path)
+    vv = bundle.volcatenate_version
+    vv_short = (
+        vv.get("package_version")
+        or vv.get("describe")
+        or vv.get("id")
+        or "unknown"
+    )
     logger.info(
         "Replaying %s run from %s (volcatenate %s, %s)",
-        bundle.run_type, path,
-        bundle.volcatenate_version, bundle.timestamp,
+        bundle.run_type, path, vv_short, bundle.timestamp,
     )
 
     # Reconstruct config

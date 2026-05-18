@@ -237,6 +237,15 @@ def _walk_to_git_root(path: str, max_depth: int = 8) -> Optional[str]:
     return None
 
 
+def _package_version(module_name: str) -> Optional[str]:
+    """Return the installed package version via importlib.metadata, or None."""
+    try:
+        from importlib.metadata import version as _pkg_version
+        return _pkg_version(module_name)
+    except Exception:
+        return None
+
+
 def _detect_python_module(
     path: str,
     module_name: str,
@@ -249,27 +258,32 @@ def _detect_python_module(
     working tree, so we walk up from the module directory to find ``.git`` and
     reuse the git detector. Regular pip installs land in site-packages with no
     git history; for those we fall back to ``importlib.metadata.version``.
+
+    Either way the dict carries ``package_version`` (the
+    ``importlib.metadata.version`` string, e.g. from ``__version__``) when
+    available, alongside any git fields.
     """
+    pkg_version = _package_version(module_name)
+
     git_root = _walk_to_git_root(path)
     if git_root is not None:
         info = _detect_git(git_root, known, tested)
         info["git_root"] = git_root
+        info["package_version"] = pkg_version
         return info
 
-    try:
-        from importlib.metadata import version as _pkg_version
-        v = _pkg_version(module_name)
-    except Exception:
+    if pkg_version is None:
         return {"status": "no_version_info", "source": "importlib.metadata"}
 
     return {
         "status": "installed",
         "source": "importlib.metadata",
-        "id": v,
-        "full_id": v,
+        "id": pkg_version,
+        "full_id": pkg_version,
         "dirty": None,
-        "tag": v,
-        "tested": v in tested,
+        "tag": pkg_version,
+        "tested": pkg_version in tested,
+        "package_version": pkg_version,
     }
 
 
@@ -397,3 +411,28 @@ def backend_version(name: str, path: Optional[str] = None) -> str:
 def all_backend_versions() -> dict[str, dict]:
     """Return ``{name: backend_version_info(name)}`` for every registered backend."""
     return {name: backend_version_info(name) for name in _BACKENDS}
+
+
+# Known volcatenate releases — populate as releases stabilize.
+#   gh api repos/kaylai/volcatenate/tags
+KNOWN_VOLCATENATE: dict[str, str] = {}
+TESTED_VOLCATENATE: set[str] = set()
+
+
+def volcatenate_version_info() -> dict:
+    """Return rich version info for the installed volcatenate package.
+
+    Same dict shape as :func:`backend_version_info`: git SHA, dirty flag,
+    branch, ``git describe``, and ``package_version`` (from ``__version__``).
+    Used by :func:`volcatenate.reproducible.create_bundle` to populate the
+    ``volcatenate_version`` field of run bundles.
+    """
+    path = _find_python_module_path("volcatenate")
+    info: dict = {"name": "volcatenate", "path": path}
+    if not path or not os.path.isdir(path):
+        info["status"] = "not_installed"
+        return info
+    info.update(_detect_python_module(
+        path, "volcatenate", KNOWN_VOLCATENATE, TESTED_VOLCATENATE,
+    ))
+    return info
