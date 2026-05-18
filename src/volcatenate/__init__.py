@@ -81,6 +81,7 @@ from volcatenate.versions import (
     backend_version,
     backend_version_info,
     all_backend_versions,
+    volcatenate_version_info,
 )
 
 
@@ -134,4 +135,5 @@ __all__ = [
     "backend_version",
     "backend_version_info",
     "all_backend_versions",
+    "volcatenate_version_info",
 ]
