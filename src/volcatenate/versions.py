@@ -30,8 +30,13 @@ Each backend registers a detector.  Two strategies exist today:
   compiled MATLAB P-file, a solver binary, etc.) and look it up in a
   manually maintained table.  Falls back to parsing a version tag from
   the filename so unknown future releases still produce a useful label.
+- **Python module** (EVo, VolFe, VESIcal): locate the installed module
+  with ``importlib.util.find_spec``, walk up looking for a ``.git``
+  directory, and run the git detector if found (covers editable
+  ``pip install -e`` installs of research forks). Falls back to
+  ``importlib.metadata.version`` for regular pip installs.
 
-Both strategies return the same info-dict shape:
+All strategies return the same info-dict shape:
 
     {
       "name": str,                  # backend name
@@ -81,6 +86,19 @@ KNOWN_MAGEC: dict[str, str] = {
         "v1b (Sun & Yao 2024)",
 }
 TESTED_MAGEC: set[str] = {"v1b (Sun & Yao 2024)"}
+
+# EVo, VolFe, VESIcal — commit SHA → release tag.
+# These are Python packages typically installed editable from forks, so the
+# git detector does the real work; populate as releases stabilize.
+#   gh api repos/pipliggins/EVo/tags
+KNOWN_EVO: dict[str, str] = {}
+TESTED_EVO: set[str] = set()
+#   gh api repos/kaylai/VolFe/tags
+KNOWN_VOLFE: dict[str, str] = {}
+TESTED_VOLFE: set[str] = set()
+#   gh api repos/kaylai/VESIcal/tags
+KNOWN_VESICAL: dict[str, str] = {}
+TESTED_VESICAL: set[str] = set()
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +201,75 @@ def _detect_file_hash(
 
 
 # ---------------------------------------------------------------------------
+# Python-module helpers
+# ---------------------------------------------------------------------------
+
+def _find_python_module_path(module_name: str) -> str:
+    """Return the directory containing an importable module, or "" if absent.
+
+    Uses ``importlib.util.find_spec`` so the module is not actually imported
+    (avoids triggering side effects or import errors from unrelated deps).
+    """
+    try:
+        import importlib.util
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, ValueError):
+        return ""
+    if spec is None or spec.origin is None:
+        return ""
+    return os.path.dirname(spec.origin)
+
+
+def _walk_to_git_root(path: str, max_depth: int = 8) -> Optional[str]:
+    """Walk up from ``path`` looking for a directory containing ``.git``."""
+    cur = path
+    for _ in range(max_depth):
+        if os.path.isdir(os.path.join(cur, ".git")):
+            return cur
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return None
+        cur = parent
+    return None
+
+
+def _detect_python_module(
+    path: str,
+    module_name: str,
+    known: dict[str, str],
+    tested: set[str],
+) -> dict:
+    """Python-module detector. Prefers git info; falls back to package metadata.
+
+    Editable installs (``pip install -e``) of research forks live in a git
+    working tree, so we walk up from the module directory to find ``.git`` and
+    reuse the git detector. Regular pip installs land in site-packages with no
+    git history; for those we fall back to ``importlib.metadata.version``.
+    """
+    git_root = _walk_to_git_root(path)
+    if git_root is not None:
+        info = _detect_git(git_root, known, tested)
+        info["git_root"] = git_root
+        return info
+
+    try:
+        from importlib.metadata import version as _pkg_version
+        v = _pkg_version(module_name)
+    except Exception:
+        return {"status": "no_version_info", "source": "importlib.metadata"}
+
+    return {
+        "status": "installed",
+        "source": "importlib.metadata",
+        "id": v,
+        "full_id": v,
+        "dirty": None,
+        "tag": v,
+        "tested": v in tested,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Backend registry
 # ---------------------------------------------------------------------------
 
@@ -221,6 +308,18 @@ _BACKENDS: dict[str, tuple[Callable[[], str], Callable[[str], dict]]] = {
             TESTED_MAGEC,
         ),
     ),
+    "evo": (
+        lambda: _find_python_module_path("evo"),
+        lambda path: _detect_python_module(path, "evo", KNOWN_EVO, TESTED_EVO),
+    ),
+    "volfe": (
+        lambda: _find_python_module_path("VolFe"),
+        lambda path: _detect_python_module(path, "VolFe", KNOWN_VOLFE, TESTED_VOLFE),
+    ),
+    "vesical": (
+        lambda: _find_python_module_path("VESIcal"),
+        lambda path: _detect_python_module(path, "VESIcal", KNOWN_VESICAL, TESTED_VESICAL),
+    ),
 }
 
 
@@ -234,7 +333,8 @@ def backend_version_info(name: str, path: Optional[str] = None) -> dict:
     Parameters
     ----------
     name : str
-        Backend name (currently ``"sulfurx"`` or ``"magec"``).
+        Backend name. One of ``"sulfurx"``, ``"magec"``, ``"evo"``,
+        ``"volfe"``, ``"vesical"``.
     path : str, optional
         Override the auto-detected install path.
 
