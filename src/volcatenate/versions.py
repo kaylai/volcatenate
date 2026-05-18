@@ -45,6 +45,7 @@ All strategies return the same info-dict shape:
       "id": str | None,             # short identifier (git short-SHA, file hash prefix)
       "full_id": str | None,        # full identifier
       "dirty": bool | None,         # tracked modifications (git only)
+      "branch": str | None,         # current branch (git only; None on detached HEAD)
       "tag": str | None,            # matched release tag, if known
       "tested": bool,               # tag ∈ TESTED set
       "source": str,                # "git" | "file_hash" | "filename"
@@ -128,6 +129,8 @@ def _detect_git(path: str, known: dict[str, str], tested: set[str]) -> dict:
     dirty = bool(tracked)
     describe = _git(path, "describe", "--tags", "--always") or sha[:7]
     tag = known.get(sha)
+    # `symbolic-ref --short HEAD` returns the branch name, or fails on detached HEAD.
+    branch = _git(path, "symbolic-ref", "--short", "HEAD")
     return {
         "status": "installed",
         "source": "git",
@@ -135,6 +138,7 @@ def _detect_git(path: str, known: dict[str, str], tested: set[str]) -> dict:
         "full_id": sha,
         "dirty": dirty,
         "describe": describe,
+        "branch": branch,
         "tag": tag,
         "tested": tag in tested if tag else False,
     }
