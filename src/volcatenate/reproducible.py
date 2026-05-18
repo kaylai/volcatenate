@@ -3,7 +3,7 @@
 A *run bundle* is a single JSON file that captures everything needed
 to reproduce a volcatenate calculation exactly:
 
-- All input compositions (melt inclusions)
+- All input compositions
 - Full model configuration (RunConfig + nested sub-configs)
 - Model list and run type
 - Metadata (volcatenate version, timestamp, Python version)
@@ -86,7 +86,6 @@ class RunBundle:
     run_type: str
     models: list[str]
     compositions: list[dict]
-    config: dict
     satp_output: Optional[str] = None
     degassing_output_dir: Optional[str] = None
     backend_versions: dict = None  # type: ignore[assignment]
@@ -94,6 +93,7 @@ class RunBundle:
     pip_freeze: Optional[str] = None
     comments: str = ""
     platform_info: dict = None  # type: ignore[assignment]
+    config: dict
     # Per-(sample, backend) record of the actual inputs handed to each
     # underlying model — populated by the orchestrator at end of run.
     # Shape: {sample_name: {backend_name: {... resolved input ...}}}.
