@@ -79,6 +79,40 @@ def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def compute_o2_mass_balance(df: pd.DataFrame) -> pd.DataFrame:
+    """Add ``SUM_v_mf`` and ``XO2_BYDIFF_v_mf`` columns.
+
+    ``SUM_v_mf`` is the sum of every present vapor mole-fraction column
+    in :data:`columns.VAPOR_MF_COLUMNS`; on rows where the vapor mass
+    fraction is zero (no vapor yet) the sum is left as 0.  Treat NaN
+    species as 0 so partial backends still produce a number.
+
+    ``XO2_BYDIFF_v_mf`` is ``1 − Σ X_i`` over the *non-O2* vapor
+    species.  Useful when a backend doesn't compute ``O2_v_mf``
+    directly but other species close to 1.
+
+    Both columns are NaN on rows where no vapor species column is
+    present at all (defensive — should not happen after
+    :func:`ensure_standard_columns`).
+    """
+    species_present = [c for c in col.VAPOR_MF_COLUMNS if c in df.columns]
+    if not species_present:
+        df[col.SUM_V_MF] = np.nan
+        df[col.XO2_BYDIFF_V_MF] = np.nan
+        return df
+
+    non_o2 = [c for c in species_present if c != col.O2_V_MF]
+    sum_all = df[species_present].fillna(0.0).sum(axis=1)
+    if non_o2:
+        sum_non_o2 = df[non_o2].fillna(0.0).sum(axis=1)
+    else:
+        sum_non_o2 = pd.Series(0.0, index=df.index)
+
+    df[col.SUM_V_MF] = sum_all
+    df[col.XO2_BYDIFF_V_MF] = 1.0 - sum_non_o2
+    return df
+
+
 def ensure_standard_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Ensure all standard columns exist, filling missing ones with NaN.
 
@@ -122,5 +156,11 @@ def to_standard_schema(df: pd.DataFrame) -> pd.DataFrame:
         columns that were present.
     """
     df = ensure_standard_columns(df)
+    # Idempotently populate derived columns so every written CSV carries
+    # the full schema that downstream figure code expects.
+    df = compute_cs_v_mf(df)
+    if len(df) > 0:
+        df = normalize_volatiles(df)
+    df = compute_o2_mass_balance(df)
     keep = list(col.STANDARD_COLUMNS) + [c for c in col.OPTIONAL_COLUMNS if c in df.columns]
     return df[keep].copy()

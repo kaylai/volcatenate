@@ -473,6 +473,175 @@ def export_degassing_paths(
 
 
 # ------------------------------------------------------------------
+# Output-directory post-processing (DCompress import + satP summary)
+# ------------------------------------------------------------------
+
+def _standardize_dropped_dcompress_csvs(output_dir: str) -> list[str]:
+    """Standardize any raw DCompress CSVs the user dropped into the run dir.
+
+    DCompress is not runnable from Python — users export results from the
+    DCompress web interface and place the CSVs under
+    ``<output_dir>/DCompress/*.csv``.  This helper scans that directory,
+    detects raw files (those that still carry the ``Validity`` column),
+    runs them through the DCompress converter + the standard derived
+    columns, and overwrites the file in place.
+
+    Returns the list of paths that were rewritten.
+    """
+    from volcatenate.converters import convert_dcompress, is_raw_dcompress
+    from volcatenate.convert import to_standard_schema
+
+    dcompress_dir = os.path.join(output_dir or ".", "DCompress")
+    if not os.path.isdir(dcompress_dir):
+        return []
+
+    rewritten: list[str] = []
+    for fname in sorted(os.listdir(dcompress_dir)):
+        if not fname.endswith(".csv"):
+            continue
+        fpath = os.path.join(dcompress_dir, fname)
+        try:
+            df = pd.read_csv(fpath)
+        except Exception as exc:
+            logger.warning("Failed to read DCompress CSV %s: %s", fpath, exc)
+            continue
+        if not is_raw_dcompress(df):
+            continue
+        try:
+            df = convert_dcompress(df)
+            df = to_standard_schema(df)
+            df.to_csv(fpath, index=False)
+            rewritten.append(fpath)
+            logger.info("  DCompress: standardized %s", fpath)
+        except Exception as exc:
+            logger.warning("Failed to standardize DCompress CSV %s: %s", fpath, exc)
+
+    return rewritten
+
+
+def _iter_tool_csv_dirs(output_dir: str) -> "list[tuple[str, str]]":
+    """Yield ``(tool_name, tool_dir)`` for every per-tool subdir under
+    *output_dir* that contains CSVs.
+
+    VESIcal variants live one level deeper (``output_dir/VESIcal/<variant>``)
+    and are returned as ``(variant, variant_dir)``.
+    """
+    pairs: list[tuple[str, str]] = []
+    if not output_dir or not os.path.isdir(output_dir):
+        return pairs
+
+    for entry in sorted(os.listdir(output_dir)):
+        sub = os.path.join(output_dir, entry)
+        if not os.path.isdir(sub):
+            continue
+        if entry == "VESIcal":
+            for variant in sorted(os.listdir(sub)):
+                vsub = os.path.join(sub, variant)
+                if os.path.isdir(vsub):
+                    pairs.append((variant, vsub))
+        else:
+            pairs.append((entry, sub))
+    return pairs
+
+
+def _write_satp_summary_from_outputs(
+    output_dir: str,
+    satp_path: str,
+    satp_result: Optional[SaturationResult],
+    known_samples: Optional[list[tuple[str, str]]] = None,
+) -> str:
+    """Write the authoritative wide-format saturation-pressure CSV.
+
+    For each tool subdirectory under *output_dir* (including DCompress
+    and VESIcal variants), read every degassing CSV and record
+    ``max(P_bars)`` per sample as ``<Tool>_SatP_bars``.
+
+    Sample/Reservoir metadata is taken from *satp_result* when
+    available (so the CSV preserves the ordering and reservoir info
+    from the run); samples that only appear as DCompress files (no
+    runnable backend) are appended at the end.
+    """
+    # Collect satP from degassing CSVs: {tool: {sample_key: max_P}}
+    by_tool: dict[str, dict[str, float]] = {}
+    for tool, tool_dir in _iter_tool_csv_dirs(output_dir):
+        for fname in os.listdir(tool_dir):
+            if not fname.endswith(".csv"):
+                continue
+            sample_key = os.path.splitext(fname)[0].lower()
+            try:
+                df = pd.read_csv(os.path.join(tool_dir, fname))
+            except Exception:
+                continue
+            if col.P_BARS not in df.columns or df[col.P_BARS].empty:
+                continue
+            p = df[col.P_BARS].max()
+            if pd.notna(p):
+                by_tool.setdefault(tool, {})[sample_key] = float(p)
+
+    # Fall back to satp-backend results for any (tool, sample) pair that
+    # doesn't have a degassing CSV — covers runs where satP was requested
+    # but degassing wasn't, and tools whose satP backend ran but whose
+    # degassing failed or wasn't requested.
+    if satp_result is not None:
+        for tool, detail_df in satp_result.equilibrium_state.items():
+            if detail_df is None or detail_df.empty:
+                continue
+            if col.P_BARS not in detail_df.columns:
+                continue
+            for _, row in detail_df.iterrows():
+                sample = row.get("Sample")
+                p = row.get(col.P_BARS)
+                if sample is None or pd.isna(p):
+                    continue
+                key = str(sample).lower()
+                # Only fill if degassing scan didn't already provide a value.
+                by_tool.setdefault(tool, {}).setdefault(key, float(p))
+
+    # Build the row order from caller-supplied known_samples (preferred) or
+    # satp_result, so Sample casing and Reservoir info match the run inputs.
+    rows: list[dict] = []
+    seen_keys: set[str] = set()
+    sample_order: list[tuple[str, str]] = []
+    if known_samples:
+        sample_order = list(known_samples)
+    elif satp_result is not None:
+        sample_order = list(zip(satp_result.samples, satp_result.reservoirs))
+    for sample, reservoir in sample_order:
+        key = sample.lower()
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        rows.append({"Sample": sample, "Reservoir": reservoir, "_key": key})
+
+    # Append samples that only appear as written CSVs (e.g. DCompress-only
+    # samples on a degassing-only run with no run-side knowledge of them).
+    extra_keys: set[str] = set()
+    for tool_map in by_tool.values():
+        for k in tool_map.keys():
+            if k not in seen_keys:
+                extra_keys.add(k)
+    for key in sorted(extra_keys):
+        # No casing info available — title case is a reasonable default.
+        rows.append({"Sample": key.title(), "Reservoir": "", "_key": key})
+
+    if not rows:
+        logger.warning("No saturation pressures to write to %s", satp_path)
+        return satp_path
+
+    tools_sorted = sorted(by_tool.keys())
+    for row in rows:
+        key = row.pop("_key")
+        for tool in tools_sorted:
+            row[f"{tool}_SatP_bars"] = by_tool.get(tool, {}).get(key, float("nan"))
+
+    out_df = pd.DataFrame(rows)
+    os.makedirs(os.path.dirname(satp_path) or ".", exist_ok=True)
+    out_df.to_csv(satp_path, index=False)
+    logger.info("  Saturation pressures (authoritative) saved to %s", satp_path)
+    return satp_path
+
+
+# ------------------------------------------------------------------
 # End-to-end workflow
 # ------------------------------------------------------------------
 
@@ -624,6 +793,22 @@ def run_comparison(
                 )
                 all_degassing[comp.sample] = results
             output["degassing"] = all_degassing
+
+    # --- Standardize any user-supplied DCompress CSVs in the run dir ---
+    _standardize_dropped_dcompress_csvs(degassing_output_dir)
+
+    # --- Authoritative saturation_pressures.csv from degassing outputs ---
+    # Derived from max(P_bars) per (tool, sample) so the file is complete
+    # on first write \u2014 includes DCompress (which has no runnable backend
+    # but appears as a user-dropped CSV) alongside the runnable tools.
+    if satp_compositions is not None or degassing_compositions is not None:
+        known_samples = [
+            (c.sample, c.reservoir or "") for c in (satp_comps + degas_comps)
+        ]
+        _write_satp_summary_from_outputs(
+            degassing_output_dir, satp_output, output.get("satp_df"),
+            known_samples=known_samples,
+        )
 
     # --- Cleanup empty output directory ---
     if not config.keep_raw_output:

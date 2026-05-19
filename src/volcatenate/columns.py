@@ -41,6 +41,8 @@ OCS_V_MF = "OCS_v_mf"
 
 # --- Derived ---
 CS_V_MF = "CS_v_mf"               # Elemental C/S ratio in vapor (atom-weighted)
+SUM_V_MF = "SUM_v_mf"             # Sum of vapor mole fractions (sanity check ≈ 1)
+XO2_BYDIFF_V_MF = "XO2_BYDIFF_v_mf"  # O2 mole fraction by difference (1 − sum non-O2)
 
 # --- Species groupings for elemental C/S ratio ---
 # Maps vapor mole-fraction column → number of C (or S) atoms per molecule.
@@ -80,4 +82,5 @@ STANDARD_COLUMNS = [
 # but are not required.
 OPTIONAL_COLUMNS = [
     H2OT_M_WTPC_NORM, CO2T_M_PPMW_NORM, ST_M_PPMW_NORM,
+    SUM_V_MF, XO2_BYDIFF_V_MF,
 ]
