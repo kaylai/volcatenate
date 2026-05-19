@@ -257,19 +257,6 @@ data, fig, axes = vp.plot_all_melt_volatiles(systems, colors=["#4477AA", "#EE667
 fig.savefig("envelopes.png", dpi=300)
 ```
 
-## CLI
-
-```bash
-# List available models
-volcatenate list-models
-
-# Run saturation pressure calculation
-volcatenate saturation-pressure input.csv -m EVo,VolFe -o results.csv
-
-# Run degassing path calculation
-volcatenate degassing input.csv -m all -o ./paths/
-```
-
 ## Examples
 
 See the `examples/` directory:

@@ -102,19 +102,6 @@ results = volcatenate.run_comparison(
 # results["degassing"] -> {"Kilauea": {"EVo": DataFrame, "VolFe": DataFrame, ...}}
 ```
 
-## Command line
-
-```bash
-# List available models
-volcatenate list-models
-
-# Run saturation pressure calculation
-volcatenate saturation-pressure input.csv -m EVo,VolFe -o results.csv
-
-# Run degassing path calculation
-volcatenate degassing input.csv -m all -o ./paths/
-```
-
 ## Where to next
 
 - [Configuration](configuration.md) — all `RunConfig` settings.

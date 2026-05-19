@@ -17,17 +17,15 @@
 #      it lives inside the installed package and will be overwritten
 #      on reinstall):
 #
-#        volcatenate init-config                   # → ./volcatenate_config.yaml
-#        volcatenate init-config -o my_config.yaml # → custom path
+#        from volcatenate.config import RunConfig, save_config
+#        save_config(RunConfig(), "volcatenate_config.yaml")
 #
 #   2. Open the copy and change only what you need.
 #      You can safely delete entire sections you don't need.
 #
-#   3. Load it in Python or from the CLI:
+#   3. Load it back in Python:
 #
 #        config = volcatenate.load_config("volcatenate_config.yaml")
-#
-#        volcatenate saturation-pressure input.csv --config my_config.yaml
 
 output_dir: "."  # Root directory for all output (default: working directory)
 raw_output_dir: raw_tool_output  # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)

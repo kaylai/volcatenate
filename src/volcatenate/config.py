@@ -707,12 +707,13 @@ def default_config_path() -> str:
 
     Instead, copy it to your project and edit the copy::
 
-        # Easiest — from the command line:
-        volcatenate init-config
-
-        # Or in Python:
         import shutil, volcatenate
         shutil.copy(volcatenate.default_config_path(), "volcatenate_config.yaml")
+
+    Or generate a fresh template (with your local paths auto-detected)::
+
+        from volcatenate.config import RunConfig, save_config
+        save_config(RunConfig(), "volcatenate_config.yaml")
     """
     return _DEFAULT_CONFIG_PATH
 
