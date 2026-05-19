@@ -97,7 +97,12 @@ def list_models(available_only: bool = False) -> list[str]:
     return list_backends(available_only=available_only)
 
 
-__version__ = "0.4.0"
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
+try:
+    __version__ = _pkg_version("volcatenate")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"  # ran from source tree, not installed
 
 __all__ = [
     # Core API
