@@ -104,7 +104,7 @@ def _init_progress(config, _progress, total, description):
         )
         _progress.__enter__()
     if config.verbose and _progress.console:
-        setup_logging(config.verbose, config.log_file, console=_progress.console)
+        setup_logging(config.verbose, config.log_file, console=_progress.console, level=config.verbose_level)
     return _progress, owns
 
 
@@ -149,7 +149,7 @@ def calculate_saturation_pressure(
     if config is None:
         config = RunConfig()
 
-    setup_logging(config.verbose, config.log_file)
+    setup_logging(config.verbose, config.log_file, level=config.verbose_level)
     os.makedirs(config.output_dir or ".", exist_ok=True)
 
     comps = _resolve_compositions(compositions)
@@ -308,7 +308,7 @@ def calculate_degassing(
     if config is None:
         config = RunConfig()
 
-    setup_logging(config.verbose, config.log_file)
+    setup_logging(config.verbose, config.log_file, level=config.verbose_level)
     os.makedirs(config.output_dir or ".", exist_ok=True)
 
     comps = _resolve_compositions(composition)
@@ -749,7 +749,7 @@ def run_comparison(
     if degassing_output_dir is None:
         degassing_output_dir = config.output_dir or "."
 
-    setup_logging(config.verbose, config.log_file)
+    setup_logging(config.verbose, config.log_file, level=config.verbose_level)
     output = {"satp_df": None, "degassing": None}
 
     # Pre-compute total work for the unified progress bar
@@ -795,7 +795,7 @@ def run_comparison(
         enabled=config.show_progress,
     ) as vp:
         if config.verbose and vp.console:
-            setup_logging(config.verbose, config.log_file, console=vp.console)
+            setup_logging(config.verbose, config.log_file, console=vp.console, level=config.verbose_level)
 
         # --- Saturation pressure ---
         if satp_compositions is not None:

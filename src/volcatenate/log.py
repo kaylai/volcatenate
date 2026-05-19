@@ -23,17 +23,38 @@ logger = logging.getLogger("volcatenate")
 _log_files_opened: set[str] = set()
 
 
+_TERMINAL_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR"}
+
+
+def _resolve_terminal_level(level: str) -> int:
+    """Convert a level name to the numeric logging constant.
+
+    Accepts case-insensitive names from :data:`_TERMINAL_LEVELS`. Raises
+    ``ValueError`` for anything else so misconfigured YAML fails loudly
+    at setup time rather than silently dropping messages.
+    """
+    name = (level or "INFO").upper()
+    if name not in _TERMINAL_LEVELS:
+        raise ValueError(
+            f"Unknown verbose_level {level!r}. "
+            f"Choose one of: {sorted(_TERMINAL_LEVELS)}."
+        )
+    return getattr(logging, name)
+
+
 def setup_logging(
     verbose: bool = False,
     log_file: str = "",
     console: object = None,
+    level: str = "INFO",
 ) -> None:
     """Configure the ``volcatenate`` logger.
 
     Parameters
     ----------
     verbose : bool
-        If *True*, print progress messages to stdout (INFO level).
+        If *True*, print progress messages to stdout.  The threshold is
+        controlled by *level*.
     log_file : str
         If non-empty, write **all** messages (DEBUG and above) to
         this file.  The file is **truncated on the first call within
@@ -41,24 +62,31 @@ def setup_logging(
         ``calculate_*`` calls in the same notebook or script
         accumulate into one log instead of clobbering each other.
         Restarting Python (or calling :func:`reset_log_file_tracking`)
-        starts a fresh file on the next call.
+        starts a fresh file on the next call.  The level here is not
+        affected by *level* — the file is always DEBUG so the runlog
+        stays comprehensive.
     console : rich.console.Console, optional
         If provided and *verbose* is True, use ``RichHandler`` with
         this console instance.  This prevents progress bar corruption
         when both logging and progress bars are active.
+    level : str, optional
+        Terminal log level when *verbose* is True.  One of
+        ``"DEBUG"``, ``"INFO"`` (default), ``"WARNING"``, ``"ERROR"``.
 
     Notes
     -----
     This is called automatically by the core entry-point functions
     (``calculate_saturation_pressure``, ``calculate_degassing``,
-    ``run_comparison``) using the ``RunConfig.verbose`` and
-    ``RunConfig.log_file`` fields.
+    ``run_comparison``) using the ``RunConfig.verbose``,
+    ``RunConfig.verbose_level`` and ``RunConfig.log_file`` fields.
 
     Power users can also call it directly or configure the
     ``"volcatenate"`` logger with standard ``logging`` handlers.
     """
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
+
+    terminal_level = _resolve_terminal_level(level)
 
     if verbose:
         if console is not None:
@@ -69,19 +97,19 @@ def setup_logging(
                     show_time=False,
                     show_path=False,
                     markup=True,
-                    level=logging.INFO,
+                    level=terminal_level,
                 )
                 logger.addHandler(sh)
             except ImportError:
                 import sys
                 sh = logging.StreamHandler(sys.stdout)
-                sh.setLevel(logging.INFO)
+                sh.setLevel(terminal_level)
                 sh.setFormatter(logging.Formatter("%(message)s"))
                 logger.addHandler(sh)
         else:
             import sys
             sh = logging.StreamHandler(sys.stdout)
-            sh.setLevel(logging.INFO)
+            sh.setLevel(terminal_level)
             sh.setFormatter(logging.Formatter("%(message)s"))
             logger.addHandler(sh)
 

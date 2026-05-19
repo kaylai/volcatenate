@@ -643,8 +643,9 @@ class RunConfig:
     - ``output_dir`` — root directory for all output files (standardized result CSVs, figures, raw tool output subdirectory). Default ``"."`` (current working directory).
     - ``raw_output_dir`` — subdirectory (relative to ``output_dir``) for raw per-backend files: EVo YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
     - ``keep_raw_output`` — when ``True`` (default), all raw tool output files are retained for inspection. ``False`` cleans them up after each run, keeping only the standardized DataFrames in memory.
-    - ``verbose`` — print progress at INFO level to the terminal.
-    - ``log_file`` — path to a file that captures all DEBUG-level log output. The file is truncated on the first call within a Python process and appended thereafter, so multiple ``calculate_*`` calls in the same notebook accumulate into one log instead of clobbering each other. Use :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string disables file logging.
+    - ``verbose`` — print progress to the terminal (on/off switch).
+    - ``verbose_level`` — terminal log level when ``verbose`` is True. One of ``"DEBUG"``, ``"INFO"``, ``"WARNING"`` (default), ``"ERROR"``. Lets you mute INFO chatter while still seeing failures. The file handler (``log_file``) always captures everything regardless of this setting.
+    - ``log_file`` — path to a file that captures all log output. The file is truncated on the first call within a Python process and appended thereafter, so multiple ``calculate_*`` calls in the same notebook accumulate into one log instead of clobbering each other. Use :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string disables file logging.
     - ``show_progress`` — show rich progress bars during multi-sample runs.
     - ``save_bundle`` — path at which to write a reproducible run bundle (JSON). Empty string disables bundle saving. See ``docs/run_bundles.md``.
     - ``bundle_comments`` — free-text notes recorded in the bundle's ``comments`` field; provenance only, ignored on replay.
@@ -660,6 +661,7 @@ class RunConfig:
     raw_output_dir: str = "raw_tool_output"
     keep_raw_output: bool = True
     verbose: bool = False
+    verbose_level: str = "WARNING"
     log_file: str = ""
     show_progress: bool = True
     save_bundle: str = ""
@@ -708,6 +710,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("_top", "raw_output_dir"):     "Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)",
     ("_top", "keep_raw_output"):    "Keep raw tool output files after run",
     ("_top", "verbose"):             "Print progress to terminal",
+    ("_top", "verbose_level"):       "Terminal log level: DEBUG, INFO, WARNING, ERROR (only used when verbose=true)",
     ("_top", "log_file"):            "Write all output to this file (empty = no log file)",
     ("_top", "show_progress"):       "Show rich progress bars (True/False)",
     ("_top", "save_bundle"):         "Path to save reproducible JSON bundle (empty = don't save)",
