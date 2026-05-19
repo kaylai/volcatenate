@@ -1,5 +1,9 @@
 # volcatenate configuration
-# Generated with: volcatenate.config.save_config(RunConfig(), path)
+#
+# This file is the canonical hand-curated default config shipped with
+# volcatenate.  It is NOT auto-generated from save_config(); edit it
+# directly and keep in sync with the SulfurXConfig / EVoConfig / etc.
+# dataclass defaults in src/volcatenate/config.py.
 #
 # Edit only the settings you need to change.
 # Missing keys use defaults (paper settings).
@@ -258,6 +262,8 @@ sulfurx:
   crystallization: 0  # 0 = no crystallization (the only path SulfurX exercises today)
   open_degassing: 0  # 0 = closed-system, 1 = open-system
   d34s_initial: 0.0  # Initial bulk d34S (only used when isotope tracking is wired up)
+  kd_low_p_increment: 20.0  # SulfurX INC: per-step additive increment to combined molar kd at low P
+  kd_low_p_threshold_mpa: 0.0  # SulfurX BAR: MPa threshold below which the kd increment applies (0 = off; README recommends < 20 MPa when on)
   sulfide:  # Sulfide phase composition (wt% of the sulfide phase, NOT the melt)
     fe: 65.43  # Fe wt% of the sulfide phase
     ni: 0.0  # Ni wt% of the sulfide phase

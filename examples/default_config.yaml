@@ -163,6 +163,8 @@ sulfurx:
   crystallization: 0  # 0 = no crystallization, 1 = fractional crystallization (only 0 exercised today)
   open_degassing: 0  # 0 = closed-system, 1 = open system
   d34s_initial: 0.0  # Initial bulk delta34S; passed to SulfurX but isotopes are not propagated through degassing, so has no effect on output beyond the initial row
+  kd_low_p_increment: 20.0    # SulfurX INC (degassingrun.py): per-step additive increment to combined molar sulfur Kd when below kd_low_p_threshold_mpa. README typo'd this as INT.
+  kd_low_p_threshold_mpa: 0.0  # SulfurX BAR (degassingrun.py): MPa pressure threshold (not bar) below which the Kd increment applies. 0.0 = override OFF (upstream default). README recommends < 20 MPa when on.
   sulfide:  # Sulfide phase composition (wt% of the sulfide phase, NOT the melt). Only consulted when sulfide_pre=1 or when SCSS is reported.
     fe: 65.43  # Iron wt% of the sulfide phase
     ni: 0.0    # Nickel wt% of the sulfide phase

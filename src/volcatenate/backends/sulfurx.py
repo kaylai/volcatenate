@@ -249,6 +249,32 @@ def _patch_composition(composition: dict):
         _dr.MeltComposition = _original
 
 
+@contextlib.contextmanager
+def _patch_kd_low_p(increment: float, threshold_mpa: float):
+    """Set SulfurX's module-level ``INC`` and ``BAR`` globals for the duration of a run.
+
+    SulfurX exposes the low-pressure kd-increment knob only as module-level
+    globals in ``degassingrun.py`` (``INC`` and ``BAR``), not as parameters of
+    ``COHS_degassing``.  This context manager assigns the values requested by
+    ``SulfurXConfig`` on enter and restores the originals on exit so repeated
+    runs in the same Python session don't leak state.
+
+    Note: the SulfurX README refers to the increment as ``INT``; that is a
+    typo — the actual source variable is ``INC``.
+    """
+    import degassingrun as _dr
+
+    original_inc = _dr.INC
+    original_bar = _dr.BAR
+    _dr.INC = increment
+    _dr.BAR = threshold_mpa
+    try:
+        yield
+    finally:
+        _dr.INC = original_inc
+        _dr.BAR = original_bar
+
+
 def _fmq_frost1991(T_K: float, P_bar: float = 1.0) -> float:
     """FMQ buffer — Frost (1991) Reviews in Mineralogy, Vol. 25.
 
@@ -373,6 +399,17 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
     n_steps = cfg.n_steps
     open_degassing = cfg.open_degassing
     d34s_initial = cfg.d34s_initial
+    kd_low_p_increment = cfg.kd_low_p_increment
+    kd_low_p_threshold_mpa = cfg.kd_low_p_threshold_mpa
+
+    # README guidance: when the low-P kd override is enabled, the threshold
+    # should stay below 20 MPa.  BAR = 0 means "off" and is not flagged.
+    if kd_low_p_threshold_mpa >= 20:
+        logger.warning(
+            "[SulfurX] kd_low_p_threshold_mpa = %g MPa is >= 20 MPa; "
+            "the SulfurX README recommends keeping it below 20 MPa.",
+            kd_low_p_threshold_mpa,
+        )
 
     # Sulfide phase composition — exposed via SulfurXSulfideConfig.
     sulfide = {
@@ -408,6 +445,8 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
                     "n_steps": int(n_steps),
                     "open_degassing": int(open_degassing),
                     "d34s_initial": float(d34s_initial),
+                    "kd_low_p_increment": float(kd_low_p_increment),
+                    "kd_low_p_threshold_mpa": float(kd_low_p_threshold_mpa),
                 },
                 "sulfide": sulfide,
             },
@@ -570,7 +609,12 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
     # instead of the built-in Hawaiian basalt.  Without this patch
     # the per-step calculations are inconsistent with the initial
     # conditions and the inner convergence loop (100k iter) hangs.
-    with _patch_composition(composition):
+    # Also patch SulfurX's INC / BAR globals (the low-P kd-increment
+    # knob in degassingrun.py) to the values from SulfurXConfig, so
+    # repeated runs in the same Python session don't leak state.
+    with _patch_composition(composition), _patch_kd_low_p(
+        kd_low_p_increment, kd_low_p_threshold_mpa,
+    ):
         for i in range(1, n_steps):
             degas = COHS_degassing(
                 pressure=df_results["pressure"][i],

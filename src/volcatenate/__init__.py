@@ -43,9 +43,10 @@ so configuration is entirely **optional**.  Three approaches:
 
 3. **YAML file** — generate a template, edit it, load it::
 
-       volcatenate init-config          # creates ./volcatenate_config.yaml
+       from volcatenate.config import RunConfig, save_config, load_config
+       save_config(RunConfig(), "volcatenate_config.yaml")  # template
        # ... edit the file ...
-       config = volcatenate.load_config("volcatenate_config.yaml")
+       config = load_config("volcatenate_config.yaml")
 
    You can also combine: load a YAML then tweak in Python::
 

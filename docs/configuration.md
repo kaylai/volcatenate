@@ -18,11 +18,12 @@ config = RunConfig(evo=EVoConfig(p_stop=10))
 ```python
 from volcatenate.config import load_config, save_config
 
-# Generate a fully-populated template:
+# Generate a fully-populated template (paths auto-detected for this machine):
 save_config(RunConfig(), "volcatenate_config.yaml")
 
-# Or copy the bundled default in one shot:
-#   $ volcatenate init-config
+# Or copy the bundled hand-curated default (empty paths, ready to fill in):
+#   import shutil, volcatenate
+#   shutil.copy(volcatenate.default_config_path(), "volcatenate_config.yaml")
 
 # Load it back:
 config = load_config("volcatenate_config.yaml")
@@ -48,17 +49,18 @@ In short:
 
 ## Backend sections
 
-Each backend has its own nested section in the YAML. The full set of fields and accepted values is documented inline in the bundled default config — open it with:
-
-```bash
-volcatenate init-config        # writes a copy you can edit
-```
-
-Or in Python:
+Each backend has its own nested section in the YAML. The full set of fields and accepted values is documented inline in the bundled default config — find it with:
 
 ```python
 import volcatenate
 print(volcatenate.config.default_config_path())
+```
+
+Or generate a fully-populated, machine-personalized copy:
+
+```python
+from volcatenate.config import RunConfig, save_config
+save_config(RunConfig(), "volcatenate_config.yaml")
 ```
 
 The currently-supported backends are: **VolFe**, **EVo**, **MAGEC**,
@@ -139,4 +141,4 @@ vesical:
 |---|---|
 | `load_config(path)` | Read YAML, override only the fields present, keep dataclass defaults for the rest. |
 | `save_config(cfg, path)` | Write a `RunConfig` to a fully-populated, commented YAML file. |
-| `volcatenate init-config` | CLI shortcut that copies the bundled default to your working directory. |
+| `default_config_path()` | Filesystem path to the bundled hand-curated default config, for inspection or copy. |

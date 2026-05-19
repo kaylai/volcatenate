@@ -600,6 +600,7 @@ class SulfurXConfig:
     - ``fo2_tracker`` — ``1`` (default) lets fO2 evolve with the gas chemistry each step; ``0`` holds it buffered at the starting value.
     - ``sulfide`` — the nested :class:`SulfurXSulfideConfig` describing the sulfide phase composition (Fe/Ni/Cu/O/S wt% of the sulfide, not the melt). Defaults to a near-stoichiometric pyrrhotite.
     - ``crystallization``, ``open_degassing``, ``d34s_initial`` — set to ``0`` by default; SulfurX can in principle take other values but they are not exercised by the comparison-paper workflow.
+    - ``kd_low_p_increment`` / ``kd_low_p_threshold_mpa`` — SulfurX's module-level ``INC`` / ``BAR`` globals in ``degassingrun.py``, exposed here as config. Below ``kd_low_p_threshold_mpa`` (MPa, *not* bar despite SulfurX's ``BAR`` name), each step's combined molar sulfur partition coefficient is forced to the previous step's value plus ``kd_low_p_increment`` instead of being recomputed from ``kd_rxn1`` / ``kd_rxn2``. The SulfurX README labels the increment ``INT`` — that is a README typo; the source variable is ``INC``. Default ``threshold = 0.0`` reproduces upstream SulfurX (override disabled). Set ``threshold > 0`` (≤ 20 MPa per the README) to enable.
 
     See Also
     --------
@@ -621,6 +622,13 @@ class SulfurXConfig:
     crystallization: int = 0          # 0 = no crystallization (the only path SulfurX exercises today)
     open_degassing: int = 0           # 0 = closed-system degassing, 1 = open-system
     d34s_initial: float = 0.0         # Initial bulk d34S (only used when isotope tracking is wired up)
+
+    # Low-pressure kd override (SulfurX's INC / BAR module globals in degassingrun.py).
+    # Default kd_low_p_threshold_mpa = 0.0 disables the override, matching upstream SulfurX defaults.
+    # The SulfurX README's "INT" is a typo for INC; the README also recommends keeping the
+    # threshold below 20 MPa when enabled.
+    kd_low_p_increment: float = 20.0    # SulfurX INC: per-step additive increment to combined molar kd
+    kd_low_p_threshold_mpa: float = 0.0 # SulfurX BAR: MPa threshold below which the override applies (0 = off)
 
     # Sulfide phase composition (SulfurX uses this for sulfide saturation).
     sulfide: SulfurXSulfideConfig = field(default_factory=SulfurXSulfideConfig)
@@ -889,6 +897,8 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("sulfurx", "s_fe_choice"):      "S speciation: 0=Nash, 1=O'Neill&Mavrogenes",
     ("sulfurx", "sigma"):            "log10fO2 tolerance for redox calculation",
     ("sulfurx", "sulfide_pre"):      "0 = no sulfide precipitation, 1 = enabled",
+    ("sulfurx", "kd_low_p_increment"):     "SulfurX INC: per-step additive increment to combined molar kd at low P",
+    ("sulfurx", "kd_low_p_threshold_mpa"): "SulfurX BAR: MPa threshold below which the kd increment applies (0 = off; README recommends < 20 MPa when on)",
     ("sulfurx", "crystallization"):  "0 = no crystallization (the only path SulfurX exercises today)",
     ("sulfurx", "open_degassing"):   "0 = closed-system, 1 = open-system",
     ("sulfurx", "d34s_initial"):     "Initial bulk d34S (only used when isotope tracking is wired up)",

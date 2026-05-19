@@ -257,6 +257,8 @@ sulfurx:
   s_fe_choice: 1                  # S speciation model: 0 = Nash, 1 = O'Neill & Mavrogenes
   sigma: 0.005                    # log10fO2 tolerance for redox calculation
   sulfide_pre: 0                  # Sulfide precipitation: 0 = disabled, 1 = enabled
+  kd_low_p_increment: 20.0        # SulfurX INC: per-step additive increment to combined molar S Kd below kd_low_p_threshold_mpa (README typo'd as INT)
+  kd_low_p_threshold_mpa: 0.0     # SulfurX BAR: MPa pressure threshold (not bar) for the low-P Kd override; 0.0 = OFF (upstream default), README recommends < 20 MPa when on
 
 
 # ── DCompress ───────────────────────────────────────────────────
