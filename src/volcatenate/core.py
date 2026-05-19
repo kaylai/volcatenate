@@ -212,6 +212,9 @@ def calculate_saturation_pressure(
                         comps, config,
                     )
                 except Exception as exc:
+                    logger.warning(
+                        "    %s batch satP failed: %s", model_name, exc,
+                    )
                     _progress.add_warning(
                         f"{model_name} batch satP failed: {exc}"
                     )
@@ -226,6 +229,10 @@ def calculate_saturation_pressure(
                             comp, config,
                         )
                     except Exception as exc:
+                        logger.warning(
+                            "    %s satP failed for %s: %s",
+                            model_name, comp.sample, exc,
+                        )
                         _progress.add_warning(
                             f"{model_name} satP failed for {comp.sample}: {exc}"
                         )
@@ -357,6 +364,14 @@ def calculate_degassing(
                 results[model_name] = df
                 logger.info("    %s: OK (%d steps)", model_name, len(df))
             except Exception as exc:
+                logger.warning(
+                    "    %s degassing failed for %s: %s",
+                    model_name, comp.sample, exc,
+                )
+                logger.debug(
+                    "    %s degassing traceback for %s:",
+                    model_name, comp.sample, exc_info=True,
+                )
                 _progress.add_warning(f"{model_name} degassing failed: {exc}")
             _progress.advance()
     finally:
@@ -519,28 +534,42 @@ def _standardize_dropped_dcompress_csvs(output_dir: str) -> list[str]:
     return rewritten
 
 
-def _iter_tool_csv_dirs(output_dir: str) -> "list[tuple[str, str]]":
-    """Yield ``(tool_name, tool_dir)`` for every per-tool subdir under
-    *output_dir* that contains CSVs.
+# Tools that have no runnable backend in volcatenate but appear in the
+# output directory as user-dropped CSVs. They get a ``<Tool>_SatP_bars``
+# column in the satP summary just like runnable tools.
+_USER_DROPPED_TOOLS: tuple[str, ...] = ("DCompress",)
 
-    VESIcal variants live one level deeper (``output_dir/VESIcal/<variant>``)
-    and are returned as ``(variant, variant_dir)``.
+
+def _iter_tool_csv_dirs(
+    output_dir: str,
+    tools: "list[str]",
+) -> "list[tuple[str, str]]":
+    """Return ``(tool_name, tool_dir)`` only for the tools the caller
+    asked about.
+
+    A whitelist — never enumerates the filesystem — so volcatenate's own
+    bookkeeping directories (``saturation_pressures_details/``,
+    ``resolved_inputs/``, ``raw_tool_output/`` …) can never accidentally
+    become "tools".
+
+    VESIcal variants live one level deeper at
+    ``output_dir/VESIcal/<model_name>`` (matching the layout written by
+    :func:`export_degassing_paths`) and are addressed in *tools* as
+    ``VESIcal_<variant>`` — the full model name.
     """
     pairs: list[tuple[str, str]] = []
     if not output_dir or not os.path.isdir(output_dir):
         return pairs
 
-    for entry in sorted(os.listdir(output_dir)):
-        sub = os.path.join(output_dir, entry)
-        if not os.path.isdir(sub):
-            continue
-        if entry == "VESIcal":
-            for variant in sorted(os.listdir(sub)):
-                vsub = os.path.join(sub, variant)
-                if os.path.isdir(vsub):
-                    pairs.append((variant, vsub))
+    for tool in tools:
+        if "VESIcal" in tool and tool != "VESIcal":
+            vsub = os.path.join(output_dir, "VESIcal", tool)
+            if os.path.isdir(vsub):
+                pairs.append((tool, vsub))
         else:
-            pairs.append((entry, sub))
+            sub = os.path.join(output_dir, tool)
+            if os.path.isdir(sub):
+                pairs.append((tool, sub))
     return pairs
 
 
@@ -548,13 +577,20 @@ def _write_satp_summary_from_outputs(
     output_dir: str,
     satp_path: str,
     satp_result: Optional[SaturationResult],
+    tools: "list[str]",
     known_samples: Optional[list[tuple[str, str]]] = None,
 ) -> str:
     """Write the authoritative wide-format saturation-pressure CSV.
 
-    For each tool subdirectory under *output_dir* (including DCompress
-    and VESIcal variants), read every degassing CSV and record
-    ``max(P_bars)`` per sample as ``<Tool>_SatP_bars``.
+    For each tool listed in *tools* whose output directory exists under
+    *output_dir* (including DCompress and VESIcal variants), read every
+    degassing CSV and record ``max(P_bars)`` per sample as
+    ``<Tool>_SatP_bars``.
+
+    The tool list is a whitelist supplied by the caller — bookkeeping
+    directories that happen to live alongside the tool dirs
+    (``saturation_pressures_details/``, ``resolved_inputs/`` …) are
+    never picked up as fake tools.
 
     Sample/Reservoir metadata is taken from *satp_result* when
     available (so the CSV preserves the ordering and reservoir info
@@ -563,7 +599,7 @@ def _write_satp_summary_from_outputs(
     """
     # Collect satP from degassing CSVs: {tool: {sample_key: max_P}}
     by_tool: dict[str, dict[str, float]] = {}
-    for tool, tool_dir in _iter_tool_csv_dirs(output_dir):
+    for tool, tool_dir in _iter_tool_csv_dirs(output_dir, tools):
         for fname in os.listdir(tool_dir):
             if not fname.endswith(".csv"):
                 continue
@@ -807,6 +843,7 @@ def run_comparison(
         ]
         _write_satp_summary_from_outputs(
             degassing_output_dir, satp_output, output.get("satp_df"),
+            tools=list(model_names) + list(_USER_DROPPED_TOOLS),
             known_samples=known_samples,
         )
 

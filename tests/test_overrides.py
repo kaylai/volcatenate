@@ -361,11 +361,11 @@ def test_resolve_works_for_volfe_config():
     assert cfg.gassing_style == "closed"
 
 
-def test_volfe_backend_applies_override_to_models_df(morb_comp):
+def test_volfe_backend_applies_override_to_models_df(tmp_path, morb_comp):
     pytest.importorskip("VolFe")
     from volcatenate.backends.volfe import Backend, _build_models_df
 
-    config = RunConfig()
+    config = RunConfig(output_dir=str(tmp_path))
     config.volfe.overrides = {"MORB": {"gassing_style": "open"}}
 
     captured: dict = {}
@@ -416,11 +416,11 @@ def test_resolve_works_for_vesical_config():
     assert cfg.final_pressure == 1.0
 
 
-def test_vesical_backend_applies_steps_override(morb_comp):
+def test_vesical_backend_applies_steps_override(tmp_path, morb_comp):
     pytest.importorskip("VESIcal")
     from volcatenate.backends.vesical import Backend
 
-    config = RunConfig()
+    config = RunConfig(output_dir=str(tmp_path))
     config.vesical.overrides = {"MORB": {"steps": 7}}
 
     captured: dict = {}
@@ -469,10 +469,10 @@ def test_resolve_works_for_sulfurx_config():
     assert cfg.sigma == 0.005
 
 
-def test_sulfurx_backend_passes_resolved_cfg_to_run_degassing(morb_comp):
+def test_sulfurx_backend_passes_resolved_cfg_to_run_degassing(tmp_path, morb_comp):
     from volcatenate.backends.sulfurx import Backend
 
-    config = RunConfig()
+    config = RunConfig(output_dir=str(tmp_path))
     config.sulfurx.path = "/nonexistent"  # we'll patch _ensure_on_path
     config.sulfurx.overrides = {"MORB": {"n_steps": 42}}
 

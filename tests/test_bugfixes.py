@@ -371,3 +371,125 @@ def test_evo_run_type_passed_to_yaml(tmp_path):
     assert env_data["RUN_TYPE"] == "open", (
         f"Expected RUN_TYPE='open' in EVo env.yaml but got {env_data.get('RUN_TYPE')!r}"
     )
+
+def test_iter_tool_csv_dirs_whitelists_tools(tmp_path):
+    """_iter_tool_csv_dirs must return only directories named in `tools`."""
+    from volcatenate.core import _iter_tool_csv_dirs
+
+    (tmp_path / "EVo").mkdir()
+    (tmp_path / "saturation_pressures_details").mkdir()
+    (tmp_path / "resolved_inputs").mkdir()
+    (tmp_path / "MyTool").mkdir()
+
+    pairs = _iter_tool_csv_dirs(str(tmp_path), tools=["EVo"])
+
+    assert pairs == [("EVo", str(tmp_path / "EVo"))], (
+        f"Expected only EVo entry, got {pairs}; "
+        "_iter_tool_csv_dirs is still enumerating arbitrary subdirs"
+    )
+
+
+def test_iter_tool_csv_dirs_skips_missing_tool_dir(tmp_path):
+    """Tools not present on disk are silently skipped (no error)."""
+    from volcatenate.core import _iter_tool_csv_dirs
+
+    (tmp_path / "EVo").mkdir()
+
+    pairs = _iter_tool_csv_dirs(str(tmp_path), tools=["EVo", "VolFe"])
+
+    assert pairs == [("EVo", str(tmp_path / "EVo"))]
+
+
+def test_iter_tool_csv_dirs_resolves_vesical_variants(tmp_path):
+    """VESIcal variants live one level deeper at
+    ``output_dir/VESIcal/<full_model_name>`` (the same layout written by
+    :func:`export_degassing_paths`) and must resolve when listed by
+    full model name in `tools`."""
+    from volcatenate.core import _iter_tool_csv_dirs
+
+    (tmp_path / "VESIcal" / "VESIcal_Dixon").mkdir(parents=True)
+    (tmp_path / "VESIcal" / "VESIcal_IaconoMarziano").mkdir(parents=True)
+
+    pairs = _iter_tool_csv_dirs(
+        str(tmp_path),
+        tools=["VESIcal_Dixon", "VESIcal_IaconoMarziano"],
+    )
+
+    assert (
+        "VESIcal_Dixon",
+        str(tmp_path / "VESIcal" / "VESIcal_Dixon"),
+    ) in pairs
+    assert (
+        "VESIcal_IaconoMarziano",
+        str(tmp_path / "VESIcal" / "VESIcal_IaconoMarziano"),
+    ) in pairs
+    assert len(pairs) == 2
+
+
+def test_write_satp_summary_ignores_bookkeeping_dirs(tmp_path):
+    """Spurious `<bookkeeping_dir>_SatP_bars` columns must not appear in the
+    written CSV when the dir lives alongside real tool dirs."""
+    from volcatenate.core import _write_satp_summary_from_outputs
+
+    # Real tool output
+    evo_dir = tmp_path / "EVo"
+    evo_dir.mkdir()
+    pd.DataFrame({col.P_BARS: [100.0, 50.0, 10.0]}).to_csv(
+        evo_dir / "sample_a.csv", index=False
+    )
+
+    # Bookkeeping dir written by satP step — has P_bars but is not a tool.
+    details_dir = tmp_path / "saturation_pressures_details"
+    details_dir.mkdir()
+    pd.DataFrame({"Sample": ["Sample_A"], col.P_BARS: [9999.0]}).to_csv(
+        details_dir / "EVo_satp.csv", index=False
+    )
+
+    # Junk dir a user happened to drop in
+    junk_dir = tmp_path / "MyTool"
+    junk_dir.mkdir()
+    pd.DataFrame({col.P_BARS: [200.0]}).to_csv(
+        junk_dir / "sample_a.csv", index=False
+    )
+
+    satp_path = tmp_path / "saturation_pressures.csv"
+    _write_satp_summary_from_outputs(
+        str(tmp_path),
+        str(satp_path),
+        satp_result=None,
+        tools=["EVo"],
+        known_samples=[("Sample_A", "")],
+    )
+
+    df = pd.read_csv(satp_path)
+    assert "EVo_SatP_bars" in df.columns
+    assert "saturation_pressures_details_SatP_bars" not in df.columns, (
+        f"Spurious bookkeeping column leaked into CSV: {list(df.columns)}"
+    )
+    assert "MyTool_SatP_bars" not in df.columns
+    assert "resolved_inputs_SatP_bars" not in df.columns
+
+
+def test_write_satp_summary_includes_user_dropped_dcompress(tmp_path):
+    """DCompress has no runnable backend but is dropped in as CSVs by users;
+    it must still get a `DCompress_SatP_bars` column when passed in `tools`."""
+    from volcatenate.core import _write_satp_summary_from_outputs
+
+    dcomp_dir = tmp_path / "DCompress"
+    dcomp_dir.mkdir()
+    pd.DataFrame({col.P_BARS: [300.0, 150.0]}).to_csv(
+        dcomp_dir / "sample_a.csv", index=False
+    )
+
+    satp_path = tmp_path / "saturation_pressures.csv"
+    _write_satp_summary_from_outputs(
+        str(tmp_path),
+        str(satp_path),
+        satp_result=None,
+        tools=["DCompress"],
+        known_samples=[("Sample_A", "")],
+    )
+
+    df = pd.read_csv(satp_path)
+    assert "DCompress_SatP_bars" in df.columns
+    assert df["DCompress_SatP_bars"].iloc[0] == pytest.approx(300.0)
