@@ -88,7 +88,7 @@ satp_df = volcatenate.calculate_saturation_pressure(
 volcatenate.export_saturation_pressure(satp_df, "results/saturation_pressures.csv")
 ```
 
-The returned DataFrame has one row per sample and columns `Sample`, `Reservoir`, plus `<Model>_SatP_bars` for each model.
+The returned DataFrame has one row per sample and columns `Sample`, plus `<Model>_SatP_bars` for each model.
 
 ### Degassing Path (single composition)
 

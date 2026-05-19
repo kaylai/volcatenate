@@ -197,27 +197,23 @@ def test_load_data_xco2_without_xh2o_no_keyerror(tmp_path):
 def test_sample_key_not_overwritten_by_state():
     """row['Sample'] from comp must not be overwritten by state.to_dict()."""
     sample_name = "TestSample"
-    reservoir = "TestReservoir"
-    row: dict = {"Sample": sample_name, "Reservoir": reservoir}
+    row: dict = {"Sample": sample_name}
 
     # Simulate a state Series that includes "Sample" with a wrong value
     state = pd.Series({
         col.P_BARS: 1234.0,
         "Sample": "WRONG_SAMPLE",
-        "Reservoir": "WRONG_RESERVOIR",
     })
 
     # This is the fixed code pattern from core.py
     state_dict = state.to_dict()
     state_dict.pop("Sample", None)
-    state_dict.pop("Reservoir", None)
     row.update(state_dict)
 
     assert row["Sample"] == sample_name, (
         f"Sample was overwritten: got {row['Sample']!r}, expected {sample_name!r}; "
         "state.to_dict() stripping is missing"
     )
-    assert row["Reservoir"] == reservoir
     assert row[col.P_BARS] == pytest.approx(1234.0)
 
 
@@ -458,7 +454,7 @@ def test_write_satp_summary_ignores_bookkeeping_dirs(tmp_path):
         str(satp_path),
         satp_result=None,
         tools=["EVo"],
-        known_samples=[("Sample_A", "")],
+        known_samples=["Sample_A"],
     )
 
     df = pd.read_csv(satp_path)
@@ -487,7 +483,7 @@ def test_write_satp_summary_includes_user_dropped_dcompress(tmp_path):
         str(satp_path),
         satp_result=None,
         tools=["DCompress"],
-        known_samples=[("Sample_A", "")],
+        known_samples=["Sample_A"],
     )
 
     df = pd.read_csv(satp_path)

@@ -40,7 +40,6 @@ The CSV has one row per sample.
 | `Cr2O3`                             | Used by MAGEC's anhydrous renormalization; ignored by every other backend. |
 | `N_ppm` (or `Nppm`, `Nitrogen`) | Bulk nitrogen in ppm. Used by EVo when `evo.nitrogen_set=True`.          |
 | `Xppm`                              | Inert trace species (Ar/Ne) — VolFe only.                                 |
-| `Reservoir`                         | Free-text grouping label. Propagated to output for plotting.               |
 
 Header matching is exact for canonical names but accepts the common aliases shown above. If a column you expect isn't being picked up, the alias map in [composition.py](https://github.com/kaylai/volcatenate/blob/main/src/volcatenate/composition.py) is the source of truth.
 

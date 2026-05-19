@@ -55,7 +55,6 @@ class MeltComposition:
 
     # Other
     Xppm: float = 0.0
-    reservoir: str = ""
 
     @property
     def fe3fet_computed(self) -> float:
@@ -120,7 +119,6 @@ _COLUMN_ALIASES: dict[str, str] = {
     "T_C": "T_C",
     "Temp": "T_C",
     "Temperature": "T_C",
-    "Reservoir": "reservoir",
     # Oxides
     "SiO2": "SiO2",
     "TiO2": "TiO2",
@@ -211,7 +209,6 @@ def _mapped_to_composition(mapped: dict[str, object], fallback_name: str = "unkn
         dNNO=float(mapped["dNNO"]) if "dNNO" in mapped else None,
         dFMQ=float(mapped["dFMQ"]) if "dFMQ" in mapped else None,
         Xppm=float(mapped.get("Xppm", 0)),
-        reservoir=str(mapped.get("reservoir", "")),
     )
 
 

@@ -197,7 +197,6 @@ class TestSaturationResultEdgeCases:
         result = SaturationResult(
             equilibrium_state={},
             samples=["A"],
-            reservoirs=[""],
         )
         df = result.pressure
         assert "Sample" in df.columns
@@ -207,14 +206,12 @@ class TestSaturationResultEdgeCases:
         eq_state = {
             "EVo": pd.DataFrame({
                 "Sample": ["A"],
-                "Reservoir": [""],
                 col.P_BARS: [np.nan],
             }),
         }
         result = SaturationResult(
             equilibrium_state=eq_state,
             samples=["A"],
-            reservoirs=[""],
         )
         df = result.pressure
         assert np.isnan(df["EVo_SatP_bars"].iloc[0])
@@ -223,14 +220,12 @@ class TestSaturationResultEdgeCases:
         eq_state = {
             "EVo": pd.DataFrame({
                 "Sample": ["A", "B"],
-                "Reservoir": ["", ""],
                 col.P_BARS: [1000.0, np.nan],
             }),
         }
         result = SaturationResult(
             equilibrium_state=eq_state,
             samples=["A", "B"],
-            reservoirs=["", ""],
         )
         df = result.pressure
         row_a = df.loc[df["Sample"] == "A", "EVo_SatP_bars"].iloc[0]
@@ -242,14 +237,12 @@ class TestSaturationResultEdgeCases:
         eq_state = {
             "EVo": pd.DataFrame({
                 "Sample": ["A"],
-                "Reservoir": [""],
                 col.P_BARS: [1000.0],
             }),
         }
         result = SaturationResult(
             equilibrium_state=eq_state,
             samples=["A", "B"],  # B is not in EVo results
-            reservoirs=["", ""],
         )
         df = result.pressure
         row_b = df.loc[df["Sample"] == "B", "EVo_SatP_bars"].iloc[0]

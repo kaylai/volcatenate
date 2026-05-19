@@ -264,13 +264,11 @@ class TestSaturationResult:
         eq_state = {
             "EVo": pd.DataFrame({
                 "Sample": ["A", "B"],
-                "Reservoir": ["", ""],
                 col.P_BARS: [1000.0, 1500.0],
                 col.H2OT_M_WTPC: [0.3, 0.5],
             }),
             "VolFe": pd.DataFrame({
                 "Sample": ["A", "B"],
-                "Reservoir": ["", ""],
                 col.P_BARS: [1050.0, 1480.0],
                 col.H2OT_M_WTPC: [0.3, 0.5],
             }),
@@ -278,7 +276,6 @@ class TestSaturationResult:
         return SaturationResult(
             equilibrium_state=eq_state,
             samples=["A", "B"],
-            reservoirs=["", ""],
         )
 
     def test_pressure_has_model_columns(self):

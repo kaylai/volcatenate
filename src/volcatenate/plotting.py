@@ -1361,7 +1361,7 @@ def plot_cs_depth_profile(
 
         Horizontal shaded bands are drawn for each entry.
     equil_state_df : pandas.DataFrame, optional
-        Per-MI equilibrium state with columns ``Sample``, ``Reservoir``,
+        Per-MI equilibrium state with columns ``Sample``,
         ``<Model>_SatP_bars``, and optionally ``<Model>_CS_v_mf``.
         When provided, MI data are drawn along each model curve.
     models : list[str], optional
@@ -1589,16 +1589,16 @@ def _draw_satp_boxes(
 ):
     """Draw MI saturation data as boxes, scatter points, or both.
 
-    For each model and reservoir the MI saturation pressures are
-    converted to depths (y).  Horizontal positioning (x) uses the
-    actual ``*_CS_v_mf`` column when available in *equil_state_df*,
-    falling back to interpolation along the degassing curve otherwise.
+    For each model the MI saturation pressures are converted to depths
+    (y).  Horizontal positioning (x) uses the actual ``*_CS_v_mf``
+    column when available in *equil_state_df*, falling back to
+    interpolation along the degassing curve otherwise.
 
     Parameters
     ----------
     ax : matplotlib Axes
     equil_state_df : DataFrame
-        Must have ``Sample``, ``Reservoir``, and ``*_SatP_bars`` columns.
+        Must have ``Sample`` and ``*_SatP_bars`` columns.
         If ``*_CS_v_mf`` columns are also present (one per model), those
         values are used for horizontal positioning rather than
         interpolating from the degassing curve.
@@ -1639,10 +1639,6 @@ def _draw_satp_boxes(
     if not satp_cols:
         return
 
-    reservoirs = [r for r in equil_state_df["Reservoir"].dropna().unique()]
-    hatch_list = [None, "//", "\\\\", "xx"]
-    _reservoir_markers = ["o", "^", "s", "D"]
-
     for col, model_key in satp_cols.items():
         has_curve = model_key in model_curves
         has_cs = col in cs_col_map
@@ -1653,85 +1649,76 @@ def _draw_satp_boxes(
         p_curve, cs_curve = model_curves.get(model_key, (None, None))
         sty = model_style.get(model_key, {"color": "gray"})
 
-        for j, reservoir in enumerate(reservoirs):
-            mask = equil_state_df["Reservoir"] == reservoir
-            vals = equil_state_df.loc[mask, col].dropna().values
-            if len(vals) == 0:
-                continue
-            depths = p_to_depth(vals, rho=rho)
+        vals = equil_state_df[col].dropna().values
+        if len(vals) == 0:
+            continue
+        depths = p_to_depth(vals, rho=rho)
 
-            # ── Per-MI C/S values (used for points and box positioning) ──
-            if has_cs:
-                # Get paired (satP, CS) rows — drop rows missing either
-                pair = equil_state_df.loc[
-                    mask, [col, cs_col_map[col]]
-                ].dropna()
-                cs_vals = pair[cs_col_map[col]].values
-                pt_depths = p_to_depth(pair[col].values, rho=rho)
-            else:
-                cs_vals = np.array([])
-                pt_depths = np.array([])
+        # ── Per-MI C/S values (used for points and box positioning) ──
+        if has_cs:
+            # Get paired (satP, CS) rows — drop rows missing either
+            pair = equil_state_df[[col, cs_col_map[col]]].dropna()
+            cs_vals = pair[cs_col_map[col]].values
+            pt_depths = p_to_depth(pair[col].values, rho=rho)
+        else:
+            cs_vals = np.array([])
+            pt_depths = np.array([])
 
-            # Determine x-position for boxes (median C/S or interpolated)
-            if len(cs_vals) > 0:
-                x_pos = np.median(cs_vals)
-            elif has_curve:
-                try:
-                    x_pos = find_cs_at_pressure(
-                        p_curve, cs_curve, np.median(vals),
-                    )
-                except Exception:
-                    continue
-            else:
-                continue
-
-            # ── Scatter points ──
-            if show_points and len(cs_vals) > 0:
-                rmk = _reservoir_markers[j % len(_reservoir_markers)]
-                scatter_defaults = dict(
-                    c=sty["color"], marker=rmk, s=18,
-                    edgecolors="k", linewidths=0.4, alpha=0.55,
-                    zorder=4,
+        # Determine x-position for boxes (median C/S or interpolated)
+        if len(cs_vals) > 0:
+            x_pos = np.median(cs_vals)
+        elif has_curve:
+            try:
+                x_pos = find_cs_at_pressure(
+                    p_curve, cs_curve, np.median(vals),
                 )
-                scatter_defaults.update(mi_scatter_kw)
-                ax.scatter(cs_vals, pt_depths, **scatter_defaults)
+            except Exception:
+                continue
+        else:
+            continue
 
-            # ── Box-and-whisker ──
-            if show_boxes:
-                box_width = x_pos * 0.20
+        # ── Scatter points ──
+        if show_points and len(cs_vals) > 0:
+            scatter_defaults = dict(
+                c=sty["color"], marker="o", s=18,
+                edgecolors="k", linewidths=0.4, alpha=0.55,
+                zorder=4,
+            )
+            scatter_defaults.update(mi_scatter_kw)
+            ax.scatter(cs_vals, pt_depths, **scatter_defaults)
 
-                bp = ax.boxplot(
-                    [depths],
-                    positions=[x_pos],
-                    widths=[box_width],
-                    vert=True,
-                    patch_artist=True,
-                    manage_ticks=False,
-                    zorder=5 if show_points else 4,
+        # ── Box-and-whisker ──
+        if show_boxes:
+            box_width = x_pos * 0.20
+
+            bp = ax.boxplot(
+                [depths],
+                positions=[x_pos],
+                widths=[box_width],
+                vert=True,
+                patch_artist=True,
+                manage_ticks=False,
+                zorder=5 if show_points else 4,
+            )
+
+            for box in bp["boxes"]:
+                box.set_facecolor(sty["color"])
+                box.set_edgecolor("k")
+                box.set_linewidth(0.8)
+            for whisker in bp["whiskers"]:
+                whisker.set_color("k")
+                whisker.set_linewidth(0.8)
+            for cap in bp["caps"]:
+                cap.set_color("k")
+                cap.set_linewidth(0.8)
+            for median in bp["medians"]:
+                median.set_color("k")
+                median.set_linewidth(1.5)
+            for flier in bp["fliers"]:
+                flier.set(
+                    marker="o", markerfacecolor=sty["color"],
+                    markeredgecolor="k", markersize=3, alpha=0.6,
                 )
-
-                hatch = hatch_list[j % len(hatch_list)]
-                for box in bp["boxes"]:
-                    box.set_facecolor(sty["color"])
-                    # box.set_alpha(0.45)
-                    box.set_edgecolor("k")
-                    box.set_linewidth(0.8)
-                    if hatch:
-                        box.set_hatch(hatch)
-                for whisker in bp["whiskers"]:
-                    whisker.set_color("k")
-                    whisker.set_linewidth(0.8)
-                for cap in bp["caps"]:
-                    cap.set_color("k")
-                    cap.set_linewidth(0.8)
-                for median in bp["medians"]:
-                    median.set_color("k")
-                    median.set_linewidth(1.5)
-                for flier in bp["fliers"]:
-                    flier.set(
-                        marker="o", markerfacecolor=sty["color"],
-                        markeredgecolor="k", markersize=3, alpha=0.6,
-                    )
 
 
 # Kilauea defaults (used by figure_10 convenience function)

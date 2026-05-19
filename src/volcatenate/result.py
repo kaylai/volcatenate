@@ -19,7 +19,7 @@ class SaturationResult:
     Attributes
     ----------
     pressure : pd.DataFrame
-        Flat table with columns ``Sample``, ``Reservoir``, and one
+        Flat table with columns ``Sample`` and one
         ``<Model>_SatP_bars`` column per model.  This is the same
         format returned by the old ``calculate_saturation_pressure``.
     equilibrium_state : dict[str, pd.DataFrame]
@@ -34,18 +34,16 @@ class SaturationResult:
         self,
         equilibrium_state: dict[str, pd.DataFrame],
         samples: list[str],
-        reservoirs: list,
     ) -> None:
         self._equilibrium_state = equilibrium_state
         self._samples = samples
-        self._reservoirs = reservoirs
         self._pressure: pd.DataFrame | None = None  # lazy
 
     # ── Public properties ──────────────────────────────────────────
 
     @property
     def pressure(self) -> pd.DataFrame:
-        """Flat backward-compatible table: Sample, Reservoir, <Model>_SatP_bars."""
+        """Flat backward-compatible table: Sample, <Model>_SatP_bars."""
         if self._pressure is None:
             self._pressure = self._build_pressure()
         return self._pressure
@@ -66,8 +64,8 @@ class SaturationResult:
 
     def _build_pressure(self) -> pd.DataFrame:
         rows: list[dict] = []
-        for i, sample in enumerate(self._samples):
-            row: dict = {"Sample": sample, "Reservoir": self._reservoirs[i]}
+        for sample in self._samples:
+            row: dict = {"Sample": sample}
             for model, df in self._equilibrium_state.items():
                 mask = df["Sample"] == sample
                 if mask.any() and col.P_BARS in df.columns:

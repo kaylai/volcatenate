@@ -58,7 +58,7 @@ flowchart LR
         S1["T_C, major oxides"]
         S2["H₂O, CO₂, S<br/>(volatile budget)"]
         S3["Redox: Fe3FeT / dNNO / dFMQ<br/>(any one is enough)"]
-        S4["Optional: Cr2O3, N_ppm,<br/>Xppm, Reservoir"]
+        S4["Optional: Cr2O3, N_ppm,<br/>Xppm"]
     end
     subgraph YAML["YAML config / RunConfig"]
         Y1["Solubility & equilibrium<br/>model selections"]
@@ -95,7 +95,6 @@ These are sample fields some backends use and others ignore. The YAML has no equ
 | ------------------- | ------------- | -------------------------------------------------------------------------------- | ----------------------- |
 | `Cr2O3`           | MAGEC only    | wt% Cr₂O₃, included in MAGEC's anhydrous renormalization                       | 0.0 (treated as absent) |
 | `Xppm`            | VolFe only    | "Other" trace species (Ar or Ne; species identity is set by `volfe.species_x`) | 0.0                     |
-| `Reservoir`       | none directly | Free-text grouping label propagated to output for plotting                       | empty string            |
 
 ### Nitrogen in EVo: The one field where the YAML can fill in for the sample
 

@@ -138,8 +138,8 @@ def calculate_saturation_pressure(
     SaturationResult
         Result object with two views:
 
-        * ``.pressure`` — flat DataFrame with columns ``Sample``,
-          ``Reservoir``, and ``<Model>_SatP_bars`` for each model
+        * ``.pressure`` — flat DataFrame with columns ``Sample``
+          and ``<Model>_SatP_bars`` for each model
           (backward-compatible with the old return type).
         * ``.equilibrium_state`` — ``dict[str, pd.DataFrame]`` keyed by
           model name, each containing one row per sample with the full
@@ -194,8 +194,7 @@ def calculate_saturation_pressure(
             if not backend.is_available():
                 _progress.add_warning(f"{model_name}: skipped (not available)")
                 detail_data[model_name] = [
-                    {"Sample": c.sample, "Reservoir": c.reservoir}
-                    for c in comps
+                    {"Sample": c.sample} for c in comps
                 ]
                 _progress.advance(len(comps))
                 continue
@@ -242,11 +241,10 @@ def calculate_saturation_pressure(
 
             # Process results (unified for both paths)
             for comp, state in zip(comps, states):
-                row: dict = {"Sample": comp.sample, "Reservoir": comp.reservoir}
+                row: dict = {"Sample": comp.sample}
                 if state is not None:
                     state_dict = state.to_dict()
                     state_dict.pop("Sample", None)
-                    state_dict.pop("Reservoir", None)
                     row.update(state_dict)
                     p = state.get(col.P_BARS, np.nan)
                     logger.info("    %s: %.1f bar", comp.sample, p)
@@ -274,7 +272,6 @@ def calculate_saturation_pressure(
     return SaturationResult(
         equilibrium_state=equilibrium_state,
         samples=[c.sample for c in comps],
-        reservoirs=[c.reservoir for c in comps],
     )
 
 
@@ -578,7 +575,7 @@ def _write_satp_summary_from_outputs(
     satp_path: str,
     satp_result: Optional[SaturationResult],
     tools: "list[str]",
-    known_samples: Optional[list[tuple[str, str]]] = None,
+    known_samples: Optional[list[str]] = None,
 ) -> str:
     """Write the authoritative wide-format saturation-pressure CSV.
 
@@ -592,10 +589,10 @@ def _write_satp_summary_from_outputs(
     (``saturation_pressures_details/``, ``resolved_inputs/`` …) are
     never picked up as fake tools.
 
-    Sample/Reservoir metadata is taken from *satp_result* when
-    available (so the CSV preserves the ordering and reservoir info
-    from the run); samples that only appear as DCompress files (no
-    runnable backend) are appended at the end.
+    Sample metadata is taken from *satp_result* when available (so
+    the CSV preserves the ordering from the run); samples that only
+    appear as DCompress files (no runnable backend) are appended at
+    the end.
     """
     # Collect satP from degassing CSVs: {tool: {sample_key: max_P}}
     by_tool: dict[str, dict[str, float]] = {}
@@ -634,20 +631,20 @@ def _write_satp_summary_from_outputs(
                 by_tool.setdefault(tool, {}).setdefault(key, float(p))
 
     # Build the row order from caller-supplied known_samples (preferred) or
-    # satp_result, so Sample casing and Reservoir info match the run inputs.
+    # satp_result, so Sample casing matches the run inputs.
     rows: list[dict] = []
     seen_keys: set[str] = set()
-    sample_order: list[tuple[str, str]] = []
+    sample_order: list[str] = []
     if known_samples:
         sample_order = list(known_samples)
     elif satp_result is not None:
-        sample_order = list(zip(satp_result.samples, satp_result.reservoirs))
-    for sample, reservoir in sample_order:
+        sample_order = list(satp_result.samples)
+    for sample in sample_order:
         key = sample.lower()
         if key in seen_keys:
             continue
         seen_keys.add(key)
-        rows.append({"Sample": sample, "Reservoir": reservoir, "_key": key})
+        rows.append({"Sample": sample, "_key": key})
 
     # Append samples that only appear as written CSVs (e.g. DCompress-only
     # samples on a degassing-only run with no run-side knowledge of them).
@@ -658,7 +655,7 @@ def _write_satp_summary_from_outputs(
                 extra_keys.add(k)
     for key in sorted(extra_keys):
         # No casing info available — title case is a reasonable default.
-        rows.append({"Sample": key.title(), "Reservoir": "", "_key": key})
+        rows.append({"Sample": key.title(), "_key": key})
 
     if not rows:
         logger.warning("No saturation pressures to write to %s", satp_path)
@@ -838,9 +835,7 @@ def run_comparison(
     # on first write \u2014 includes DCompress (which has no runnable backend
     # but appears as a user-dropped CSV) alongside the runnable tools.
     if satp_compositions is not None or degassing_compositions is not None:
-        known_samples = [
-            (c.sample, c.reservoir or "") for c in (satp_comps + degas_comps)
-        ]
+        known_samples = [c.sample for c in (satp_comps + degas_comps)]
         _write_satp_summary_from_outputs(
             degassing_output_dir, satp_output, output.get("satp_df"),
             tools=list(model_names) + list(_USER_DROPPED_TOOLS),
