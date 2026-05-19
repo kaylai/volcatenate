@@ -514,3 +514,98 @@ def test_yaml_round_trip_preserves_all_backend_overrides(tmp_path):
     assert loaded.volfe.overrides == {"Sample1": {"gassing_style": "open"}}
     assert loaded.vesical.overrides == {"Sample2": {"steps": 50}}
     assert loaded.sulfurx.overrides == {"Sample3": {"n_steps": 100}}
+
+
+# ── Type validation: bad YAML values raise loudly ──────────────────────
+
+def test_load_config_rejects_dataclass_declaration_pasted_into_yaml(tmp_path):
+    """The actual bug shape: a user pastes `kd_low_p_increment: float = 20.0`
+    from the Python dataclass declaration directly into their YAML.  YAML
+    parses the value as the literal string ``"float = 20.0"``; we must reject
+    it at load time, not let it propagate into the SulfurX backend where
+    ``float(...)`` fails with an unhelpful message.
+    """
+    yaml_path = tmp_path / "bad.yaml"
+    yaml_path.write_text(
+        "sulfurx:\n"
+        "  kd_low_p_increment: float = 20.0\n"
+    )
+    with pytest.raises(ValueError) as exc_info:
+        load_config(str(yaml_path))
+    msg = str(exc_info.value)
+    # Error should name the field, the bad value, the expected type, and the file.
+    assert "kd_low_p_increment" in msg
+    assert "float = 20.0" in msg
+    assert "float" in msg.lower()
+    assert "bad.yaml" in msg
+
+
+def test_load_config_rejects_quoted_number(tmp_path):
+    """Strict mode (D2a): quoted numbers are user error and must not silently work."""
+    yaml_path = tmp_path / "quoted.yaml"
+    yaml_path.write_text(
+        "sulfurx:\n"
+        '  kd_low_p_threshold_mpa: "5.0"\n'
+    )
+    with pytest.raises(ValueError, match="kd_low_p_threshold_mpa"):
+        load_config(str(yaml_path))
+
+
+def test_load_config_rejects_bool_for_numeric_field(tmp_path):
+    """bool ↔ numeric must be rejected in both directions to dodge the
+    ``isinstance(True, int) is True`` Python footgun."""
+    yaml_path = tmp_path / "boolish.yaml"
+    yaml_path.write_text(
+        "sulfurx:\n"
+        "  kd_low_p_increment: true\n"
+    )
+    with pytest.raises(ValueError, match="kd_low_p_increment"):
+        load_config(str(yaml_path))
+
+
+def test_load_config_accepts_int_for_float_field(tmp_path):
+    """A plain integer for a float-annotated field is fine; YAML routinely
+    elides the trailing '.0'."""
+    yaml_path = tmp_path / "good.yaml"
+    yaml_path.write_text(
+        "sulfurx:\n"
+        "  kd_low_p_increment: 25\n"
+    )
+    cfg = load_config(str(yaml_path))
+    assert cfg.sulfurx.kd_low_p_increment == 25
+
+
+# ── Type validation: bad override values raise loudly ─────────────────
+
+def test_resolve_sample_config_rejects_dataclass_declaration_in_override():
+    """An override block with the dataclass-declaration-paste shape — same root
+    cause, different code path."""
+    from volcatenate.config import SulfurXConfig
+    cfg = SulfurXConfig(
+        overrides={"Fuego": {"kd_low_p_increment": "float = 20.0"}}
+    )
+    with pytest.raises(ValueError) as exc_info:
+        resolve_sample_config(cfg, "Fuego")
+    msg = str(exc_info.value)
+    assert "kd_low_p_increment" in msg
+    assert "float = 20.0" in msg
+    assert "Fuego" in msg  # context should name the offending sample
+
+
+def test_resolve_sample_config_rejects_bool_for_numeric_override():
+    from volcatenate.config import SulfurXConfig
+    cfg = SulfurXConfig(
+        overrides={"Fogo": {"kd_low_p_threshold_mpa": False}}
+    )
+    with pytest.raises(ValueError, match="kd_low_p_threshold_mpa"):
+        resolve_sample_config(cfg, "Fogo")
+
+
+def test_resolve_sample_config_accepts_valid_override():
+    """Sanity: a well-typed override still works after the tightening."""
+    from volcatenate.config import SulfurXConfig
+    cfg = SulfurXConfig(
+        overrides={"Fuego": {"kd_low_p_threshold_mpa": 15.0}}
+    )
+    out = resolve_sample_config(cfg, "Fuego")
+    assert out.kd_low_p_threshold_mpa == 15.0

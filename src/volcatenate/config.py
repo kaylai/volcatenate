@@ -1019,15 +1019,17 @@ def resolve_sample_config(cfg, sample: str):
     sample_overrides = cfg.overrides.get(sample, {})
     if not sample_overrides:
         return cfg
-    valid = {f.name for f in fields(type(cfg))}
+    field_map = {f.name: f for f in fields(type(cfg))}
     resolved = replace(cfg, overrides=dict(cfg.overrides))
+    context = f"{type(cfg).__name__}.overrides['{sample}']"
     for k, v in sample_overrides.items():
-        if k not in valid or k == "overrides":
+        if k not in field_map or k == "overrides":
             logger.warning(
                 "[%s] Unknown override field '%s' for sample '%s' — ignored",
                 type(cfg).__name__, k, sample,
             )
             continue
+        _validate_scalar_value(k, v, field_map[k].type, context)
         setattr(resolved, k, v)
     return resolved
 
@@ -1154,7 +1156,85 @@ def save_config(config: RunConfig, path: str) -> str:
 T = TypeVar("T")
 
 
-def _build_dataclass(cls: Type[T], data: dict) -> T:
+_PRIMITIVE_TYPE_NAMES: dict[str, type] = {
+    "int": int,
+    "float": float,
+    "bool": bool,
+    "str": str,
+}
+
+
+def _validate_scalar_value(
+    field_name: str,
+    value: Any,
+    expected_type_str: str,
+    context: str,
+) -> None:
+    """Raise ValueError if ``value`` doesn't match the expected primitive type.
+
+    ``expected_type_str`` is the field's annotation string (``"int"``,
+    ``"float"``, ``"bool"``, or ``"str"``).  Non-primitive annotations
+    (``dict[...]``, ``list[...]``, custom dataclass names) are skipped — those
+    paths are validated elsewhere or not at all.
+
+    ``context`` should describe *where* the bad value came from so the user can
+    find it: a YAML file path + section, or a backend dataclass + sample name.
+
+    Strict rules (per the project's "reject bad input loudly" stance):
+    - ``bool`` and numeric types are not interchangeable in either direction
+      (Python's ``isinstance(True, int) is True`` is a footgun we step around).
+    - Strings are never auto-coerced to numbers, even if ``float("20.0")``
+      would work.  Quoting a number in YAML is almost always a mistake; we
+      surface it rather than swallow it.
+    - ``int`` annotation accepts an integer-valued ``float`` (YAML often
+      parses ``20`` as int and ``20.0`` as float interchangeably); this
+      mirrors the existing coercion in ``_build_dataclass``.
+    - ``float`` annotation accepts an ``int`` (YAML ``20`` for a float field
+      is fine).
+    """
+    if expected_type_str not in _PRIMITIVE_TYPE_NAMES:
+        return
+    expected = _PRIMITIVE_TYPE_NAMES[expected_type_str]
+
+    # Disallow bool ↔ numeric in either direction
+    if expected is bool:
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"{context}: field '{field_name}' expects bool, got "
+                f"{type(value).__name__} (value: {value!r}). "
+                f"Use 'true' or 'false' in YAML (unquoted)."
+            )
+        return
+    if isinstance(value, bool) and expected in (int, float):
+        raise ValueError(
+            f"{context}: field '{field_name}' expects {expected.__name__}, "
+            f"got bool (value: {value!r}). "
+            f"Use a number, not true/false."
+        )
+
+    # Allow int-valued numerics for both int and float fields.
+    # (The actual int(v) coercion stays in _build_dataclass.)
+    if expected is float and isinstance(value, (int, float)):
+        return
+    if expected is int and isinstance(value, (int, float)):
+        return
+    if expected is str and isinstance(value, str):
+        return
+
+    raise ValueError(
+        f"{context}: field '{field_name}' expects {expected.__name__}, "
+        f"got {type(value).__name__} (value: {value!r}). "
+        f"Check your YAML — a common cause is pasting a Python "
+        f"dataclass declaration verbatim (e.g. 'kd_low_p_increment: "
+        f"float = 20.0'); the value should be just '20.0'."
+    )
+
+
+def _build_dataclass(
+    cls: Type[T],
+    data: dict,
+    context_prefix: str = "",
+) -> T:
     """Build a dataclass from a dict, ignoring unknown keys.
 
     Only keys that match actual field names are passed to the
@@ -1167,6 +1247,11 @@ def _build_dataclass(cls: Type[T], data: dict) -> T:
     Nested dataclasses are detected via the field's default
     (``f.default`` or ``f.default_factory()``); when the YAML value
     is a dict, it is recursively built into the nested dataclass.
+
+    Scalar field values are validated against their primitive type
+    annotation (see :func:`_validate_scalar_value`); a wrong-type value
+    raises :class:`ValueError` with the field path and the offending
+    value so the user can find the bad entry in their YAML.
     """
     field_map = {f.name: f for f in fields(cls)}
     # Fields that use default_factory (auto-detected paths or nested
@@ -1177,6 +1262,7 @@ def _build_dataclass(cls: Type[T], data: dict) -> T:
         if f.default_factory is not dataclass_field_missing
     }
     filtered: dict[str, Any] = {}
+    section_label = context_prefix or cls.__name__
     for k, v in data.items():
         if k not in field_map:
             continue
@@ -1193,12 +1279,17 @@ def _build_dataclass(cls: Type[T], data: dict) -> T:
                 except Exception:
                     nested_default = None
             if nested_default is not None and is_dataclass(nested_default):
-                filtered[k] = _build_dataclass(type(nested_default), v)
+                filtered[k] = _build_dataclass(
+                    type(nested_default), v,
+                    context_prefix=f"{section_label}.{k}",
+                )
                 continue
 
         # Skip empty strings for auto-detected scalar fields → let factory run
         if k in factory_fields and v == "":
             continue
+        # Validate scalar primitive types and raise a useful error on mismatch.
+        _validate_scalar_value(k, v, f.type, section_label)
         # Coerce types where needed (YAML may parse ints as floats)
         if f.type == "int" and isinstance(v, float):
             v = int(v)
@@ -1263,10 +1354,12 @@ def load_config(path: str) -> RunConfig:
     kwargs: dict[str, object] = {}
 
     # Top-level scalar fields
+    top_level_label = f"{path} (top-level)"
     for f in fields(RunConfig):
         if f.name in _SECTION_CLASSES:
             continue
         if f.name in raw:
+            _validate_scalar_value(f.name, raw[f.name], f.type, top_level_label)
             kwargs[f.name] = raw[f.name]
 
     # Sub-config sections
@@ -1274,6 +1367,9 @@ def load_config(path: str) -> RunConfig:
         if section_name in raw and isinstance(raw[section_name], dict):
             section_data = raw[section_name]
             _migrate_deprecated_keys(section_name, section_data)
-            kwargs[section_name] = _build_dataclass(cls, section_data)
+            kwargs[section_name] = _build_dataclass(
+                cls, section_data,
+                context_prefix=f"{path} (section '{section_name}')",
+            )
 
     return RunConfig(**kwargs)
