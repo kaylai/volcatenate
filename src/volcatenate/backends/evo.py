@@ -139,7 +139,18 @@ class Backend(ModelBackend):
                 evo.run_evo(chem_path, env_path, out_yaml, folder=evo_output_folder)
         except Exception as exc:
             # EVo may write valid output before raising — check for it
-            logger.warning("EVo raised during satP: %s — checking for partial output", exc)
+            if isinstance(exc, NameError) and "'exit'" in str(exc):
+                logger.warning(
+                    "EVo hit its mass-conservation limit with a minimum pressure "
+                    "step set by config yaml setting dp_min. Upstream EVo calls a "
+                    "bare exit() here, surfacing as NameError under non-interactive "
+                    "Python. Try decreasing the config yaml setting dp_min. "
+                    "Checking for partial output…"
+                )
+            else:
+                logger.warning(
+                    "EVo raised during satP: %s — checking for partial output", exc
+                )
 
         # EVo prefixes crashed-but-valid output with "_CRASHED_"
         csv_files = glob.glob(os.path.join(evo_output_folder, "*dgs_output_*.csv"))
@@ -194,9 +205,22 @@ class Backend(ModelBackend):
             # EVo sometimes writes valid output *before* raising
             # (e.g. "Model failed to converge at lowest pressure step.
             #  Data has been written out.").  It also calls exit() on
-            # mass-conservation failure in open-system runs, which raises
-            # SystemExit — catch both so we can salvage partial output.
-            logger.warning("EVo raised during degassing: %s — checking for partial output", exc)
+            # mass-conservation failure, which raises SystemExit in
+            # interactive Python or NameError under non-interactive
+            # contexts where `exit` isn't a site builtin — catch both
+            # so we can salvage partial output.
+            if isinstance(exc, NameError) and "'exit'" in str(exc):
+                logger.warning(
+                    "EVo hit its mass-conservation limit with a minimum pressure "
+                    "step set by config yaml setting dp_min. Upstream EVo calls a "
+                    "bare exit() here, surfacing as NameError under non-interactive "
+                    "Python. Try decreasing the config yaml setting dp_min. "
+                    "Checking for partial output…"
+                )
+            else:
+                logger.warning(
+                    "EVo raised during degassing: %s — checking for partial output", exc
+                )
 
         # EVo prefixes crashed-but-valid output with "_CRASHED_", so match both
         # normal ("dgs_output_*.csv") and crashed ("_CRASHED_dgs_output_*.csv").
