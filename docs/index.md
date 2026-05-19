@@ -25,7 +25,7 @@ distributed under the GPL.
 - Save a single JSON **run bundle** that captures the resolved
   configuration, every input composition, model versions, and machine
   metadata — and replay it later on another machine.
-- Drive everything from Python, YAML, or the `volcatenate` CLI.
+- Drive everything from Python or YAML.
 
 ## Documentation
 
@@ -54,6 +54,13 @@ examples/full_config
 :caption: Gallery
 
 gallery/index
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Validation
+
+benchmarking
 ```
 
 ```{toctree}
