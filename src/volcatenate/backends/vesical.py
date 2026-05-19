@@ -12,6 +12,8 @@ solubility models directly (e.g. ``"VESIcal_Iacono"``,
 
 from __future__ import annotations
 
+import contextlib
+import io
 import warnings
 
 import numpy as np
@@ -80,9 +82,9 @@ class Backend(ModelBackend):
 
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model = v.models.default_models[self._variant]
+        model = _get_vesical_model(self._variant)
 
-        with warnings.catch_warnings(record=True) as captured:
+        with warnings.catch_warnings(record=True) as captured, _quiet_vesical():
             warnings.simplefilter("always")
             try:
                 result = model.calculate_saturation_pressure(
@@ -127,9 +129,9 @@ class Backend(ModelBackend):
         cfg = resolve_sample_config(config.vesical, comp.sample)
         sample_dict = _build_sample_dict(comp)
         sample = v.Sample(sample_dict)
-        model = v.models.default_models[self._variant]
+        model = _get_vesical_model(self._variant)
 
-        with warnings.catch_warnings(record=True) as captured:
+        with warnings.catch_warnings(record=True) as captured, _quiet_vesical():
             warnings.simplefilter("always")
             df = model.calculate_degassing_path(
                 sample=sample,
@@ -152,10 +154,69 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+def _get_vesical_model(variant: str):
+    """Return the VESIcal solubility-model object for ``variant``.
+
+    Most VESIcal models live in ``v.models.default_models`` as ready-to-use
+    instances.  MagmaSat is the exception: it lives at
+    ``v.models.magmasat.MagmaSat`` (a class, not an instance) because it
+    requires MELTS/thermoengine at runtime and VESIcal does not pre-instantiate
+    it.  This helper papers over that asymmetry so callers can request any
+    variant by name.
+
+    Raises
+    ------
+    KeyError
+        If ``variant`` is not a recognised VESIcal model name.
+    """
+    import VESIcal as v
+
+    if variant == "MagmaSat":
+        return v.models.magmasat.MagmaSat()
+    return v.models.default_models[variant]
+
+
+@contextlib.contextmanager
+def _quiet_vesical():
+    """Capture VESIcal's stdout/stderr and route it to the volcatenate logger.
+
+    VESIcal (and the MELTS subprocess behind MagmaSat) prints diagnostic
+    messages directly to stdout/stderr — not via Python's ``warnings``
+    module, so ``warnings.catch_warnings`` does not catch them.  Without
+    this context manager those messages reach the terminal but never the
+    configured log file.
+
+    Captured output is forwarded line-by-line to ``logger.debug`` so it lands
+    in the log file (when configured) but stays out of normal stdout.
+
+    Note: MELTS is a native subprocess; some of its output bypasses Python's
+    ``sys.stdout`` and goes to the C-level file descriptor.  We do NOT do
+    OS-level FD redirection here because it breaks Jupyter's I/O.  Some MELTS
+    output may still leak to the terminal; this is a known cosmetic issue
+    parallel to the SulfurX one (see ``_quiet_sulfurx``).
+    """
+    buf_out = io.StringIO()
+    buf_err = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            yield
+    finally:
+        from volcatenate.log import logger
+        for buf in (buf_out, buf_err):
+            captured = buf.getvalue()
+            if captured.strip():
+                for line in captured.strip().splitlines():
+                    logger.debug("[VESIcal] %s", line)
+
+
 def _log_captured_warnings(captured, sample: str, phase: str) -> None:
     """Route Python warnings emitted during a VESIcal call to the volcatenate logger.
 
-    VESIcal emits many petrological-range warnings (Mg/Fe out of calibration band, T outside tested range, etc.) that would clutter terminal output. We suppress them on the console via ``warnings.simplefilter("always")`` inside ``catch_warnings(record=True)``, then forward each captured warning to the volcatenate logger at DEBUG level so they show up in the configured log file but not in normal stdout.
+    VESIcal emits many petrological-range warnings (Mg/Fe out of calibration band, T outside tested
+    range, etc.) that would clutter terminal output. We suppress them on the console via
+    ``warnings.simplefilter("always")`` inside ``catch_warnings(record=True)``, then forward each
+    captured warning to the volcatenate logger at DEBUG level so they show up in the configured log
+    file but not in normal stdout.
     """
     if not captured:
         return
