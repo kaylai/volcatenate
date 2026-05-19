@@ -1,8 +1,12 @@
 """SulfurX backend — sulfur-bearing COH degassing model.
 
-Wraps the SulfurX code (Iacono-Marziano / VolatileCalc COH models
-with sulfur speciation).  SulfurX is not pip-installable, so its
-path must be provided via ``config.sulfurx.path``.
+SulfurX vendors two C-O-H solubility front-ends as separate modules in its own source tree:
+``Iacono_Marziano_COH.py`` (Iacono-Marziano et al. 2012, Chem. Geol. 334:317-330) and ``VC_COH.py``
+(a Python port of Newman & Lowenstern's 2002 VolatileCalc, Computers & Geosciences 28(5):597-604,
+originally a Visual Basic / Excel macro). ``cfg.coh_model`` (0 = Iacono-Marziano, 1 = VolatileCalc)
+selects which front-end SulfurX uses for both saturation pressure and per-step degassing.
+
+SulfurX is not pip-installable, so its path must be provided via ``config.sulfurx.path``.
 """
 
 from __future__ import annotations
@@ -176,7 +180,7 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
             clusters.append([cand])
 
     # For saturation pressure the physically meaningful answer is the
-    # *lowest* pressure at which the melt first saturates.  Higher-P
+    # lowest pressure at which the melt first saturates.  Higher-P
     # clusters are typically numerical artifacts of the IM solver.
     # Strategy: pick the lowest-pressure cluster that has ≥ 2 members
     # (i.e. not a one-off fluke).  Fall back to the largest cluster if
@@ -208,21 +212,21 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
 
 @contextlib.contextmanager
 def _patch_composition(composition: dict):
-    """Monkey-patch SulfurX's MeltComposition so degassing uses *our* composition.
+    """Monkey-patch SulfurX's MeltComposition so degassing uses user input composition.
 
     SulfurX's ``degassingrun.py`` hard-codes a specific volcanic composition
     inside its ``MeltComposition`` class (Hawaiian basalt for ``choice=0``).
     Every pressure step in the degassing loop creates a new
     ``MeltComposition`` and feeds it to IaconoMarziano, OxygenFugacity, etc.
 
-    If the real sample composition differs from the hardcoded one, the
-    initial conditions (computed with the real composition) and the
+    If the user's sample composition differs from the hardcoded one, the
+    initial conditions (computed with the user's composition) and the
     per-step calculations (using the hardcoded one) are inconsistent,
     causing the inner convergence loop (100 000 iterations) to never
-    converge → the run "hangs".
+    converge, and the run hangs.
 
     This context manager replaces ``degassingrun.MeltComposition`` with a
-    thin wrapper that always returns the *volcatenate* composition,
+    thin wrapper that always returns the volcatenate user's composition,
     normalised to 100 wt%.  The original class is restored on exit.
     """
     import degassingrun as _dr
@@ -335,9 +339,11 @@ def _compute_delta_fmq(comp: MeltComposition) -> float:
 def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) -> pd.DataFrame:
     """Run the full SulfurX degassing path.
 
-    Translates the workflow from SulfurX's ``main_Fuego.py`` into a callable function, bypassing interactive prompts and hardcoded compositions.
+    Translates the workflow from SulfurX's ``main_Fuego.py`` into a callable function, bypassing
+    interactive prompts and hardcoded compositions.
 
-    When ``output_dir`` is provided, captures the resolved input via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
+    When ``output_dir`` is provided, captures the resolved input via
+    :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
     """
     from oxygen_fugacity import OxygenFugacity
     from fugacity import Fugacity
@@ -425,6 +431,7 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
             a=slope_h2o, b=constant_h2o,
         )
     else:
+        # VC_COH is SulfurX's port of Newman & Lowenstern (2002) VolatileCalc.
         from VC_COH import VolatileCalc
 
         vc = VolatileCalc(
@@ -559,7 +566,7 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
 
     # ── Step 5: Degassing loop ─────────────────────────────────────
     # Monkey-patch SulfurX's hardcoded MeltComposition so that
-    # degassing_redox / degassing_noredox use *our* composition
+    # degassing_redox / degassing_noredox use our composition
     # instead of the built-in Hawaiian basalt.  Without this patch
     # the per-step calculations are inconsistent with the initial
     # conditions and the inner convergence loop (100k iter) hangs.
@@ -834,6 +841,7 @@ class Backend(ModelBackend):
                     )
             else:
                 with _quiet_sulfurx():
+                    # VC_COH is SulfurX's port of Newman & Lowenstern (2002) VolatileCalc.
                     from VC_COH import VolatileCalc
 
                     vc = VolatileCalc(

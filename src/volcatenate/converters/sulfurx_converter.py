@@ -25,7 +25,7 @@ import pandas as pd
 from volcatenate import columns as col
 
 
-# ── Raw SulfurX column → standard column mapping ──────────────────
+# ── Raw SulfurX column -> standard column mapping ──────────────────
 _RENAME: dict[str, str] = {
     # Melt volatile concentrations
     "wS_melt":        col.ST_M_PPMW,

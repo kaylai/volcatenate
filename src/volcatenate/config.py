@@ -572,15 +572,25 @@ class SulfurXSulfideConfig:
 class SulfurXConfig:
     """SulfurX model configuration.
 
-    SulfurX is a Python C-O-H-S degassing model that bundles an Iacono-Marziano (or VolatileCalc) C-O-H solubility front-end with its own sulfur-saturation and redox-evolution machinery. The ``path`` is auto-detected at import time; you can also set the ``SULFURX_PATH`` environment variable to override detection.
+    SulfurX is a Python C-O-H-S degassing model that bundles an Iacono-Marziano (or VolatileCalc)
+    C-O-H solubility front-end with its own sulfur-saturation and redox-evolution machinery. The
+    ``path`` is auto-detected at import time; you can also set the ``SULFURX_PATH`` environment
+    variable to override detection.
 
-    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this dataclass):
+    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
+    dataclass):
       - Sample name, ``T_C``, all major oxides
       - ``H2O`` (wt%), ``CO2`` (→ ppm), ``S`` (→ ppm)
-      - The starting ``delta_FMQ`` is computed by :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade: ``comp.dFMQ`` direct → Fe3+/FeT via KC91 inversion → ``comp.dNNO`` via Frost-1991 buffer offset → ``ValueError`` if none are available.
+      - The starting ``delta_FMQ`` is computed by
+      :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade:
+      ``comp.dFMQ`` direct -> Fe3+/FeT via KC91 inversion -> ``comp.dNNO`` via Frost-1991 buffer
+      offset -> ``ValueError`` if none are available.
 
     Always managed by volcatenate (you cannot set these here):
-      - SulfurX ships with a hardcoded Fuego reference composition baked into its internal ``MeltComposition`` class. The volcatenate wrapper monkey-patches that class at import time so SulfurX uses the sample you passed in instead. The override is total — there is no mixing with the bundled reference values.
+      - SulfurX ships with a hardcoded Fuego reference composition baked into its internal
+      ``MeltComposition`` class. The volcatenate wrapper monkey-patches that class at import time so
+      SulfurX uses the sample you passed in instead. The override is total — there is no mixing with
+      the bundled reference values.
 
     Notes
     -----
