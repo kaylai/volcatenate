@@ -1,8 +1,7 @@
 # volcatenate configuration
 #
 # This file is the canonical hand-curated default config shipped with
-# volcatenate.  It is NOT auto-generated from save_config(); edit it
-# directly and keep in sync with the SulfurXConfig / EVoConfig / etc.
+# volcatenate. This is manually kept in-sync with the SulfurXConfig / EVoConfig / etc.
 # dataclass defaults in src/volcatenate/config.py.
 #
 # Edit only the settings you need to change.
