@@ -4,11 +4,13 @@
 models — [VESIcal](https://github.com/kaylai/VESIcal),
 [VolFe](https://github.com/eryhughes/VolFe),
 [EVo](https://github.com/pipliggins/EVo),
-[MAGEC](https://doi.org/10.1016/j.gca.2022.09.044),
-[SulfurX](https://github.com/sdecho/Sulfur_X), and
-D-Compress — behind a single Python API. The goal is a clean, scriptable
+[MAGEC](https://doi.org/10.1016/j.gca.2022.09.044), and
+[SulfurX](https://github.com/sdecho/Sulfur_X)
+behind a single Python API. The goal is a clean, scriptable
 pipeline for running and comparing saturation-pressure and degassing-path
-calculations across all of these tools at once.
+calculations across all of these tools at once. D-Compress outputs can also
+be parsed and compared with volcatenate results, but the D-Compress model
+backend is not implemented.
 
 The package was developed alongside the **Sulfur Comparison Paper**
 ([repo](https://github.com/PennyWieser/Sulfur_Comparison_Paper)) and is
@@ -27,11 +29,11 @@ distributed under the GPL.
   metadata — and replay it later on another machine.
 - Drive everything from Python or YAML.
 
-## Documentation
 
 ```{toctree}
 :maxdepth: 2
 :caption: User guide
+:hidden:
 
 getting_started
 sample_data
@@ -44,6 +46,7 @@ references
 ```{toctree}
 :maxdepth: 2
 :caption: Examples
+:hidden:
 
 examples/minimal_config
 examples/full_config
@@ -52,6 +55,7 @@ examples/full_config
 ```{toctree}
 :maxdepth: 2
 :caption: Gallery
+:hidden:
 
 gallery/index
 ```
@@ -59,6 +63,7 @@ gallery/index
 ```{toctree}
 :maxdepth: 2
 :caption: Validation
+:hidden:
 
 benchmarking
 ```
@@ -66,11 +71,7 @@ benchmarking
 ```{toctree}
 :maxdepth: 2
 :caption: Reference
+:hidden:
 
 api/index
 ```
-
-## Indices
-
-- {ref}`genindex`
-- {ref}`modindex`

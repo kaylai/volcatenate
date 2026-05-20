@@ -108,6 +108,8 @@ html_title = f"volcatenate {version}"
 html_static_path = ["_static"]
 templates_path = ["_templates"]
 
+html_logo = "_static/logo.png"
+
 # Don't fail the build if _static is empty.
 html_css_files: list[str] = []
 
