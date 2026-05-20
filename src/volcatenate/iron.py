@@ -19,20 +19,23 @@ def fe3fet_from_speciated(feo: float, fe2o3: float) -> float:
     Parameters
     ----------
     feo : float
-        FeO wt% (ferrous iron oxide).
+        FeO wt%
     fe2o3 : float
-        Fe2O3 wt% (ferric iron oxide).
+        Fe2O3 wt%
 
     Returns
     -------
     float
-        Fe3+/FeT molar ratio, or NaN if inputs are non-positive.
+        Fe3+/FeT molar ratio. Returns NaN for negative inputs or when total iron is zero
     """
-    if fe2o3 > 0 and feo > 0:
-        fe3_mol = 2.0 * fe2o3 / MW_FE2O3
-        fe2_mol = feo / MW_FEO
-        return fe3_mol / (fe3_mol + fe2_mol)
-    return np.nan
+    if feo < 0 or fe2o3 < 0:
+        return np.nan
+    fe3_mol = 2.0 * fe2o3 / MW_FE2O3
+    fe2_mol = feo / MW_FEO
+    total = fe3_mol + fe2_mol
+    if total == 0:
+        return np.nan
+    return fe3_mol / total
 
 
 def split_feot(feot: float, fe3fet: float) -> tuple[float, float]:
