@@ -28,3 +28,6 @@ raw_tool_output/
 # Sphinx documentation
 docs/_build/
 docs/api/generated/
+
+# testing folders
+kayla_testing
