@@ -141,7 +141,7 @@ def test_evo_backend_applies_dp_max_override(tmp_path, morb_comp):
     pytest.importorskip("evo")
     from volcatenate.backends.evo import Backend
 
-    config = RunConfig(output_dir=str(tmp_path))
+    config = RunConfig(output_dir=str(tmp_path), keep_raw_output=True)
     config.evo.overrides = {"MORB": {"dp_max": 25}}
 
     # Make run_evo a no-op that writes a stub CSV so the backend can read it.
@@ -168,7 +168,7 @@ def test_evo_backend_uses_global_default_for_unlisted_sample(tmp_path, morb_comp
     pytest.importorskip("evo")
     from volcatenate.backends.evo import Backend
 
-    config = RunConfig(output_dir=str(tmp_path))
+    config = RunConfig(output_dir=str(tmp_path), keep_raw_output=True)
     config.evo.overrides = {"OtherSample": {"dp_max": 25}}
 
     def fake_run_evo(chem_path, env_path, out_yaml, folder):
@@ -196,7 +196,7 @@ def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
     pytest.importorskip("evo")
     from volcatenate.backends.evo import Backend
 
-    config = RunConfig(output_dir=str(tmp_path))
+    config = RunConfig(output_dir=str(tmp_path), keep_raw_output=True)
     config.evo.overrides = {"MORB": {"dp_max": 25}}
 
     def fake_run_evo(chem_path, env_path, out_yaml, folder):
