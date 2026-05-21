@@ -137,6 +137,8 @@ def _fast_sulfurx_run_config(tmp_path, **sulfurx_kwargs):
 
 @pytest.mark.integration
 class TestHighThresholdWarning:
+    @pytest.mark.filterwarnings("ignore: invalid value encountered in ")
+    # filters unrelated upstream sulfur_x warning
     def test_warning_fires_when_threshold_at_or_above_20(self, tmp_path, caplog):
         """``kd_low_p_threshold_mpa >= 20`` should emit a logger.warning."""
         from volcatenate.backends.sulfurx import Backend
@@ -144,6 +146,7 @@ class TestHighThresholdWarning:
 
         backend = Backend()
         comp = composition_from_dict(_KILAUEA)
+        
         cfg = _fast_sulfurx_run_config(tmp_path, kd_low_p_threshold_mpa=25.0)
 
         with caplog.at_level(logging.WARNING, logger="volcatenate"):
@@ -158,6 +161,8 @@ class TestHighThresholdWarning:
             f"got log records: {[r.getMessage() for r in caplog.records]}"
         )
 
+    @pytest.mark.filterwarnings("ignore: invalid value encountered in ")
+    # filters unrelated upstream sulfur_x warning
     def test_warning_silent_when_threshold_below_20(self, tmp_path, caplog):
         """A threshold below 20 MPa (e.g. the README-recommended range) should not warn."""
         from volcatenate.backends.sulfurx import Backend

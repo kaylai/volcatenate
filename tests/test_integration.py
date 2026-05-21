@@ -280,6 +280,7 @@ _KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
 
 
 @pytest.mark.integration
+@pytest.mark.filterwarnings("ignore:invalid value encountered in")
 def test_sulfurx_satp_smoke(tmp_path):
     """SulfurX calculate_saturation_pressure returns a sane pd.Series."""
     from volcatenate.backends.sulfurx import Backend
@@ -293,6 +294,7 @@ def test_sulfurx_satp_smoke(tmp_path):
 
 
 @pytest.mark.integration
+@pytest.mark.filterwarnings("ignore:invalid value encountered in")
 def test_sulfurx_degassing_smoke(tmp_path):
     """SulfurX calculate_degassing returns a valid degassing path."""
     from volcatenate.backends.sulfurx import Backend
