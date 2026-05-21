@@ -153,22 +153,30 @@ def _find_sulfurx() -> str:
 class VESIcalConfig:
     """VESIcal model configuration.
 
-    VESIcal is a multi-solubility-law H2O-CO2 degassing engine. It does not model sulfur — sulfur columns in the standardized output are NaN.
+    VESIcal is a H2O-CO2 degassing engine capable of running multiple H2O-CO2 solubility models. It
+    does not model sulfur; sulfur columns in the standardized output are NaN.
 
-    The solubility model is **not** selected via this dataclass. Instead, you choose it by the backend name you pass to ``calculate_*`` (e.g. ``"VESIcal_Iacono"``, ``"VESIcal_Dixon"``, ``"VESIcal_MS"``). See ``VARIANT_MAP`` in :mod:`volcatenate.backends.vesical`.
+    The solubility model is not selected via this dataclass. Instead, you choose it by the
+    backend name you pass to ``calculate_*`` (e.g. ``"VESIcal_Iacono"``, ``"VESIcal_Dixon"``,
+    ``"VESIcal_MS"``). See ``VARIANT_MAP`` in :mod:`volcatenate.backends.vesical`.
 
     Notes
     -----
     Field highlights:
 
-    - ``steps`` — number of pressure steps in the degassing path. More steps means smoother curves but slower runs. VESIcal divides the (P_sat → ``final_pressure``) range into this many steps.
-    - ``final_pressure`` — lowest pressure (bar) in the degassing run. Set to ~1 bar for full atmospheric degassing, or higher to stop early.
-    - ``fractionate_vapor`` — vapor extraction per step, 0 to 1. ``0`` = closed system (vapor stays in equilibrium), ``1`` = open system (vapor fully removed each step). Intermediate values are physically unusual but allowed by VESIcal.
-    - ``overrides`` — per-sample overrides, e.g. ``{"Fogo": {"steps": 50}}``. Unknown field names emit a warning and are skipped at resolve time.
+    - ``steps`` — number of pressure steps in the degassing path. More steps means smoother curves
+    but slower runs. VESIcal divides the (P_sat -> ``final_pressure``) range into this many steps.
+    - ``final_pressure`` — lowest pressure (bar) in the degassing run. Set to 1 bar for full
+    atmospheric degassing, or higher to stop early.
+    - ``fractionate_vapor`` — vapor extraction per step, 0 to 1. ``0`` = closed system (vapor stays
+    in with the magma), ``1`` = open system (vapor fully removed each step). 
+    - ``overrides`` — per-sample overrides, e.g. ``{"Fogo": {"steps": 50}}``. Unknown field names
+    emit a warning and are skipped at resolve time.
 
     See Also
     --------
-    docs/config_options.md : plain-English mapping from each YAML field to the underlying VESIcal call.
+    docs/config_options.md : plain-English mapping from each YAML field to the underlying VESIcal
+    call.
     """
 
     steps: int = 101
@@ -185,33 +193,48 @@ class VESIcalConfig:
 class VolFeConfig:
     """VolFe model configuration.
 
-    Almost every YAML field in this section maps 1-to-1 to a VolFe internal model option name. Field names here use ``snake_case``; VolFe's own option names (used in the ``models`` DataFrame it consumes) are mostly the same with capitalization differences and are documented inline below.
+    Almost every YAML field in this section maps 1-to-1 to a VolFe internal model option name. Field
+    names here use ``snake_case``; VolFe's own option names (used in the ``models`` DataFrame it
+    consumes) are mostly the same with capitalization differences and are documented inline below.
 
-    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this dataclass):
-      - Sample name, ``T_C``, all major oxides
-      - ``H2O`` (wt%), ``CO2`` (→ ppm), ``S`` (→ ppm), ``Xppm``
-      - The redox column actually sent to VolFe (``DNNO`` / ``Fe3FeT`` / ``DFMQ``) is picked from the sample by :func:`~volcatenate.backends.volfe._resolve_volfe_redox`, dispatched by ``fo2_column`` and ``fo2_source`` below.
+    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
+    dataclass):
+      - Sample name, ``T_C``, all major oxides, all volatile concentrations
+      - The redox column actually sent to VolFe (``DNNO`` / ``Fe3FeT`` / ``DFMQ``) is picked from
+      the sample by :func:`~volcatenate.backends.volfe._resolve_volfe_redox`, dispatched by
+      ``fo2_column`` and ``fo2_source`` below.
 
     Always managed by volcatenate (you cannot set these here):
       - VolFe ``output csv`` is forced to ``"False"`` — volcatenate handles its own output.
-      - VolFe ``print status`` is forced to ``"False"`` — volcatenate routes logging through its own logger.
-      - VolFe ``solve_species`` is left to VolFe's internal default, which the model re-sets during the calculation anyway (see ``equilibrium_equations.py:39-60`` upstream).
-      - VolFe ``mass_volume`` is left at ``"mass"``; the ``"volume"`` branch is marked ``NEEDS FIXING`` upstream and is unsafe to use.
+      - VolFe ``print status`` is forced to ``"False"`` — volcatenate routes logging through its own
+      logger.
+      - VolFe ``solve_species`` is left to VolFe's internal default, which the model re-sets during
+      the calculation.
+      - VolFe ``mass_volume`` is left at ``"mass"``; the ``"volume"`` branch is marked
+      ``NEEDS FIXING`` upstream and is unsafe to use.
       - VolFe ``setup`` is left at its default ``False`` — it is a debug-only flag.
 
     Notes
     -----
     The high-leverage / gotcha fields are these:
 
-    - ``fo2_source`` — choose ``"auto"`` (default) to keep the existing fallback chain (with INFO logging on every choice), or one of ``"fe3fet" / "dnno" / "dfmq"`` to require that exact redox column on the sample and raise if it is missing.
-    - ``eq_fe`` — ``"yes"`` (default) tells VolFe to re-equilibrate Fe redox with fO2 every pressure step. ``"no"`` freezes Fe (sets ``wt_Fe = 0`` internally), decoupling iron from gas-phase chemistry; only useful for diagnostics.
-    - ``isotopes`` — ``"no"`` (default) bypasses isotope tracking entirely. The ~12 ``alpha_*`` and ``beta_factors`` fields are only consulted when ``isotopes="yes"``.
-    - ``calc_sat`` — saturation-pressure search mode. ``"fO2_melt"`` (default) searches against the melt-derived fO2; ``"fO2_fX"`` uses the species-X driven path.
-    - ``bulk_o`` — whether sulfur-bound O contributes to the bulk-O accounting (``"exc_S"`` excludes it, default; ``"inc_S"`` includes it).
+    - ``fo2_source`` — choose ``"auto"`` (default) to keep the existing fallback chain (with INFO
+    logging on every choice), or one of ``"fe3fet" / "dnno" / "dfmq"`` to require that exact redox
+    column on the sample and raise if it is missing.
+    - ``eq_fe`` — ``"yes"`` (default) tells VolFe to re-equilibrate Fe redox with fO2 every pressure
+    step. ``"no"`` freezes Fe (sets ``wt_Fe = 0`` internally), decoupling iron from gas-phase
+    chemistry.
+    - ``isotopes`` — ``"no"`` (default) bypasses isotope tracking. The ``alpha_*`` and
+    ``beta_factors`` fields are only consulted when ``isotopes="yes"``.
+    - ``calc_sat`` — saturation-pressure search mode. ``"fO2_melt"`` (default) searches against the
+    melt-derived fO2; ``"fO2_fX"`` uses the species-X driven path.
+    - ``bulk_o`` — whether sulfur-bound O contributes to the bulk-O accounting (``"exc_S"`` excludes
+    it, default; ``"inc_S"`` includes it).
 
     See Also
     --------
-    docs/config_options.md : plain-English mapping from each YAML field to the actual VolFe model-option name and what it does to the calculation.
+    docs/config_options.md : plain-English mapping from each YAML field to the actual VolFe
+    model-option name and what it does to the calculation.
     """
 
     # ── Saturation ───────────────────────────────────────────────────
@@ -337,38 +360,60 @@ class VolFeConfig:
 class EVoConfig:
     """EVo model configuration.
 
-    EVo is run via three YAML files (``chem.yaml``, ``env.yaml``, ``output.yaml``) that volcatenate writes from this dataclass + the sample composition. Field names here use ``snake_case``; EVo's own keys are ``UPPER_CASE`` and are documented inline below and in the propagation doc.
+    EVo is run via three YAML files (``chem.yaml``, ``env.yaml``, ``output.yaml``) that volcatenate
+    writes from this dataclass + the sample composition. Field names here use ``snake_case``; EVo's
+    own keys are ``UPPER_CASE`` and are documented inline below and in the docs.
 
-    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this dataclass):
+    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
+    dataclass):
       - Sample name, ``T_C`` (converted to Kelvin → ``T_START``)
-      - All major oxides → ``chem.yaml`` (with a 1e-10 epsilon for any zero-valued oxide so EVo's ``single_cat()`` does not silently drop it)
-      - ``WTH2O_START`` ← ``comp.H2O / 100`` (mass fraction)
-      - ``WTCO2_START`` ← ``comp.CO2 / 100``
-      - ``SULFUR_START`` ← ``comp.S / 100``
-      - FeO / Fe2O3 split written into ``chem.yaml`` from ``comp.fe3fet_computed`` (skipped when ``fo2_source="absolute"`` because EVo refuses both at once).
+      - All major oxides: ``chem.yaml`` (with a 1e-10 epsilon for any zero-valued oxide so EVo's
+      ``single_cat()`` does not silently drop it)
+      - EVO's ``WTH2O_START``, ``WTCO2_START``, and ``SULFUR_START`` are inherited from the
+      volcatenate's  MagmaComposition object (created by user manually or when a csv is imported):
+      ``comp.H2O``, ``comp.CO2``, and ``comp.S`` each divided by 100 (EVo takesw in mass fraction)
+      - FeO / Fe2O3 split written into ``chem.yaml`` comes from volcatenate's
+      ``comp.fe3fet_computed`` (skipped when ``fo2_source="absolute"`` because EVo disallows both at
+      once).
 
     Always managed by volcatenate (you cannot set these here):
-      - ``WTH2O_SET`` / ``WTCO2_SET`` / ``SULFUR_SET`` are always True — volatiles are always supplied as melt mass fractions from the composition.
-      - ``FO2_buffer_SET`` / ``FO2_buffer`` / ``FO2_buffer_START`` / ``FO2_SET`` / ``FO2_START`` are computed by :func:`~volcatenate.backends.evo._resolve_fo2_source` from the ``fo2_source`` setting below.
-      - All ``output.yaml`` plot flags are False — volcatenate emits its own standardized DataFrames, not EVo's plot CSVs.
+      - ``WTH2O_SET`` / ``WTCO2_SET`` / ``SULFUR_SET`` are always True — volatiles are always
+      supplied as melt mass fractions from the composition.
+      - ``FO2_buffer_SET`` / ``FO2_buffer`` / ``FO2_buffer_START`` / ``FO2_SET`` / ``FO2_START`` are
+      computed by :func:`~volcatenate.backends.evo._resolve_fo2_source` from the ``fo2_source``
+      setting below.
+      - All ``output.yaml`` plot flags are False — volcatenate emits its own standardized
+      DataFrames, not EVo's plot CSVs.
 
     Notes
     -----
     The high-leverage / gotcha fields are these:
 
     - ``fo2_source`` — how the run's starting fO2 is set:
-        - ``"auto"`` (default): use Fe3+/FeT if present, otherwise fall back through ``comp.dNNO`` → ``comp.dFMQ`` → the ``fo2_buffer`` field with offset 0. Logs every choice at INFO; never raises.
+        - ``"auto"`` (default): use Fe3+/FeT if present, otherwise fall back through ``comp.dNNO``
+        -> ``comp.dFMQ`` -> the ``fo2_buffer`` field with offset 0. Logs every choice at INFO; never
+        raises.
         - ``"fe3fet"``: require Fe3+/FeT (or speciated FeO + Fe2O3) on the sample; raise if missing.
-        - ``"buffer"``: require ``comp.dNNO`` or ``comp.dFMQ`` matching the ``fo2_buffer`` field (NNO/FMQ/IW); raise if missing.
-        - ``"absolute"``: set fO2 directly from ``fo2_start`` (in bar) via ``FO2_SET=True``. The iron split is skipped to avoid EVo's "fO2 and iron proportions specified, only give one" error.
-    - ``composition`` — selects EVo's solubility-constant family (``"basalt"`` / ``"phonolite"`` / ``"rhyolite"``). Phonolite and rhyolite paths add temperature-dependent solubility within tested T ranges and switch to T-independent constants outside them.
-    - ``fe_system`` — keeping this ``True`` (default) lets EVo equilibrate Fe redox with fO2 each step. Setting ``False`` freezes Fe and changes the gas chemistry trajectory substantially.
-    - ``run_type`` — ``"closed"`` (default) keeps vapor in equilibrium with the melt; ``"open"`` removes a fraction (``loss_frac``) of vapor each step.
-    - The ``f*_set`` / ``f*_start`` fields (``fo2_set``, ``fh2_set``, ``fh2o_set``, ``fco2_set``) are alternate fugacity entry points exposed by EVo's ``env.yaml``. Most users do not need them — defaults match EVo's own defaults and the redox path is driven by ``fo2_source`` instead.
+        - ``"buffer"``: require ``comp.dNNO`` or ``comp.dFMQ`` matching the ``fo2_buffer`` field
+        (NNO/FMQ/IW); raise if missing.
+        - ``"absolute"``: set fO2 directly from ``fo2_start`` (in bar) via ``FO2_SET=True``. The
+        iron split is skipped to avoid EVo's "fO2 and iron proportions specified, only give one"
+        error.
+    - ``composition`` — selects EVo's solubility-constant family (``"basalt"`` / ``"phonolite"`` /
+    ``"rhyolite"``). Phonolite and rhyolite paths add temperature-dependent solubility within tested
+    T ranges and switch to T-independent constants outside them.
+    - ``fe_system`` — keeping this ``True`` (default) lets EVo equilibrate Fe redox with fO2 each
+    step. Setting ``False`` freezes Fe and changes the gas chemistry trajectory substantially.
+    - ``run_type`` — ``"closed"`` (default) keeps vapor in equilibrium with the melt; ``"open"``
+    removes a fraction (``loss_frac``) of vapor each step.
+    - The ``f*_set`` / ``f*_start`` fields (``fo2_set``, ``fh2_set``, ``fh2o_set``, ``fco2_set``)
+    are alternate fugacity entry points exposed by EVo's ``env.yaml``. Defaults match EVo's own
+    defaults and the redox path is driven by ``fo2_source`` instead.
 
     See Also
     --------
-    docs/config_options.md : plain-English mapping from each YAML field to the actual EVo ``env.yaml`` / ``chem.yaml`` key and what it does.
+    docs/config_options.md : plain-English mapping from each YAML field to the actual EVo
+    ``env.yaml`` / ``chem.yaml`` key and what it does.
     """
 
     gas_system: str = "cohs"
@@ -420,10 +465,10 @@ class EVoConfig:
     fo2_source: Literal["auto", "fe3fet", "buffer", "absolute"] = "auto"
 
     # Absolute fugacity entry points. EVo's ``env.yaml`` exposes these
-    # as alternate ways to initialize redox / fugacity. Most users do
-    # NOT need them — the default (``fo2_source="auto"``) drives EVo
-    # via Fe3+/FeT or the buffer path. Set ``fo2_source="absolute"``
-    # and ``fo2_start`` to use ``FO2_SET=True`` mode.
+    # as alternate ways to initialize redox / fugacity. The default
+    # (``fo2_source="auto"``) drives EVo via Fe3+/FeT or the buffer path.
+    # Set ``fo2_source="absolute"`` and ``fo2_start`` to use
+    # ``FO2_SET=True`` mode.
     fo2_set: bool = False             # EVo env.yaml FO2_SET — written from fo2_source
     fo2_start: float = 0.0            # Absolute fO2 (bar). Used only when fo2_source="absolute"
     fh2_set: bool = False             # EVo env.yaml FH2_SET — set H2 fugacity as a starting condition
@@ -457,32 +502,54 @@ class EVoConfig:
 class MAGECConfig:
     """MAGEC model configuration (MATLAB subprocess).
 
-    MAGEC runs as a MATLAB subprocess from a compiled ``.p`` solver. Volcatenate writes a per-sample input ``.xlsx``, calls MATLAB to invoke ``MAGEC_Solver_v1b.p``, then reads the output ``.xlsx``. The ``solver_dir`` and ``matlab_bin`` paths are auto-detected at import time; you can also set ``MAGEC_SOLVER_DIR`` and ``MATLAB_BIN`` environment variables to override detection.
+    MAGEC runs as a MATLAB subprocess from a compiled ``.p`` solver. Volcatenate writes a per-sample
+    input ``.xlsx``, calls MATLAB to invoke ``MAGEC_Solver_v1b.p``, then reads the output ``.xlsx``.
+    The ``solver_dir`` and ``matlab_bin`` paths are auto-detected at import time; you can also set
+    ``MAGEC_SOLVER_DIR`` and ``MATLAB_BIN`` environment variables to override detection.
 
-    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this dataclass):
-      - Sample name, ``T_C``, all major oxides (including ``Cr2O3``)
-      - ``Bulk_H`` ← ``H2O × 2/18``, ``Bulk_C`` ← ``CO2 × 12/44``, ``Bulk_S`` ← ``S`` (wt%, elemental basis). Volcatenate does this molecular→elemental conversion using rounded molecular weights matching the Sun & Yao 2024 example files; MAGEC does NOT do this internally.
-      - All oxides are renormalized to a 100 wt% anhydrous total before being passed to MAGEC, since MAGEC expects volatile-free oxide totals.
+    Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
+    dataclass):
+      - Sample name, ``T_C``, all major oxides (including ``Cr2O3``), bulk volatile contents.
+      Volcatenate does a molecular to elemental conversion to send volatile values to MAGEC using
+      rounded molecular weights matching the Sun & Yao 2024 example files; MAGEC does not do this
+      internally.
+      - All oxides are renormalized to a 100 wt% anhydrous total before being passed to MAGEC, since
+      MAGEC expects volatile-free oxide totals.
 
     Always managed by volcatenate (you cannot set these here):
-      - MAGEC's ``Reference`` column is hardcoded to ``"auto_satP"``, which puts MAGEC in auto-search mode (it computes its own initial saturation pressure). The alternate "referenced" mode — where the user would supply an independently-determined initial pressure via ``Reference P (kbar)`` (e.g. a melt-inclusion entrapment pressure) — is not surfaced.
-      - ``Reference P (kbar)`` is therefore always ``NaN`` in our inputs.
+      - MAGEC's ``Reference`` column is hardcoded to ``"auto_satP"``, which puts MAGEC in
+      auto-search mode (it computes its own initial saturation pressure). The alternate "referenced"
+      mode — where the user would supply an independently-determined initial pressure via
+      ``Reference P (kbar)`` (e.g. a melt-inclusion entrapment pressure) — is not surfaced.
+      ``Reference P (kbar)`` is therefore always ``NaN`` in our inputs.
 
     Notes
     -----
     The high-leverage / gotcha fields are these:
 
-    - ``redox_source`` — how the wrapper picks the redox indicator to send to MAGEC, which only natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``:
-        - ``"auto"`` (default): honor ``redox_option`` if the matching column is on the sample; otherwise prefer ``Fe3+/FeT`` if available; otherwise compute Fe3+/FeT from ``dNNO`` / ``dFMQ`` via Kress & Carmichael (1991) inversion at 1 bar (a substantively different calculation, logged at WARNING).
-        - ``"fe3fet"`` / ``"dfmq"``: require that exact indicator on the sample; raise ``ValueError`` if missing.
-        - ``"kc91_from_buffer"``: explicitly opt into the KC91 inversion even when Fe3+/FeT is also available — useful for diagnostics or for like-with-like comparisons across backends.
-        - ``"dnno"``: raises informatively; MAGEC does not natively accept dNNO and the user must pick ``kc91_from_buffer`` or ``dfmq`` instead.
-    - ``timeout`` — MATLAB subprocesses are killed after this many seconds. MAGEC can hang indefinitely when the saturation pressure is outside the search range; bumping ``p_start_kbar`` is usually the better fix.
-    - ``fe_redox`` / ``s_redox`` — these select the petrologically calibrated Fe and S redox models. Their numeric values are arbitrary integers from MAGEC's settings sheet; see the inline comments in this dataclass and the propagation doc for the citation table.
+    - ``redox_source`` — how the wrapper picks the redox indicator to send to MAGEC, which only
+    natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``:
+        - ``"auto"`` (default): honor ``redox_option`` if the matching column is on the sample;
+        otherwise prefer ``Fe3+/FeT`` if available; otherwise compute Fe3+/FeT from
+        ``dNNO`` / ``dFMQ`` via Kress & Carmichael (1991) inversion at 1 bar (a substantively
+        different calculation than MAGEC's own equations, logged at WARNING).
+        - ``"fe3fet"`` / ``"dfmq"``: require that exact indicator on the sample; raise
+        ``ValueError`` if missing.
+        - ``"kc91_from_buffer"``: explicitly opt into the KC91 inversion even when Fe3+/FeT is also
+        available — useful for diagnostics or for like-with-like comparisons across backends.
+        - ``"dnno"``: raises informatively; MAGEC does not natively accept dNNO and the user must
+        pick ``kc91_from_buffer`` or ``dfmq`` instead.
+    - ``timeout`` — MATLAB subprocesses are killed after this many seconds. MAGEC can hang
+    indefinitely when the saturation pressure is outside the search range; bumping ``p_start_kbar``
+    is usually the fix.
+    - ``fe_redox`` / ``s_redox`` — these select the petrologically calibrated Fe and S redox models.
+    Their numeric values are integers from MAGEC's settings sheet; see the inline comments in this
+    dataclass and the docs for the published table.
 
     See Also
     --------
-    docs/config_options.md : plain-English mapping from each YAML field to the corresponding MAGEC settings-sheet entry and the input-CSV column.
+    docs/config_options.md : plain-English mapping from each YAML field to the corresponding MAGEC
+    settings-sheet entry and the input-CSV column.
     """
 
     solver_dir: str = field(default_factory=_find_magec_solver)
@@ -544,12 +611,13 @@ class MAGECConfig:
 class SulfurXSulfideConfig:
     """Sulfide phase composition for SulfurX.
 
-    SulfurX needs an explicit sulfide composition to compute sulfide-saturation behavior. Default values follow ``main_Fuego.py`` from the SulfurX distribution (Fe 65.43, S 36.47 — a near-stoichiometric pyrrhotite). All values are weight percent of **the sulfide phase**, not of the melt.
+    SulfurX needs an explicit sulfide composition to compute sulfide-saturation behavior. Default
+    values follow ``main_Fuego.py`` from the SulfurX distribution (Fe 65.43, S 36.47 — a near-
+    stoichiometric pyrrhotite). All values are weight percent of the sulfide phase, not of the
+    melt.
 
     Notes
     -----
-    Field highlights:
-
     - ``fe`` — Fe wt% of the sulfide phase. Default 65.43.
     - ``ni`` — Ni wt% of the sulfide phase. Default 0.0.
     - ``cu`` — Cu wt% of the sulfide phase. Default 0.0.
@@ -572,40 +640,49 @@ class SulfurXSulfideConfig:
 class SulfurXConfig:
     """SulfurX model configuration.
 
-    SulfurX is a Python C-O-H-S degassing model that bundles an Iacono-Marziano (or VolatileCalc)
+    SulfurX is a Python C-O-H-S degassing model that bundles a Iacono-Marziano or VolatileCalc
     C-O-H solubility front-end with its own sulfur-saturation and redox-evolution machinery. The
     ``path`` is auto-detected at import time; you can also set the ``SULFURX_PATH`` environment
     variable to override detection.
 
     Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
     dataclass):
-      - Sample name, ``T_C``, all major oxides
-      - ``H2O`` (wt%), ``CO2`` (→ ppm), ``S`` (→ ppm)
-      - The starting ``delta_FMQ`` is computed by
-      :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade:
-      ``comp.dFMQ`` direct -> Fe3+/FeT via KC91 inversion -> ``comp.dNNO`` via Frost-1991 buffer
-      offset -> ``ValueError`` if none are available.
+    - Sample name, ``T_C``, all major oxides, all volatile concentrations
+    - The starting ``delta_FMQ`` is computed by
+    :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade:
+    ``comp.dFMQ`` direct -> Fe3+/FeT via KC91 inversion -> ``comp.dNNO`` via Frost-1991 buffer
+    offset -> ``ValueError`` if none are available.
 
     Always managed by volcatenate (you cannot set these here):
-      - SulfurX ships with a hardcoded Fuego reference composition baked into its internal
-      ``MeltComposition`` class. The volcatenate wrapper monkey-patches that class at import time so
-      SulfurX uses the sample you passed in instead. The override is total — there is no mixing with
-      the bundled reference values.
+    - SulfurX ships with a hardcoded Fuego reference composition in its internal ``MeltComposition``
+    class. The volcatenate wrapper monkey-patches that class at import time so SulfurX uses the
+    sample and all configuration settings you passed here instead.
 
     Notes
     -----
     The high-leverage / gotcha fields are these:
 
-    - ``coh_model`` — chooses the C-O-H front-end: ``0`` = Iacono-Marziano (default), ``1`` = VolatileCalc. The two parameterizations behave very differently outside basaltic compositions.
-    - ``fo2_tracker`` — ``1`` (default) lets fO2 evolve with the gas chemistry each step; ``0`` holds it buffered at the starting value.
-    - ``sulfide`` — the nested :class:`SulfurXSulfideConfig` describing the sulfide phase composition (Fe/Ni/Cu/O/S wt% of the sulfide, not the melt). Defaults to a near-stoichiometric pyrrhotite.
-    - ``crystallization``, ``open_degassing``, ``d34s_initial`` — set to ``0`` by default; SulfurX can in principle take other values but they are not exercised by the comparison-paper workflow.
-    - ``kd_low_p_increment`` / ``kd_low_p_threshold_mpa`` — SulfurX's module-level ``INC`` / ``BAR`` globals in ``degassingrun.py``, exposed here as config. Below ``kd_low_p_threshold_mpa`` (MPa, *not* bar despite SulfurX's ``BAR`` name), each step's combined molar sulfur partition coefficient is forced to the previous step's value plus ``kd_low_p_increment`` instead of being recomputed from ``kd_rxn1`` / ``kd_rxn2``. The SulfurX README labels the increment ``INT`` — that is a README typo; the source variable is ``INC``. Default ``threshold = 0.0`` reproduces upstream SulfurX (override disabled). Set ``threshold > 0`` (≤ 20 MPa per the README) to enable.
+    - ``coh_model`` — chooses the C-O-H front-end: ``0`` = Iacono-Marziano (default),
+    ``1`` = VolatileCalc.
+    - ``fo2_tracker`` — ``1`` (default) lets fO2 evolve with the gas chemistry each step;
+    ``0`` holds it buffered at the starting value.
+    - ``sulfide`` — the nested :class:`SulfurXSulfideConfig` describing the sulfide phase
+    composition (Fe/Ni/Cu/O/S wt% of the sulfide, not the melt). Defaults to a near-stoichiometric
+    pyrrhotite.
+    - ``crystallization``, ``open_degassing``, ``d34s_initial`` — set to ``0`` by default.
+    - ``kd_low_p_increment`` / ``kd_low_p_threshold_mpa`` — SulfurX's module-level ``INC`` / ``BAR``
+    globals in ``degassingrun.py``, exposed here as config. Below ``kd_low_p_threshold_mpa`` (MPa,
+    *not* bar despite SulfurX's ``BAR`` name), each step's combined molar sulfur partition
+    coefficient is forced to the previous step's value plus ``kd_low_p_increment`` instead of being
+    recomputed from ``kd_rxn1`` / ``kd_rxn2``. The SulfurX README labels the increment ``INT`` —
+    that is a README typo; the source variable is ``INC``. Default ``threshold = 0.0`` reproduces
+    upstream SulfurX. Set ``threshold > 0``to enable. SulfurX's README warns users against using a
+    value >20 as this can cause instabilities, but a value of 50 is used in the SulfurX publication.
 
     See Also
     --------
-    docs/config_options.md : plain-English mapping from each YAML field to the corresponding SulfurX call.
-    SulfurXSulfideConfig : nested sulfide phase composition.
+    docs/config_options.md : plain-English mapping from each YAML field to the corresponding SulfurX
+    call. SulfurXSulfideConfig : nested sulfide phase composition.
     """
 
     path: str = field(default_factory=_find_sulfurx)
@@ -618,19 +695,19 @@ class SulfurXConfig:
     sigma: float = 0.005              # log10fO2 tolerance for redox calculation
     sulfide_pre: int = 0              # 0 = no sulfide precipitation, 1 = enabled
 
-    # Crystallization / degassing geometry (previously hardcoded).
-    crystallization: int = 0          # 0 = no crystallization (the only path SulfurX exercises today)
+    # Crystallization / degassing geometry.
+    crystallization: int = 0          # 0 = no crystallization
     open_degassing: int = 0           # 0 = closed-system degassing, 1 = open-system
-    d34s_initial: float = 0.0         # Initial bulk d34S (only used when isotope tracking is wired up)
+    d34s_initial: float = 0.0         # Initial bulk d34S (only used when isotope tracking on)
 
     # Low-pressure kd override (SulfurX's INC / BAR module globals in degassingrun.py).
     # Default kd_low_p_threshold_mpa = 0.0 disables the override, matching upstream SulfurX defaults.
     # The SulfurX README's "INT" is a typo for INC; the README also recommends keeping the
     # threshold below 20 MPa when enabled.
-    kd_low_p_increment: float = 20.0    # SulfurX INC: per-step additive increment to combined molar kd
+    kd_low_p_increment: float = 20.0    # SulfurX INC: per-step additive increment to combined kd
     kd_low_p_threshold_mpa: float = 0.0 # SulfurX BAR: MPa threshold below which the override applies (0 = off)
 
-    # Sulfide phase composition (SulfurX uses this for sulfide saturation).
+    # Sulfide phase composition (used only when sulfide saturation is enabled).
     sulfide: SulfurXSulfideConfig = field(default_factory=SulfurXSulfideConfig)
 
     # Per-sample overrides: {sample_name: {field_name: value}}
@@ -650,23 +727,38 @@ class DCompressConfig:
 class RunConfig:
     """Top-level configuration composing all model configs.
 
-    A single ``RunConfig`` parameterizes every backend in a comparison run. Top-level fields here control output destinations, logging, and progress display; backend-specific knobs live on the nested ``vesical`` / ``volfe`` / ``evo`` / ``magec`` / ``sulfurx`` / ``dcompress`` dataclasses.
+    A single ``RunConfig`` parameterizes every backend in a comparison run. Top-level fields here
+    control output destinations, logging, and progress display; backend-specific knobs live on the
+    nested ``vesical`` / ``volfe`` / ``evo`` / ``magec`` / ``sulfurx`` / ``dcompress`` dataclasses.
 
-    Build one in Python with the dataclass constructors, or load it from YAML with :func:`load_config` / :func:`save_config`.
+    Build one in Python with the dataclass constructors, or load it from YAML with
+    :func:`load_config` / :func:`save_config`.
 
     Notes
     -----
     Field highlights:
 
-    - ``output_dir`` — root directory for all output files (standardized result CSVs, figures, raw tool output subdirectory). Default ``"."`` (current working directory).
-    - ``raw_output_dir`` — subdirectory (relative to ``output_dir``) for raw per-backend files: EVo YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
-    - ``keep_raw_output`` — when ``True`` (default), all raw tool output files are retained for inspection. ``False`` cleans them up after each run, keeping only the standardized DataFrames in memory.
-    - ``verbose`` — print progress to the terminal (on/off switch).
-    - ``verbose_level`` — terminal log level when ``verbose`` is True. One of ``"DEBUG"``, ``"INFO"``, ``"WARNING"`` (default), ``"ERROR"``. Lets you mute INFO chatter while still seeing failures. The file handler (``log_file``) always captures everything regardless of this setting.
-    - ``log_file`` — path to a file that captures all log output. The file is truncated on the first call within a Python process and appended thereafter, so multiple ``calculate_*`` calls in the same notebook accumulate into one log instead of clobbering each other. Use :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string disables file logging.
+    - ``output_dir`` — root directory for all output files (standardized result CSVs, figures, raw
+    tool output subdirectory). Default ``"."`` (current working directory).
+    - ``raw_output_dir`` — subdirectory (relative to ``output_dir``) for raw per-backend files: EVo
+    YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
+    - ``keep_raw_output`` — when ``True`` (default), all raw tool output files are retained for
+    inspection. ``False`` cleans them up after each run, keeping only the standardized DataFrames in
+    memory.
+    - ``verbose`` — print progress to the terminal.
+    - ``verbose_level`` — terminal log level when ``verbose`` is True. One of ``"DEBUG"``,
+    ``"INFO"`` (default), ``"WARNING"``, ``"ERROR"``. Lets you mute DEBUG chatter while still seeing 
+    failures. The file handler (``log_file``) always captures everything regardless of this setting.
+    - ``log_file`` — path to a file that captures all log output. The file is truncated on the first
+    call within a Python process and appended thereafter, so multiple ``calculate_*`` calls in the
+    same notebook accumulate into one log instead of clobbering each other. Use
+    :func:`~volcatenate.log.reset_log_file_tracking` to start a fresh log mid-session. Empty string
+    disables file logging.
     - ``show_progress`` — show rich progress bars during multi-sample runs.
-    - ``save_bundle`` — path at which to write a reproducible run bundle (JSON). Empty string disables bundle saving. See ``docs/run_bundles.md``.
-    - ``bundle_comments`` — free-text notes recorded in the bundle's ``comments`` field; provenance only, ignored on replay.
+    - ``save_bundle`` — path at which to write a reproducible run bundle (JSON). Empty string
+    disables bundle saving. See ``docs/run_bundles.md``.
+    - ``bundle_comments`` — free-text notes recorded in the bundle's ``comments`` field; provenance
+    only, ignored on replay.
 
     See Also
     --------
@@ -677,9 +769,9 @@ class RunConfig:
 
     output_dir: str = "."
     raw_output_dir: str = "raw_tool_output"
-    keep_raw_output: bool = True
-    verbose: bool = False
-    verbose_level: str = "WARNING"
+    keep_raw_output: bool = False
+    verbose: bool = True
+    verbose_level: str = "INFO"
     log_file: str = ""
     show_progress: bool = True
     save_bundle: str = ""
