@@ -8,13 +8,6 @@ Install volcatenate from a clone of the repository:
 # From the volcatenate directory:
 pip install -e .
 
-# With plotting support:
-pip install -e ".[plotting]"
-
-# With dev/test dependencies:
-pip install -e ".[dev,plotting]"
-```
-
 Each model backend is optional. If a model's dependencies are not
 installed, it is silently skipped. Check which backends are available:
 
