@@ -21,9 +21,9 @@
 
 output_dir: .  # Root directory for all output (default: working directory)
 raw_output_dir: raw_tool_output  # Subdirectory for raw model files (EVo YAML, MAGEC scripts, etc.)
-keep_raw_output: true  # Keep raw tool output files after run
+keep_raw_output: false  # Keep raw tool output files after run
 verbose: false  # Print progress to terminal
-verbose_level: WARNING  # Terminal log level: DEBUG, INFO, WARNING, ERROR (only used when verbose=true)
+verbose_level: INFO  # Terminal log level: DEBUG, INFO, WARNING, ERROR (only used when verbose=true)
 log_file: ""  # Write all output to this file (empty = no log file)
 show_progress: true  # Show rich progress bars (True/False)
 save_bundle: ""  # Path to save reproducible JSON bundle (empty = don't save)
