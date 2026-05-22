@@ -207,14 +207,9 @@ def test_volfe_degassing_smoke(tmp_path):
 
 # ── EVo ───────────────────────────────────────────────────────────────────────
 from volcatenate.backends.evo import Backend
-try:
-    evo_backend = Backend()
-    is_evo_backend_available = True
-except:
-    is_evo_backend_available = False
-    
+evo_backend = Backend()   
 
-@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
+@pytest.mark.skipif(evo_backend.is_available() == False, reason="EVo backend not available.")
 def test_evo_satp_smoke(tmp_path):
     """EVo calculate_saturation_pressure returns a sane pd.Series."""
     pytest.importorskip("evo")
@@ -229,7 +224,7 @@ def test_evo_satp_smoke(tmp_path):
     _assert_satp_sane(state, "EVo")
 
 
-@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
+@pytest.mark.skipif(evo_backend.is_available() == False, reason="EVo backend not available.")
 def test_evo_degassing_smoke(tmp_path):
     """EVo calculate_degassing returns a valid degassing path."""
     pytest.importorskip("evo")
@@ -244,7 +239,7 @@ def test_evo_degassing_smoke(tmp_path):
     _assert_degassing_sane(df, "EVo")
 
 
-@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
+@pytest.mark.skipif(evo_backend.is_available() == False, reason="EVo backend not available.")
 def test_evo_open_system_differs_from_closed(tmp_path):
     """EVo open-system run must produce a different result than closed-system."""
     pytest.importorskip("evo")
@@ -305,15 +300,10 @@ def test_evo_open_system_differs_from_closed(tmp_path):
 _KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
 
 from volcatenate.backends.sulfurx import Backend
-try:
-    sulfurx_backend = Backend()
-    is_sulfurx_backend_available = True
-except:
-    is_sulfurx_backend_available = False
-
+sulfurx_backend = Backend()
 
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
-@pytest.mark.skipif(is_sulfurx_backend_available == False, reason="SulfurX backend not available.")
+@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
 def test_sulfurx_satp_smoke(tmp_path):
     """SulfurX calculate_saturation_pressure returns a sane pd.Series."""
     comp = composition_from_dict(_KILAUEA_SX)
@@ -322,7 +312,7 @@ def test_sulfurx_satp_smoke(tmp_path):
 
 
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
-@pytest.mark.skipif(is_sulfurx_backend_available == False, reason="SulfurX backend not available.")
+@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
 def test_sulfurx_degassing_smoke(tmp_path):
     """SulfurX calculate_degassing returns a valid degassing path."""
     comp = composition_from_dict(_KILAUEA_SX)
@@ -333,14 +323,10 @@ def test_sulfurx_degassing_smoke(tmp_path):
 # ── MAGEC ─────────────────────────────────────────────────────────────────────
 from volcatenate.backends.magec import Backend
 magec_backend = Backend()
-try:
-    magec_backend = Backend()
-    is_magec_backend_available = True
-except:
-    is_magec_backend_available = False
+magec_backend = Backend()
 
 
-@pytest.mark.skipif(is_magec_backend_available == False, reason="MAGEC backend not available.")
+@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
 def test_magec_satp_smoke(tmp_path):
     """MAGEC calculate_saturation_pressure returns a sane pd.Series."""
     comp = composition_from_dict(KILAUEA)
@@ -350,7 +336,7 @@ def test_magec_satp_smoke(tmp_path):
     _assert_satp_sane(state, "MAGEC")
 
 
-@pytest.mark.skipif(is_magec_backend_available == False, reason="MAGEC backend not available.")
+@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
 def test_magec_degassing_smoke(tmp_path):
     """MAGEC calculate_degassing returns a valid degassing path."""
     comp = composition_from_dict(KILAUEA)
