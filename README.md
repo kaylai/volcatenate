@@ -10,37 +10,58 @@ This library was developed based on original messy python scripts written by K. 
 
 The GitHub repository the authors are using for this project, with more information on the manuscript-specific info, lives here: https://github.com/PennyWieser/Sulfur_Comparison_Paper
 
+## Installation
+
+volcatenate is not yet on PyPI, but you can pip install directly from this GitHub repo as:
+
+```
+pip install git+https://github.com/kaylai/volcatenate.git
+```
+
+Ditto for EVo:
+
+```
+pip install git+https://github.com/pipliggins/EVo.git@399c8d9cf6265950ec6a1056aa31d082f054d8a9
+```
+
+VolFe and VESIcal are both on PyPI and in the required dependencies for volcatenate, so installing volcatenate will also install those. Neither Sulfur_X nor MAGEC are pip installable, so please follow the directions on the Sulfur_X repository and [download the MAGEC software from our documentation](https://volcatenate.readthedocs.io/en/latest/references.html).
 
 ## Model code repos and literature citations
+
 #### D-Compress: https://www.isterre.fr/annuaire/pages-web-du-personnel/alain-burgisser/article/software.html
-  - Burgisser, A., Alleti, M. & Scaillet, B. (2015) Simulating the behavior of volatiles belonging to the C–O–H–S system in silicate melts under magmatic conditions with the software D-Compress. Computers & Geosciences [doi:10.1016/j.cageo.2015.03.002](http://dx.doi.org/10.1016/j.cageo.2015.03.002)
+
+- Burgisser, A., Alleti, M. & Scaillet, B. (2015) Simulating the behavior of volatiles belonging to the C–O–H–S system in silicate melts under magmatic conditions with the software D-Compress. Computers & Geosciences [doi:10.1016/j.cageo.2015.03.002](http://dx.doi.org/10.1016/j.cageo.2015.03.002)
 
 #### EVo: https://github.com/pipliggins/EVo
-  - EVo first mentioned:
-    - Liggins, P., Shorttle, O. and Rimmer, P.B. (2020) Can Volcanism Build Hydrogen Rich Early Atmospheres? Earth and Planetary Science Letters, 550, 116546. [doi.org/10.1016/j.epsl.2020.116546](https://www.sciencedirect.com/science/article/pii/S0012821X20304908)
-  - More recent citation with current changes to the sulfur model:
-    - Liggins, P., Jordan, S., Rimmer, P.B., and Shorttle, O. (2022) Growth and Evolution of Secondary Volcanic Atmospheres I: Identifying the Geological Character of Hot Rocky Planets. Journal of Geophysical Research: Planets, 127. [doi.org/10.1029/2021JE007123](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021JE007123)
-  - ReadTheDocs: https://evo-outgas.readthedocs.io/en/latest/
+
+- EVo first mentioned:
+  - Liggins, P., Shorttle, O. and Rimmer, P.B. (2020) Can Volcanism Build Hydrogen Rich Early Atmospheres? Earth and Planetary Science Letters, 550, 116546. [doi.org/10.1016/j.epsl.2020.116546](https://www.sciencedirect.com/science/article/pii/S0012821X20304908)
+- More recent citation with current changes to the sulfur model:
+  - Liggins, P., Jordan, S., Rimmer, P.B., and Shorttle, O. (2022) Growth and Evolution of Secondary Volcanic Atmospheres I: Identifying the Geological Character of Hot Rocky Planets. Journal of Geophysical Research: Planets, 127. [doi.org/10.1029/2021JE007123](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021JE007123)
+- ReadTheDocs: https://evo-outgas.readthedocs.io/en/latest/
 
 ### MAGEC: No repo
-  - Sun, C., Lee, C.T.A., 2022. Redox evolution of crystallizing magmas with c-h-o-s volatiles and its implications for atmospheric oxygenation. Geochimica et Cosmochimica Acta 338, 302–321. [doi:https://doi.org/10.1016/j.gca.2022.09.044](https://www.sciencedirect.com/science/article/abs/pii/S0016703722005300).
-  - Sun, C., Yao, L., 2024. Redox equilibria of iron in low- to high-silica melts: A simple model and its applications to c-h-o-s degassing. Earth and Planetary Science Letters 638, 118742. [doi:https://doi.org/10.1016/j.epsl.2024.118742](https://www.sciencedirect.com/science/article/pii/S0012821X24001754).
-  
+
+- Sun, C., Lee, C.T.A., 2022. Redox evolution of crystallizing magmas with c-h-o-s volatiles and its implications for atmospheric oxygenation. Geochimica et Cosmochimica Acta 338, 302–321. [doi:https://doi.org/10.1016/j.gca.2022.09.044](https://www.sciencedirect.com/science/article/abs/pii/S0016703722005300).
+- Sun, C., Yao, L., 2024. Redox equilibria of iron in low- to high-silica melts: A simple model and its applications to c-h-o-s degassing. Earth and Planetary Science Letters 638, 118742. [doi:https://doi.org/10.1016/j.epsl.2024.118742](https://www.sciencedirect.com/science/article/pii/S0012821X24001754).
+
 #### Sulfur_X: https://github.com/sdecho/Sulfur_X
-  - Ding, S., Plank, T., Wallace, P. J. & Rasmussen, D. J. (2023) Sulfur_X: A Model of Sulfur Degassing During Magma Ascent. Geochem., Geophys., Geosystems 24.
+
+- Ding, S., Plank, T., Wallace, P. J. & Rasmussen, D. J. (2023) Sulfur_X: A Model of Sulfur Degassing During Magma Ascent. Geochem., Geophys., Geosystems 24.
 
 #### VolFe: https://github.com/eryhughes/VolFe
-  - Hughes, E.C., Saper, L.M., Liggins, P., O'Neill, H.S.C. and Stolper, E.M. (2023) The sulfur solubility minimum and maximum in silicate melt. Journal of the Geological Society 180 (3): jgs2021–125. doi: https://doi.org/10.1144/jgs2021-125
-  - Hughes, E.C., Liggins, P., Saper, L. and Stolper, E.M. (accepted) The effects of oxygen fugacity and sulfur on the pressure of vapor-saturation of magma. American Mineralogist doi: 10.2138/am-2022-8739
+
+- Hughes, E.C., Saper, L.M., Liggins, P., O'Neill, H.S.C. and Stolper, E.M. (2023) The sulfur solubility minimum and maximum in silicate melt. Journal of the Geological Society 180 (3): jgs2021–125. doi: https://doi.org/10.1144/jgs2021-125
+- Hughes, E.C., Liggins, P., Saper, L. and Stolper, E.M. (accepted) The effects of oxygen fugacity and sulfur on the pressure of vapor-saturation of magma. American Mineralogist doi: 10.2138/am-2022-8739
 
 #### VESIcal: https://github.com/kaylai/VESIcal
-  - Model description:
-    - Iacovino, K., Matthews, S., Wieser, P. E., Moore, G. M. & Bégué, F. (2021) VESIcal Part I: An open‐source thermodynamic model engine for mixed volatile (H2O-CO2) solubility in silicate melts. Earth Space Sci [doi:10.1029/2020ea001584](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2020EA001584).
-  - Overview of models and intercomparison: 
-    - Wieser, P. E., Iacovino, K., Matthews, S., Moore, G. & Allison, C. M. (2022) VESIcal Part II: A critical approach to volatile solubility modelling using an open‐source Python3 engine. Earth Space Sci [doi:10.1029/2021ea001932](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021EA001932).
-  - ReadTheDocs: https://vesical.readthedocs.io/en/latest/
-  - Web app: https://vesical.anvil.app
 
+- Model description:
+  - Iacovino, K., Matthews, S., Wieser, P. E., Moore, G. M. & Bégué, F. (2021) VESIcal Part I: An open‐source thermodynamic model engine for mixed volatile (H2O-CO2) solubility in silicate melts. Earth Space Sci [doi:10.1029/2020ea001584](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2020EA001584).
+- Overview of models and intercomparison:
+  - Wieser, P. E., Iacovino, K., Matthews, S., Moore, G. & Allison, C. M. (2022) VESIcal Part II: A critical approach to volatile solubility modelling using an open‐source Python3 engine. Earth Space Sci [doi:10.1029/2021ea001932](https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2021EA001932).
+- ReadTheDocs: https://vesical.readthedocs.io/en/latest/
+- Web app: https://vesical.anvil.app
 
 ## Installation
 
@@ -145,28 +166,28 @@ The full reference for input shapes — CSV, Python dict, or `MeltComposition` i
 
 Provide a CSV with one row per melt composition. Column names are flexible:
 
-| Column | Aliases | Units | Required |
-|--------|---------|-------|----------|
-| `Sample` | `Label`, `sample` | -- | Yes |
-| `T_C` | `Temp`, `Temperature` | Celsius | No (default: 1200) |
-| `SiO2` | -- | wt% | Yes |
-| `TiO2` | -- | wt% | Yes |
-| `Al2O3` | -- | wt% | Yes |
-| `FeOT` | `FeO*` | wt% (total iron as FeO) | * |
-| `FeO` | -- | wt% (speciated) | * |
-| `Fe2O3` | -- | wt% (speciated) | * |
-| `MnO` | -- | wt% | No |
-| `MgO` | -- | wt% | Yes |
-| `CaO` | -- | wt% | Yes |
-| `Na2O` | -- | wt% | Yes |
-| `K2O` | -- | wt% | Yes |
-| `P2O5` | -- | wt% | No |
-| `H2O` | -- | wt% | Yes |
-| `CO2` | -- | wt% | Yes |
-| `S` | -- | wt% | Yes |
-| `Fe3FeT` | -- | molar ratio (0-1) | No |
-| `dNNO` | `DNNO` | log units | No |
-| `dFMQ` | `DFMQ` | log units | No |
+| Column     | Aliases                   | Units                   | Required           |
+| ---------- | ------------------------- | ----------------------- | ------------------ |
+| `Sample` | `Label`, `sample`     | --                      | Yes                |
+| `T_C`    | `Temp`, `Temperature` | Celsius                 | No (default: 1200) |
+| `SiO2`   | --                        | wt%                     | Yes                |
+| `TiO2`   | --                        | wt%                     | Yes                |
+| `Al2O3`  | --                        | wt%                     | Yes                |
+| `FeOT`   | `FeO*`                  | wt% (total iron as FeO) | *                  |
+| `FeO`    | --                        | wt% (speciated)         | *                  |
+| `Fe2O3`  | --                        | wt% (speciated)         | *                  |
+| `MnO`    | --                        | wt%                     | No                 |
+| `MgO`    | --                        | wt%                     | Yes                |
+| `CaO`    | --                        | wt%                     | Yes                |
+| `Na2O`   | --                        | wt%                     | Yes                |
+| `K2O`    | --                        | wt%                     | Yes                |
+| `P2O5`   | --                        | wt%                     | No                 |
+| `H2O`    | --                        | wt%                     | Yes                |
+| `CO2`    | --                        | wt%                     | Yes                |
+| `S`      | --                        | wt%                     | Yes                |
+| `Fe3FeT` | --                        | molar ratio (0-1)       | No                 |
+| `dNNO`   | `DNNO`                  | log units               | No                 |
+| `dFMQ`   | `DFMQ`                  | log units               | No                 |
 
 \* For iron, provide **either** `FeOT` (total iron as FeO) **or** speciated `FeO` + `Fe2O3`. If speciated values are given, `FeOT` is computed automatically.
 
@@ -193,19 +214,19 @@ comp = {
 
 All degassing path DataFrames share these column names:
 
-| Column | Description |
-|--------|-------------|
-| `P_bars` | Pressure (bar) |
-| `H2OT_m_wtpc` | Total H2O in melt (wt%) |
-| `CO2T_m_ppmw` | Total CO2 in melt (ppm) |
-| `ST_m_ppmw` | Total S in melt (ppm) |
-| `Fe3Fet_m` | Fe3+/FeT ratio in melt |
-| `S6St_m` | S6+/ST ratio in melt |
-| `logfO2` | log10(fO2) |
-| `dFMQ` | fO2 relative to FMQ buffer |
-| `vapor_wt` | Vapor mass fraction (0-1) |
-| `CO2_v_mf`, `H2O_v_mf`, `SO2_v_mf`, ... | Vapor species mole fractions |
-| `CS_v_mf` | C/S vapor mole fraction ratio |
+| Column                                        | Description                   |
+| --------------------------------------------- | ----------------------------- |
+| `P_bars`                                    | Pressure (bar)                |
+| `H2OT_m_wtpc`                               | Total H2O in melt (wt%)       |
+| `CO2T_m_ppmw`                               | Total CO2 in melt (ppm)       |
+| `ST_m_ppmw`                                 | Total S in melt (ppm)         |
+| `Fe3Fet_m`                                  | Fe3+/FeT ratio in melt        |
+| `S6St_m`                                    | S6+/ST ratio in melt          |
+| `logfO2`                                    | log10(fO2)                    |
+| `dFMQ`                                      | fO2 relative to FMQ buffer    |
+| `vapor_wt`                                  | Vapor mass fraction (0-1)     |
+| `CO2_v_mf`, `H2O_v_mf`, `SO2_v_mf`, ... | Vapor species mole fractions  |
+| `CS_v_mf`                                   | C/S vapor mole fraction ratio |
 
 ## Configuration
 

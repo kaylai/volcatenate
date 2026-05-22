@@ -8,13 +8,14 @@ version = "0.5.1"
 description = "Unified volcanic degassing model comparison toolkit"
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
-    "pandas",
-    "scipy",
+    "numpy>=1.26.3",
+    "pandas>=2.2.3",
+    "scipy>=1.15.3",
     "pyyaml",
-    "openpyxl",
+    "openpyxl>=3.1.5",
     "rich>=13.0",
-    "VolFe",
+    "VolFe>=1.0.1",
+    "VESIcal>=1.2.12",
 ]
 
 [project.optional-dependencies]
