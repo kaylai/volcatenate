@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-import pytest
+
 
 def test_load_data_xco2_without_xh2o_no_keyerror(tmp_path):
     """loadData must not crash if XCO2_fl is present but XH2O_fl is absent."""
@@ -11,10 +11,12 @@ def test_load_data_xco2_without_xh2o_no_keyerror(tmp_path):
     vesical_dir.mkdir(parents=True)
 
     # CSV has XCO2_fl but deliberately omits XH2O_fl
-    df_out = pd.DataFrame({
-        "P_bars": [1000.0],
-        "XCO2_fl": [0.5],
-    })
+    df_out = pd.DataFrame(
+        {
+            "P_bars": [1000.0],
+            "XCO2_fl": [0.5],
+        }
+    )
     (vesical_dir / "kilauea.csv").write_text(df_out.to_csv(index=False))
 
     # Should not raise KeyError — the XH2O_fl guard prevents it
@@ -24,9 +26,11 @@ def test_load_data_xco2_without_xh2o_no_keyerror(tmp_path):
     )
     assert "VESIcal_MS" in data_kil, "VESIcal_MS should be loaded without error"
     # CO2_v_mf / H2O_v_mf should NOT be mapped since XH2O_fl is missing
-    assert "CO2_v_mf" not in data_kil["VESIcal_MS"].columns or \
-           "XCO2_fl" not in data_kil["VESIcal_MS"].columns, \
-        "CO2_v_mf should not be mapped when XH2O_fl is absent"
+    assert (
+        "CO2_v_mf" not in data_kil["VESIcal_MS"].columns
+        or "XCO2_fl" not in data_kil["VESIcal_MS"].columns
+    ), "CO2_v_mf should not be mapped when XH2O_fl is absent"
+
 
 def test_iter_tool_csv_dirs_skips_missing_tool_dir(tmp_path):
     """Tools not present on disk are silently skipped (no error)."""
@@ -63,6 +67,7 @@ def test_iter_tool_csv_dirs_resolves_vesical_variants(tmp_path):
         str(tmp_path / "VESIcal" / "VESIcal_IaconoMarziano"),
     ) in pairs
     assert len(pairs) == 2
+
 
 def test_iter_tool_csv_dirs_whitelists_tools(tmp_path):
     """_iter_tool_csv_dirs must return only directories named in `tools`."""

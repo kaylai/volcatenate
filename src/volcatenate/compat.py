@@ -34,31 +34,38 @@ from volcatenate.log import logger
 import numpy as np
 import pandas as pd
 
-from volcatenate import columns as col
 from volcatenate.converters import (
-    convert_evo, is_raw_evo,
-    convert_volfe, is_raw_volfe,
-    convert_magec, is_raw_magec,
-    convert_vesical, is_raw_vesical,
-    convert_sulfurx, is_raw_sulfurx,
-    convert_dcompress, is_raw_dcompress,
+    convert_evo,
+    is_raw_evo,
+    convert_volfe,
+    is_raw_volfe,
+    convert_magec,
+    is_raw_magec,
+    convert_vesical,
+    is_raw_vesical,
+    convert_sulfurx,
+    is_raw_sulfurx,
+    convert_dcompress,
+    is_raw_dcompress,
 )
 from volcatenate.convert import compute_cs_v_mf, normalize_volatiles
 
-
 # Model name → (is_raw_func, convert_func)
 _AUTO_CONVERTERS = {
-    "EVo":       (is_raw_evo, convert_evo),
-    "VolFe":     (is_raw_volfe, convert_volfe),
-    "MAGEC":     (is_raw_magec, convert_magec),
-    "SulfurX":   (is_raw_sulfurx, convert_sulfurx),
+    "EVo": (is_raw_evo, convert_evo),
+    "VolFe": (is_raw_volfe, convert_volfe),
+    "MAGEC": (is_raw_magec, convert_magec),
+    "SulfurX": (is_raw_sulfurx, convert_sulfurx),
     "DCompress": (is_raw_dcompress, convert_dcompress),
 }
 
 # VESIcal variants that need the VESIcal converter
 _VESICAL_VARIANTS = {
-    "VESIcal_MS", "VESIcal_Dixon", "VESIcal_Iacono",
-    "VESIcal_Liu", "VESIcal_ShishkinaIdealMixing",
+    "VESIcal_MS",
+    "VESIcal_Dixon",
+    "VESIcal_Iacono",
+    "VESIcal_Liu",
+    "VESIcal_ShishkinaIdealMixing",
 }
 
 
@@ -140,8 +147,10 @@ def load_data(
 
     # Display names
     display_names = {
-        "morb": "MORB", "kilauea": "Kilauea",
-        "fuego": "Fuego", "fogo": "Fogo",
+        "morb": "MORB",
+        "kilauea": "Kilauea",
+        "fuego": "Fuego",
+        "fogo": "Fogo",
     }
 
     results = {}
@@ -178,8 +187,10 @@ def load_data(
 
                     try:
                         df = load_model_csv(
-                            filepath, model,
-                            composition=comp, T_K=t_k,
+                            filepath,
+                            model,
+                            composition=comp,
+                            T_K=t_k,
                         )
                         results[vname][model] = df
                     except Exception as exc:
@@ -219,42 +230,93 @@ def degassing_results_to_compat(
 # Matches starting_compositions.py in the paper repo.
 _STARTING_COMPOSITIONS = {
     "kilauea": {
-        "Sample": "Kilauea", "T_C": 1200.0,
-        "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
-        "FeO": 11.34, "MnO": 0.18, "MgO": 9.23, "CaO": 10.44,
-        "Na2O": 2.39, "K2O": 0.43, "P2O5": 0.27,
-        "H2O": 0.30, "CO2": 0.0800, "S": 0.1500,
-        "Fe3FeT": 0.18, "dNNO": -0.23,
+        "Sample": "Kilauea",
+        "T_C": 1200.0,
+        "SiO2": 50.19,
+        "TiO2": 2.34,
+        "Al2O3": 12.79,
+        "FeO": 11.34,
+        "MnO": 0.18,
+        "MgO": 9.23,
+        "CaO": 10.44,
+        "Na2O": 2.39,
+        "K2O": 0.43,
+        "P2O5": 0.27,
+        "H2O": 0.30,
+        "CO2": 0.0800,
+        "S": 0.1500,
+        "Fe3FeT": 0.18,
+        "dNNO": -0.23,
     },
     "fogo": {
-        "Sample": "Fogo", "T_C": 1200.0,
-        "SiO2": 42.40, "TiO2": 3.26, "Al2O3": 11.17,
-        "FeO": 12.00, "MnO": 0.14, "MgO": 9.55, "CaO": 13.31,
-        "Na2O": 3.36, "K2O": 1.57, "P2O5": 0.75,
-        "H2O": 2.11, "CO2": 1.1520, "S": 0.4690,
+        "Sample": "Fogo",
+        "T_C": 1200.0,
+        "SiO2": 42.40,
+        "TiO2": 3.26,
+        "Al2O3": 11.17,
+        "FeO": 12.00,
+        "MnO": 0.14,
+        "MgO": 9.55,
+        "CaO": 13.31,
+        "Na2O": 3.36,
+        "K2O": 1.57,
+        "P2O5": 0.75,
+        "H2O": 2.11,
+        "CO2": 1.1520,
+        "S": 0.4690,
         "dNNO": 0.7,
     },
     "fuego": {
-        "Sample": "Fuego", "T_C": 1030.0,
-        "SiO2": 51.46, "TiO2": 1.06, "Al2O3": 17.43,
-        "FeO": 9.42, "MnO": 0.19, "MgO": 3.78, "CaO": 7.99,
-        "Na2O": 3.47, "K2O": 0.78, "P2O5": 0.24,
-        "H2O": 4.5, "CO2": 0.3300, "S": 0.2650,
-        "Fe3FeT": 0.235, "dNNO": 0.25,
+        "Sample": "Fuego",
+        "T_C": 1030.0,
+        "SiO2": 51.46,
+        "TiO2": 1.06,
+        "Al2O3": 17.43,
+        "FeO": 9.42,
+        "MnO": 0.19,
+        "MgO": 3.78,
+        "CaO": 7.99,
+        "Na2O": 3.47,
+        "K2O": 0.78,
+        "P2O5": 0.24,
+        "H2O": 4.5,
+        "CO2": 0.3300,
+        "S": 0.2650,
+        "Fe3FeT": 0.235,
+        "dNNO": 0.25,
     },
     "morb": {
-        "Sample": "MORB", "T_C": 1100.0,
-        "SiO2": 47.40, "TiO2": 1.01, "Al2O3": 17.64,
-        "FeO": 7.98, "MnO": 0.00, "MgO": 7.63, "CaO": 12.44,
-        "Na2O": 2.65, "K2O": 0.03, "P2O5": 0.08,
-        "H2O": 0.20, "CO2": 0.1100, "S": 0.1420,
-        "Fe3FeT": 0.10, "dNNO": -2.07,
+        "Sample": "MORB",
+        "T_C": 1100.0,
+        "SiO2": 47.40,
+        "TiO2": 1.01,
+        "Al2O3": 17.64,
+        "FeO": 7.98,
+        "MnO": 0.00,
+        "MgO": 7.63,
+        "CaO": 12.44,
+        "Na2O": 2.65,
+        "K2O": 0.03,
+        "P2O5": 0.08,
+        "H2O": 0.20,
+        "CO2": 0.1100,
+        "S": 0.1420,
+        "Fe3FeT": 0.10,
+        "dNNO": -2.07,
     },
 }
 
 _VAPOR_MF_COLS = [
-    "O2_v_mf", "CO2_v_mf", "CO_v_mf", "H2O_v_mf", "H2_v_mf",
-    "S2_v_mf", "SO2_v_mf", "H2S_v_mf", "CH4_v_mf", "OCS_v_mf",
+    "O2_v_mf",
+    "CO2_v_mf",
+    "CO_v_mf",
+    "H2O_v_mf",
+    "H2_v_mf",
+    "S2_v_mf",
+    "SO2_v_mf",
+    "H2S_v_mf",
+    "CH4_v_mf",
+    "OCS_v_mf",
 ]
 
 _VAPOR_MF_DERIVED = {"SUM_v_mf", "XO2_BYDIFF_v_mf", "CS_v_mf"}
@@ -270,6 +332,7 @@ def _warn(msg: str) -> None:
     data-quality warnings are visible regardless of logger setup.
     """
     import sys
+
     logger.warning(msg)
     print(f"WARNING: {msg}", file=sys.stderr)
 
@@ -286,14 +349,13 @@ def _resolve_vapor_species(
     ``vapor_species`` is a glob pattern, ``missing`` is always empty.
     """
     import fnmatch
+
     if isinstance(vapor_species, str):
-        matches = [c for c in df.columns
-                   if fnmatch.fnmatchcase(c, vapor_species)]
+        matches = [c for c in df.columns if fnmatch.fnmatchcase(c, vapor_species)]
         present = [c for c in matches if c not in _VAPOR_MF_DERIVED]
         return present, []
     requested = list(vapor_species)
-    present = [c for c in requested
-               if c in df.columns and c not in _VAPOR_MF_DERIVED]
+    present = [c for c in requested if c in df.columns and c not in _VAPOR_MF_DERIVED]
     missing = [c for c in requested if c not in df.columns]
     return present, missing
 
@@ -358,14 +420,15 @@ def loadData(
     data_fogo = {"Name": "Fogo"}
 
     _volcano_map = {
-        "morb": data_morb, "kilauea": data_kil,
-        "fuego": data_fuego, "fogo": data_fogo,
+        "morb": data_morb,
+        "kilauea": data_kil,
+        "fuego": data_fuego,
+        "fogo": data_fogo,
     }
 
     # ---- Load CSV files ----
     for model in model_names:
-        subdir = (subdirectory_name
-                  if model in models_w_special_subdirectory else "")
+        subdir = subdirectory_name if model in models_w_special_subdirectory else ""
         if "VESIcal" in model:
             directory = os.path.join(topdirectory_name, "VESIcal", model + subdir)
         else:
@@ -388,8 +451,10 @@ def loadData(
                     t_k = (comp["T_C"] + 273.15) if comp and "T_C" in comp else None
                     try:
                         df = load_model_csv(
-                            filepath, model,
-                            composition=comp, T_K=t_k,
+                            filepath,
+                            model,
+                            composition=comp,
+                            T_K=t_k,
                         )
                         data_dict[model] = df
                     except Exception as exc:
@@ -437,7 +502,8 @@ def loadData(
                 df = data[model]
 
                 species_cols, missing_requested = _resolve_vapor_species(
-                    df, vapor_species)
+                    df, vapor_species
+                )
 
                 # Warn about expected species absent from the DataFrame.
                 # For an explicit list, "expected" = the user's list.
@@ -446,8 +512,9 @@ def loadData(
                 # users benefit from being told which species are missing.
                 absent_expected = list(missing_requested)
                 if isinstance(vapor_species, str) and vapor_species == "*_v_mf":
-                    absent_expected = [c for c in _VAPOR_MF_COLS
-                                       if c not in species_cols]
+                    absent_expected = [
+                        c for c in _VAPOR_MF_COLS if c not in species_cols
+                    ]
 
                 # Warn about species that are present but all-NaN or
                 # all-zero — most likely not calculated by this backend.
@@ -519,9 +586,18 @@ def loadData(
     # ---- Simplify ----
     if simplify:
         other_cols = [
-            "P_bars", "H2OT_m_wtpc", "CO2T_m_ppmw", "ST_m_ppmw",
-            "Fe3Fet_m", "S6St_m", "logfO2", "dFMQ", "vapor_wt",
-            "CS_v_mf", "SUM_v_mf", "XO2_BYDIFF_v_mf",
+            "P_bars",
+            "H2OT_m_wtpc",
+            "CO2T_m_ppmw",
+            "ST_m_ppmw",
+            "Fe3Fet_m",
+            "S6St_m",
+            "logfO2",
+            "dFMQ",
+            "vapor_wt",
+            "CS_v_mf",
+            "SUM_v_mf",
+            "XO2_BYDIFF_v_mf",
         ]
         for data in datasets:
             volcano = data["Name"]
@@ -546,13 +622,18 @@ def loadData(
                 for model in model_names:
                     if model not in data or not isinstance(data[model], pd.DataFrame):
                         continue
-                    subdir = (subdirectory_name
-                              if model in models_w_special_subdirectory else "")
+                    subdir = (
+                        subdirectory_name
+                        if model in models_w_special_subdirectory
+                        else ""
+                    )
                     save_dir = os.path.join(
-                        topdirectory_name, model + subdir, "simplified")
+                        topdirectory_name, model + subdir, "simplified"
+                    )
                     os.makedirs(save_dir, exist_ok=True)
                     data[model].to_csv(
-                        os.path.join(save_dir, f"{vname}.csv"), index=False)
+                        os.path.join(save_dir, f"{vname}.csv"), index=False
+                    )
 
     return data_morb, data_kil, data_fuego, data_fogo
 
@@ -560,6 +641,7 @@ def loadData(
 # ------------------------------------------------------------------
 # Convenience wrapper
 # ------------------------------------------------------------------
+
 
 def load_results(
     data_dir: str,
@@ -612,6 +694,7 @@ def load_results(
     """
     if model_names is None:
         from volcatenate.backends import list_backends
+
         model_names = list_backends()
 
     return loadData(

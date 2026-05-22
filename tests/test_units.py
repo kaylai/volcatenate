@@ -7,6 +7,7 @@ Coverage:
   - volcatenate.result: SaturationResult.pressure, .equilibrium_state
   - volcatenate.core: _resolve_models, _resolve_compositions
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -15,7 +16,6 @@ import pytest
 
 from volcatenate import columns as col
 from volcatenate.convert import (
-    compute_cs_v_mf,
     normalize_volatiles,
     ensure_standard_columns,
 )
@@ -24,33 +24,47 @@ from volcatenate.config import RunConfig, EVoConfig, save_config, load_config
 from volcatenate.result import SaturationResult
 from volcatenate.core import _resolve_models, _resolve_compositions
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def minimal_comp() -> MeltComposition:
-    return composition_from_dict({
-        "Sample": "TestSample",
-        "T_C": 1200.0,
-        "SiO2": 50.0, "TiO2": 1.0, "Al2O3": 15.0,
-        "FeOT": 10.0, "MnO": 0.2, "MgO": 8.0, "CaO": 10.0,
-        "Na2O": 2.5, "K2O": 0.5, "P2O5": 0.2,
-        "H2O": 0.5, "CO2": 0.05, "S": 0.1,
-        "Fe3FeT": 0.15,
-    })
+    return composition_from_dict(
+        {
+            "Sample": "TestSample",
+            "T_C": 1200.0,
+            "SiO2": 50.0,
+            "TiO2": 1.0,
+            "Al2O3": 15.0,
+            "FeOT": 10.0,
+            "MnO": 0.2,
+            "MgO": 8.0,
+            "CaO": 10.0,
+            "Na2O": 2.5,
+            "K2O": 0.5,
+            "P2O5": 0.2,
+            "H2O": 0.5,
+            "CO2": 0.05,
+            "S": 0.1,
+            "Fe3FeT": 0.15,
+        }
+    )
 
 
 @pytest.fixture
 def degassing_df() -> pd.DataFrame:
-    return pd.DataFrame({
-        col.P_BARS: [1000.0, 750.0, 500.0, 250.0, 1.0],
-        col.H2OT_M_WTPC: [0.5, 0.45, 0.38, 0.25, 0.05],
-        col.CO2T_M_PPMW: [500.0, 380.0, 250.0, 100.0, 5.0],
-        col.ST_M_PPMW: [1500.0, 1400.0, 1200.0, 800.0, 100.0],
-    })
+    return pd.DataFrame(
+        {
+            col.P_BARS: [1000.0, 750.0, 500.0, 250.0, 1.0],
+            col.H2OT_M_WTPC: [0.5, 0.45, 0.38, 0.25, 0.05],
+            col.CO2T_M_PPMW: [500.0, 380.0, 250.0, 100.0, 5.0],
+            col.ST_M_PPMW: [1500.0, 1400.0, 1200.0, 800.0, 100.0],
+        }
+    )
 
 
 # ── convert.normalize_volatiles ───────────────────────────────────────────────
+
 
 class TestNormalizeVolatiles:
     def test_adds_norm_columns(self, degassing_df):
@@ -71,11 +85,13 @@ class TestNormalizeVolatiles:
         assert all(norms[i] >= norms[i + 1] for i in range(len(norms) - 1))
 
     def test_zero_initial_gives_nan(self):
-        df = pd.DataFrame({
-            col.H2OT_M_WTPC: [0.0, 0.0],
-            col.CO2T_M_PPMW: [100.0, 50.0],
-            col.ST_M_PPMW: [500.0, 200.0],
-        })
+        df = pd.DataFrame(
+            {
+                col.H2OT_M_WTPC: [0.0, 0.0],
+                col.CO2T_M_PPMW: [100.0, 50.0],
+                col.ST_M_PPMW: [500.0, 200.0],
+            }
+        )
         result = normalize_volatiles(df)
         assert np.isnan(result[col.H2OT_M_WTPC_NORM].iloc[0])
 
@@ -95,11 +111,13 @@ class TestNormalizeVolatiles:
         assert result is degassing_df  # mutates in place
 
     def test_single_row_gives_one(self):
-        df = pd.DataFrame({
-            col.H2OT_M_WTPC: [0.5],
-            col.CO2T_M_PPMW: [300.0],
-            col.ST_M_PPMW: [1000.0],
-        })
+        df = pd.DataFrame(
+            {
+                col.H2OT_M_WTPC: [0.5],
+                col.CO2T_M_PPMW: [300.0],
+                col.ST_M_PPMW: [1000.0],
+            }
+        )
         result = normalize_volatiles(df)
         assert result[col.H2OT_M_WTPC_NORM].iloc[0] == pytest.approx(1.0)
 
@@ -109,6 +127,7 @@ class TestNormalizeVolatiles:
 
 
 # ── convert.ensure_standard_columns ──────────────────────────────────────────
+
 
 class TestEnsureStandardColumns:
     def test_adds_all_missing_as_nan(self):
@@ -137,6 +156,7 @@ class TestEnsureStandardColumns:
 
 # ── composition_from_dict ─────────────────────────────────────────────────────
 
+
 class TestCompositionFromDict:
     def test_basic_creation(self, minimal_comp):
         assert minimal_comp.sample == "TestSample"
@@ -144,83 +164,173 @@ class TestCompositionFromDict:
         assert minimal_comp.SiO2 == pytest.approx(50.0)
 
     def test_feot_alias(self):
-        comp = composition_from_dict({
-            "Sample": "X", "T_C": 1200, "FeOT": 10.0,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "MnO": 0.2,
-            "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5, "P2O5": 0.2,
-            "H2O": 0.5, "CO2": 0.05, "S": 0.1,
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "X",
+                "T_C": 1200,
+                "FeOT": 10.0,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.5,
+                "CO2": 0.05,
+                "S": 0.1,
+            }
+        )
         assert comp.FeOT == pytest.approx(10.0)
 
     def test_fe3fet_from_field(self, minimal_comp):
         assert minimal_comp.fe3fet_computed == pytest.approx(0.15)
 
     def test_sample_alias(self):
-        comp = composition_from_dict({
-            "sample": "lower_s",  # lowercase alias supported
-            "T_C": 1200, "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.5, "CO2": 0.05, "S": 0.1,
-        })
+        comp = composition_from_dict(
+            {
+                "sample": "lower_s",  # lowercase alias supported
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.5,
+                "CO2": 0.05,
+                "S": 0.1,
+            }
+        )
         assert comp.sample == "lower_s"
 
     def test_dnno_alias(self):
-        comp = composition_from_dict({
-            "Sample": "X", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1,
-            "DNNO": 0.5,  # uppercase alias → dNNO
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "X",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.3,
+                "CO2": 0.05,
+                "S": 0.1,
+                "DNNO": 0.5,  # uppercase alias → dNNO
+            }
+        )
         assert comp.dNNO == pytest.approx(0.5)
 
     def test_missing_volatiles_default_to_zero(self):
-        comp = composition_from_dict({
-            "Sample": "NoVols", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2,
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "NoVols",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+            }
+        )
         assert comp.H2O == pytest.approx(0.0)
         assert comp.CO2 == pytest.approx(0.0)
         assert comp.S == pytest.approx(0.0)
 
     def test_speciated_iron_computes_feot(self):
         # If FeO + Fe2O3 are given (not FeOT), FeOT should be computed
-        comp = composition_from_dict({
-            "Sample": "X", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15,
-            "FeO": 8.0, "Fe2O3": 2.5,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1,
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "X",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeO": 8.0,
+                "Fe2O3": 2.5,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.3,
+                "CO2": 0.05,
+                "S": 0.1,
+            }
+        )
         assert comp.FeOT > 0
 
 
 # ── MeltComposition.fe3fet_computed ──────────────────────────────────────────
 
+
 class TestFe3fetComputed:
     def test_from_fe3fet_field(self):
-        comp = composition_from_dict({
-            "Sample": "X", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1,
-            "Fe3FeT": 0.20,
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "X",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.3,
+                "CO2": 0.05,
+                "S": 0.1,
+                "Fe3FeT": 0.20,
+            }
+        )
         assert comp.fe3fet_computed == pytest.approx(0.20)
 
     def test_no_redox_gives_nan(self):
-        comp = composition_from_dict({
-            "Sample": "X", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1,
-        })
+        comp = composition_from_dict(
+            {
+                "Sample": "X",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.3,
+                "CO2": 0.05,
+                "S": 0.1,
+            }
+        )
         assert np.isnan(comp.fe3fet_computed)
 
 
 # ── config round-trip ─────────────────────────────────────────────────────────
+
 
 class TestConfigRoundTrip:
     def test_save_and_load(self, tmp_path):
@@ -259,19 +369,24 @@ class TestConfigRoundTrip:
 
 # ── SaturationResult ─────────────────────────────────────────────────────────
 
+
 class TestSaturationResult:
     def _make_result(self) -> SaturationResult:
         eq_state = {
-            "EVo": pd.DataFrame({
-                "Sample": ["A", "B"],
-                col.P_BARS: [1000.0, 1500.0],
-                col.H2OT_M_WTPC: [0.3, 0.5],
-            }),
-            "VolFe": pd.DataFrame({
-                "Sample": ["A", "B"],
-                col.P_BARS: [1050.0, 1480.0],
-                col.H2OT_M_WTPC: [0.3, 0.5],
-            }),
+            "EVo": pd.DataFrame(
+                {
+                    "Sample": ["A", "B"],
+                    col.P_BARS: [1000.0, 1500.0],
+                    col.H2OT_M_WTPC: [0.3, 0.5],
+                }
+            ),
+            "VolFe": pd.DataFrame(
+                {
+                    "Sample": ["A", "B"],
+                    col.P_BARS: [1050.0, 1480.0],
+                    col.H2OT_M_WTPC: [0.3, 0.5],
+                }
+            ),
         }
         return SaturationResult(
             equilibrium_state=eq_state,
@@ -312,17 +427,21 @@ class TestSaturationResult:
 
 # ── core._resolve_models ──────────────────────────────────────────────────────
 
+
 class TestResolveModels:
     def test_none_returns_all(self):
         from volcatenate.backends import list_backends
+
         assert _resolve_models(None) == list_backends()
 
     def test_all_string_returns_all(self):
         from volcatenate.backends import list_backends
+
         assert _resolve_models("all") == list_backends()
 
     def test_list_all_returns_all(self):
         from volcatenate.backends import list_backends
+
         assert _resolve_models(["all"]) == list_backends()
 
     def test_explicit_list(self):
@@ -337,6 +456,7 @@ class TestResolveModels:
 
 # ── core._resolve_compositions ────────────────────────────────────────────────
 
+
 class TestResolveCompositions:
     def test_single_melt_composition(self, minimal_comp):
         result = _resolve_compositions(minimal_comp)
@@ -345,10 +465,21 @@ class TestResolveCompositions:
 
     def test_dict_input(self):
         d = {
-            "Sample": "DictComp", "T_C": 1200,
-            "SiO2": 50, "TiO2": 1, "Al2O3": 15, "FeOT": 10,
-            "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5, "K2O": 0.5,
-            "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1,
+            "Sample": "DictComp",
+            "T_C": 1200,
+            "SiO2": 50,
+            "TiO2": 1,
+            "Al2O3": 15,
+            "FeOT": 10,
+            "MnO": 0.2,
+            "MgO": 8,
+            "CaO": 10,
+            "Na2O": 2.5,
+            "K2O": 0.5,
+            "P2O5": 0.2,
+            "H2O": 0.3,
+            "CO2": 0.05,
+            "S": 0.1,
         }
         result = _resolve_compositions(d)
         assert len(result) == 1
@@ -356,12 +487,40 @@ class TestResolveCompositions:
 
     def test_list_of_dicts(self):
         comps = [
-            {"Sample": "A", "T_C": 1200, "SiO2": 50, "TiO2": 1, "Al2O3": 15,
-             "FeOT": 10, "MnO": 0.2, "MgO": 8, "CaO": 10, "Na2O": 2.5,
-             "K2O": 0.5, "P2O5": 0.2, "H2O": 0.3, "CO2": 0.05, "S": 0.1},
-            {"Sample": "B", "T_C": 1100, "SiO2": 48, "TiO2": 1, "Al2O3": 16,
-             "FeOT": 9, "MnO": 0.2, "MgO": 9, "CaO": 11, "Na2O": 2.5,
-             "K2O": 0.4, "P2O5": 0.2, "H2O": 0.2, "CO2": 0.03, "S": 0.08},
+            {
+                "Sample": "A",
+                "T_C": 1200,
+                "SiO2": 50,
+                "TiO2": 1,
+                "Al2O3": 15,
+                "FeOT": 10,
+                "MnO": 0.2,
+                "MgO": 8,
+                "CaO": 10,
+                "Na2O": 2.5,
+                "K2O": 0.5,
+                "P2O5": 0.2,
+                "H2O": 0.3,
+                "CO2": 0.05,
+                "S": 0.1,
+            },
+            {
+                "Sample": "B",
+                "T_C": 1100,
+                "SiO2": 48,
+                "TiO2": 1,
+                "Al2O3": 16,
+                "FeOT": 9,
+                "MnO": 0.2,
+                "MgO": 9,
+                "CaO": 11,
+                "Na2O": 2.5,
+                "K2O": 0.4,
+                "P2O5": 0.2,
+                "H2O": 0.2,
+                "CO2": 0.03,
+                "S": 0.08,
+            },
         ]
         result = _resolve_compositions(comps)
         assert len(result) == 2

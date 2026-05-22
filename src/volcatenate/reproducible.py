@@ -39,9 +39,9 @@ import os
 import platform
 import subprocess
 import sys
-from dataclasses import dataclass, field, fields, is_dataclass, asdict
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 import numpy as np
 
@@ -49,35 +49,53 @@ from volcatenate.composition import MeltComposition, composition_from_dict
 from volcatenate.config import RunConfig, _build_dataclass, _SECTION_CLASSES
 from volcatenate.log import logger
 
-
 # ---------------------------------------------------------------------------
 # RunBundle dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RunBundle:
     """Everything needed to reproduce a volcatenate run.
 
-    A ``RunBundle`` is the persisted record of a single ``calculate_*`` invocation: the inputs (compositions + ``RunConfig``), enough provenance to identify the environment (versions, git state, pip freeze, platform), and the path of the standardized output CSVs. It serializes to JSON and is the artifact the :func:`replay` function consumes.
+    A ``RunBundle`` is the persisted record of a single ``calculate_*`` invocation: the inputs
+    (compositions + ``RunConfig``), enough provenance to identify the environment (versions, git
+    state, pip freeze, platform), and the path of the standardized output CSVs. It serializes to
+    JSON and is the artifact the :func:`replay` function consumes.
 
     Notes
     -----
     Field highlights:
 
-    - ``volcatenate_version`` — version info for the volcatenate install that created this bundle. Dict with the same shape as a :func:`volcatenate.backend_version_info` entry: ``status``, ``source``, ``id`` (short SHA), ``full_id`` (full SHA), ``dirty``, ``branch``, ``describe``, ``tag``, ``tested``, ``package_version`` (from ``__version__``). Old bundles where this is a plain string are loaded as ``{"package_version": <string>, "source": "legacy"}``.
+    - ``volcatenate_version`` — version info for the volcatenate install that created this bundle.
+    Dict with the same shape as a :func:`volcatenate.backend_version_info` entry: ``status``,
+    ``source``, ``id`` (short SHA), ``full_id`` (full SHA), ``dirty``, ``branch``, ``describe``,
+    ``tag``, ``tested``, ``package_version`` (from ``__version__``). Old bundles where this is a
+    plain string are loaded as ``{"package_version": <string>, "source": "legacy"}``.
     - ``timestamp`` — ISO 8601 timestamp of bundle creation.
     - ``python_version`` — Python version string (e.g. ``"3.11.5"``).
     - ``run_type`` — one of ``"saturation_pressure"``, ``"degassing"``, or ``"comparison"``.
     - ``models`` — backend names to run (e.g. ``["EVo", "VolFe", "MAGEC"]``).
-    - ``compositions`` — list of dicts, each a :meth:`~volcatenate.composition.MeltComposition.to_dict` snapshot.
+    - ``compositions`` — list of dicts, each a
+    :meth:`~volcatenate.composition.MeltComposition.to_dict` snapshot.
     - ``config`` — full :class:`~volcatenate.config.RunConfig` serialized as a nested dict.
-    - ``satp_output`` — CSV output path for saturation pressures (comparison mode); ``None`` otherwise.
-    - ``degassing_output_dir`` — directory for degassing CSV output (comparison mode); ``None`` otherwise.
-    - ``backend_versions`` — per-backend version info captured at bundle creation. Keys are backend names (e.g. ``"sulfurx"``); values are the dicts returned by :func:`volcatenate.backend_version_info`.
-    - ``caller_git_state`` — git state of the *caller's* working directory at bundle creation. Keys: ``repo_path``, ``sha``, ``dirty``, ``branch``. ``None`` if the caller is not inside a git repository (or detection failed).
-    - ``pip_freeze`` — full ``pip freeze`` output as a single string at bundle creation. ``None`` if pip freeze failed to run.
-    - ``comments`` — free-text user notes describing this run. Set via :attr:`~volcatenate.config.RunConfig.bundle_comments` or the ``comments`` kwarg on :func:`create_bundle`.
-    - ``platform_info`` — OS and Python implementation info (``system``, ``release``, ``machine``, ``python_implementation``).
+    - ``satp_output`` — CSV output path for saturation pressures (comparison mode); ``None``
+    otherwise.
+    - ``degassing_output_dir`` — directory for degassing CSV output (comparison mode); ``None``
+    otherwise.
+    - ``backend_versions`` — per-backend version info captured at bundle creation. Keys are backend
+    names (e.g. ``"sulfurx"``); values are the dicts returned by
+    :func:`volcatenate.backend_version_info`.
+    - ``caller_git_state`` — git state of the *caller's* working directory at bundle creation. Keys:
+    ``repo_path``, ``sha``, ``dirty``, ``branch``. ``None`` if the caller is not inside a git
+    repository (or detection failed).
+    - ``pip_freeze`` — full ``pip freeze`` output as a single string at bundle creation. ``None``
+    if pip freeze failed to run.
+    - ``comments`` — free-text user notes describing this run. Set via
+    :attr:`~volcatenate.config.RunConfig.bundle_comments` or the ``comments`` kwarg on
+    :func:`create_bundle`.
+    - ``platform_info`` — OS and Python implementation info (``system``, ``release``, ``machine``,
+    ``python_implementation``).
     """
 
     volcatenate_version: dict
@@ -112,6 +130,7 @@ class RunBundle:
 # ---------------------------------------------------------------------------
 # Config ↔ dict helpers
 # ---------------------------------------------------------------------------
+
 
 def _config_to_dict(config: RunConfig) -> dict:
     """Recursively convert a RunConfig to a plain dict.
@@ -159,6 +178,7 @@ def _dict_to_config(d: dict) -> RunConfig:
 # ---------------------------------------------------------------------------
 # JSON-safe value handling
 # ---------------------------------------------------------------------------
+
 
 def _sanitize_value(val: Any) -> Any:
     """Convert a value to a JSON-serializable form.
@@ -216,6 +236,7 @@ def _restore_nan(val: Any) -> Any:
 # ---------------------------------------------------------------------------
 # Provenance helpers
 # ---------------------------------------------------------------------------
+
 
 def _detect_caller_git_state(start_dir: Optional[str] = None) -> Optional[dict]:
     """Return ``{repo_path, sha, dirty, branch}`` for the git repo containing
@@ -299,6 +320,7 @@ def _capture_platform_info() -> dict:
 # Bundle creation
 # ---------------------------------------------------------------------------
 
+
 def create_bundle(
     run_type: str,
     compositions: list[MeltComposition],
@@ -326,9 +348,12 @@ def create_bundle(
     degassing_output_dir : str, optional
         Degassing output directory (for comparison runs).
     comments : str, optional
-        Free-text notes recorded in the bundle's ``comments`` field. If omitted, falls back to ``config.bundle_comments``.
+        Free-text notes recorded in the bundle's ``comments`` field. If omitted, falls back to
+        ``config.bundle_comments``.
     resolved_inputs : dict, optional
-        Per-(sample, backend) record of the actual inputs handed to each model — captured at run time via :mod:`volcatenate.resolved_inputs`. Defaults to an empty dict; the orchestrator replaces it with a populated snapshot at end of run.
+        Per-(sample, backend) record of the actual inputs handed to each model — captured at run
+        time via :mod:`volcatenate.resolved_inputs`. Defaults to an empty dict; the orchestrator
+        replaces it with a populated snapshot at end of run.
 
     Returns
     -------
@@ -362,6 +387,7 @@ def create_bundle(
 # ---------------------------------------------------------------------------
 # Save / Load
 # ---------------------------------------------------------------------------
+
 
 def save_bundle(bundle: RunBundle, path: str) -> str:
     """Write a RunBundle to a JSON file.
@@ -454,6 +480,7 @@ def load_bundle(path: str) -> RunBundle:
 # Replay
 # ---------------------------------------------------------------------------
 
+
 def _compositions_from_bundle(
     bundle: RunBundle,
 ) -> list[MeltComposition]:
@@ -542,14 +569,14 @@ def replay(
     bundle = load_bundle(path)
     vv = bundle.volcatenate_version
     vv_short = (
-        vv.get("package_version")
-        or vv.get("describe")
-        or vv.get("id")
-        or "unknown"
+        vv.get("package_version") or vv.get("describe") or vv.get("id") or "unknown"
     )
     logger.info(
         "Replaying %s run from %s (volcatenate %s, %s)",
-        bundle.run_type, path, vv_short, bundle.timestamp,
+        bundle.run_type,
+        path,
+        vv_short,
+        bundle.timestamp,
     )
 
     # Reconstruct config

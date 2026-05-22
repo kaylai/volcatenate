@@ -92,7 +92,8 @@ class VolcProgress:
 
             self._progress.__enter__()
             self._task_id = self._progress.add_task(
-                self._description, total=self._total,
+                self._description,
+                total=self._total,
             )
         except ImportError:
             self._enabled = False
@@ -102,9 +103,7 @@ class VolcProgress:
         if self._progress is not None:
             # Mark bar visually complete: swap 🌋 to ✅ and append "Done"
             if self._task_id is not None:
-                done_desc = self._description.replace(
-                    "\U0001f30b", "\u2705"   # 🌋 → ✅
-                )
+                done_desc = self._description.replace("\U0001f30b", "\u2705")  # 🌋 → ✅
                 self._progress.update(
                     self._task_id,
                     completed=self._total,

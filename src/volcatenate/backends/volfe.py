@@ -20,7 +20,11 @@ from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.volfe_converter import convert
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.convert import (
+    compute_cs_v_mf,
+    normalize_volatiles,
+    ensure_standard_columns,
+)
 
 
 @contextlib.contextmanager
@@ -72,6 +76,7 @@ class Backend(ModelBackend):
     def is_available(self) -> bool:
         try:
             import VolFe  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -89,9 +94,12 @@ class Backend(ModelBackend):
         cfg = resolve_sample_config(config.volfe, comp.sample)
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_satp")
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_satp"
+        )
 
         from volcatenate.resolved_inputs import capture as _capture_resolved
+
         _capture_resolved(
             sample=comp.sample,
             backend="VolFe",
@@ -139,9 +147,12 @@ class Backend(ModelBackend):
         cfg = resolve_sample_config(config.volfe, comp.sample)
         setup_df = _build_setup_df(comp, cfg)
         models_df = _build_models_df(cfg)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_degas")
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, f"{comp.sample}_volfe_degas"
+        )
 
         from volcatenate.resolved_inputs import capture as _capture_resolved
+
         _capture_resolved(
             sample=comp.sample,
             backend="VolFe",
@@ -170,6 +181,7 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
 def _build_setup_df(comp: MeltComposition, cfg) -> pd.DataFrame:
     """Build the VolFe input DataFrame from a MeltComposition."""
     setup_dict = {
@@ -185,9 +197,9 @@ def _build_setup_df(comp: MeltComposition, cfg) -> pd.DataFrame:
         "Na2O": [comp.Na2O],
         "K2O": [comp.K2O],
         "P2O5": [comp.P2O5],
-        "H2O": [comp.H2O],                      # wt%
-        "CO2ppm": [comp.CO2 * 10_000],           # wt% → ppm
-        "STppm": [comp.S * 10_000],              # wt% → ppm
+        "H2O": [comp.H2O],  # wt%
+        "CO2ppm": [comp.CO2 * 10_000],  # wt% → ppm
+        "STppm": [comp.S * 10_000],  # wt% → ppm
         "Xppm": [comp.Xppm],
     }
 
@@ -256,19 +268,25 @@ def _resolve_volfe_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     if not np.isnan(fe3fet):
         logger.info(
             "[VolFe] %s: fo2_column=%s missing on comp; falling back to Fe3FeT (%.4f)",
-            comp.sample, fo2_col, fe3fet,
+            comp.sample,
+            fo2_col,
+            fe3fet,
         )
         return "Fe3FeT", float(fe3fet)
     if comp.dNNO is not None:
         logger.info(
             "[VolFe] %s: fo2_column=%s missing on comp; falling back to DNNO (%.3f)",
-            comp.sample, fo2_col, comp.dNNO,
+            comp.sample,
+            fo2_col,
+            comp.dNNO,
         )
         return "DNNO", float(comp.dNNO)
     if comp.dFMQ is not None:
         logger.info(
             "[VolFe] %s: fo2_column=%s missing on comp; falling back to DFMQ (%.3f)",
-            comp.sample, fo2_col, comp.dFMQ,
+            comp.sample,
+            fo2_col,
+            comp.dFMQ,
         )
         return "DFMQ", float(comp.dFMQ)
 
@@ -295,7 +313,6 @@ def _build_models_df(cfg):
         ["graphite_saturation", str(cfg.graphite_saturation)],
         ["SCSS", cfg.scss],
         ["SCAS", cfg.scas],
-
         # ── Degassing geometry ──
         ["gassing_style", cfg.gassing_style],
         ["gassing_direction", cfg.gassing_direction],
@@ -304,27 +321,22 @@ def _build_models_df(cfg):
         ["P_variation", cfg.p_variation],
         ["T_variation", cfg.t_variation],
         ["crystallisation", cfg.crystallisation],
-
         # ── Iron / oxygen redox ──
         ["eq_Fe", cfg.eq_fe],
         ["bulk_O", cfg.bulk_o],
         ["calc_sat", cfg.calc_sat],
-
         # ── Species ──
         ["COH_species", cfg.coh_species],
         ["H2S_m", str(cfg.h2s_melt)],
         ["species X", cfg.species_x],
         ["Hspeciation", cfg.h_speciation],
-
         # ── Oxygen fugacity ──
         ["fO2", cfg.fo2_model],
         ["FMQbuffer", cfg.fmq_buffer],
         ["NNObuffer", cfg.nno_buffer],
-
         # ── Bulk physical model ──
         ["density", cfg.density],
         ["melt composition", cfg.melt_composition],
-
         # ── Solubility constants ──
         ["carbon dioxide", cfg.co2_sol],
         ["water", cfg.h2o_sol],
@@ -337,7 +349,6 @@ def _build_models_df(cfg):
         ["species X solubility", cfg.x_sol],
         ["Cspeccomp", cfg.c_spec_comp],
         ["Hspeccomp", cfg.h_spec_comp],
-
         # ── Fugacity coefficients ──
         ["ideal_gas", str(cfg.ideal_gas)],
         ["y_CO2", cfg.y_co2],
@@ -351,7 +362,6 @@ def _build_models_df(cfg):
         ["y_H2O", cfg.y_h2o],
         ["y_OCS", cfg.y_ocs],
         ["y_X", cfg.y_x],
-
         # ── Equilibrium constants ──
         ["KHOg", cfg.k_hog],
         ["KHOSg", cfg.k_hosg],
@@ -362,7 +372,6 @@ def _build_models_df(cfg):
         ["KOCSg", cfg.k_ocsg],
         ["KCOs", cfg.k_cos],
         ["carbonylsulfide", cfg.carbonylsulfide],
-
         # ── Isotopes ──
         ["isotopes", cfg.isotopes],
         ["beta_factors", cfg.beta_factors],
@@ -379,11 +388,9 @@ def _build_models_df(cfg):
         ["alpha_S_H2Sv_H2Sm", cfg.alpha_s_h2sv_h2sm],
         ["alpha_SO2_SO4", cfg.alpha_so2_so4],
         ["alpha_H2S_S", cfg.alpha_h2s_s],
-
         # ── Numerical / runtime ──
         ["error", cfg.error],
         ["high precision", str(cfg.high_precision)],
-
         # ── Volcatenate-managed (not configurable) ──
         ["output csv", "False"],
         ["print status", "False"],

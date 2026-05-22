@@ -89,47 +89,47 @@ def get_column_heights(n_objects: int) -> list[int]:
 # Hex colours for matplotlib / general use
 MODEL_COLORS_HEX = {
     "DCompress": "#01B0F0",
-    "EVo":       "#E46C0A",
-    "MAGEC":     "#DD94BB",
-    "SulfurX":   "#009E73",
-    "VolFe":     "#FFC00D",
-    "VESIcal":                      "#000000",
-    "VESIcal_MS":                   "#000000",
-    "VESIcal_Dixon":                "#D9D9D9",
-    "VESIcal_IaconoMarziano":      "#545454",
-    "VESIcal_Iacono":              "#545454",
-    "VESIcal_Liu":                  "#532E5C",
+    "EVo": "#E46C0A",
+    "MAGEC": "#DD94BB",
+    "SulfurX": "#009E73",
+    "VolFe": "#FFC00D",
+    "VESIcal": "#000000",
+    "VESIcal_MS": "#000000",
+    "VESIcal_Dixon": "#D9D9D9",
+    "VESIcal_IaconoMarziano": "#545454",
+    "VESIcal_Iacono": "#545454",
+    "VESIcal_Liu": "#532E5C",
     "VESIcal_ShishkinaIdealMixing": "#5E6480",
 }
 
 # Marker styles for matplotlib scatter plots
 # Format: (legend_label, marker, size, facecolor, edgecolor, linewidth)
 MODEL_MARKER_STYLE = {
-    "DCompress":      ("D-Compress (IM)", "s",  150, "#01B0F0", "k", 0.5),
-    "EVo":            ("EVo (D-C)",       "o",  150, "#E46C0A", "k", 0.5),
-    "MAGEC":          ("MAGEC (IM)",      "s",  150, "#DD94BB", "k", 0.5),
-    "SulfurX":        ("Sulfur_X (IM)",   "s",  150, "#009E73", "k", 0.5),
-    "VolFe":          ("VolFe (Hughes24)", "^",  150, "#FFC00D", "k", 0.5),
-    "VESIcal_Iacono": ("VESIcal (IM)",   "s",  120, "none",    "k", 1.0),
-    "VESIcal_Dixon":  ("VESIcal (VC)",   "x",  100, "k",       "k", 1.5),
-    "VESIcal_MS":     ("VESIcal (MS)",   "*",  140, "k",       "k", 0.5),
+    "DCompress": ("D-Compress (IM)", "s", 150, "#01B0F0", "k", 0.5),
+    "EVo": ("EVo (D-C)", "o", 150, "#E46C0A", "k", 0.5),
+    "MAGEC": ("MAGEC (IM)", "s", 150, "#DD94BB", "k", 0.5),
+    "SulfurX": ("Sulfur_X (IM)", "s", 150, "#009E73", "k", 0.5),
+    "VolFe": ("VolFe (Hughes24)", "^", 150, "#FFC00D", "k", 0.5),
+    "VESIcal_Iacono": ("VESIcal (IM)", "s", 120, "none", "k", 1.0),
+    "VESIcal_Dixon": ("VESIcal (VC)", "x", 100, "k", "k", 1.5),
+    "VESIcal_MS": ("VESIcal (MS)", "*", 140, "k", "k", 0.5),
 }
 
 
 def get_line_properties() -> dict[str, str]:
     """Return a dict of model names to Plotly ``rgb(...)`` colour strings."""
     return {
-        "DCompress":                    "rgb(1, 176, 240)",
-        "EVo":                          "rgb(228, 108, 10)",
-        "MAGEC":                        "rgb(221, 148, 187)",
-        "SulfurX":                      "rgb(0, 158, 115)",
-        "VolFe":                        "rgb(255, 192, 13)",
-        "VESIcal":                      "rgb(0, 0, 0)",
-        "VESIcal_MS":                   "rgb(0, 0, 0)",
-        "VESIcal_Dixon":                "rgb(217, 217, 217)",
-        "VESIcal_IaconoMarziano":       "rgb(84, 84, 84)",
-        "VESIcal_Iacono":               "rgb(84, 84, 84)",
-        "VESIcal_Liu":                  "rgb(83, 46, 92)",
+        "DCompress": "rgb(1, 176, 240)",
+        "EVo": "rgb(228, 108, 10)",
+        "MAGEC": "rgb(221, 148, 187)",
+        "SulfurX": "rgb(0, 158, 115)",
+        "VolFe": "rgb(255, 192, 13)",
+        "VESIcal": "rgb(0, 0, 0)",
+        "VESIcal_MS": "rgb(0, 0, 0)",
+        "VESIcal_Dixon": "rgb(217, 217, 217)",
+        "VESIcal_IaconoMarziano": "rgb(84, 84, 84)",
+        "VESIcal_Iacono": "rgb(84, 84, 84)",
+        "VESIcal_Liu": "rgb(83, 46, 92)",
         "VESIcal_ShishkinaIdealMixing": "rgb(94, 100, 128)",
     }
 
@@ -218,7 +218,9 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
         logger.warning("%s: empty DataFrame — skipping %s trace", model, y_variable)
         return
     if "P_bars" not in data.columns:
-        logger.warning("%s: missing P_bars column — skipping %s trace", model, y_variable)
+        logger.warning(
+            "%s: missing P_bars column — skipping %s trace", model, y_variable
+        )
         return
 
     if p_norm:
@@ -227,7 +229,8 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
             logger.warning(
                 "%s: P_bars.iloc[0] is zero or NaN — "
                 "falling back to absolute pressure for %s trace",
-                model, y_variable,
+                model,
+                y_variable,
             )
             x_pressure = data["P_bars"]
         else:
@@ -236,21 +239,25 @@ def add_trace_to_subplot(fig, data, model, y_variable, l_c, l_w, l_d, row, col, 
         x_pressure = data["P_bars"]
 
     y_map = {
-        "H2Om":          "H2OT_m_wtpc",
-        "CO2m":          "CO2T_m_ppmw",
-        "Sm":            "ST_m_ppmw",
-        "fO2_FMQ":       "dFMQ",
-        "Fe_speciation":  "Fe3Fet_m",
-        "S_speciation":   "S6St_m",
-        "C_S_vapor":      "CS_v_mf",
-        "Sm_norm":        "ST_m_ppmw_norm",
+        "H2Om": "H2OT_m_wtpc",
+        "CO2m": "CO2T_m_ppmw",
+        "Sm": "ST_m_ppmw",
+        "fO2_FMQ": "dFMQ",
+        "Fe_speciation": "Fe3Fet_m",
+        "S_speciation": "S6St_m",
+        "C_S_vapor": "CS_v_mf",
+        "Sm_norm": "ST_m_ppmw_norm",
     }
     col_name = y_map.get(y_variable)
     if col_name is None:
-        logger.warning("Unknown y_variable %r for %s — skipping trace", y_variable, model)
+        logger.warning(
+            "Unknown y_variable %r for %s — skipping trace", y_variable, model
+        )
         return
     if col_name not in data.columns:
-        logger.warning("%s: column %r missing — skipping %s trace", model, col_name, y_variable)
+        logger.warning(
+            "%s: column %r missing — skipping %s trace", model, col_name, y_variable
+        )
         return
     try:
         fig.add_trace(
@@ -328,14 +335,14 @@ def plot_results(
     )
 
     y_axis_labels = {
-        "H2Om":          "H<sub>2</sub>O<sup>melt</sup> total (wt%)",
-        "CO2m":          "CO<sub>2</sub><sup>melt</sup> total (ppm)",
-        "Sm":            "S<sup>melt</sup> total (ppm)",
-        "fO2_FMQ":       "log<sub>10</sub><i>f</i>\u2009O<sub>2</sub> (\u0394FMQ)",
-        "Fe_speciation":  "Fe<sup>3+</sup>/Fe<sup>T</sup>",
-        "S_speciation":   "S<sup>6+</sup>/S<sup>T</sup>",
-        "C_S_vapor":      "C/S<sup>vapor</sup> (mol fraction)",
-        "Sm_norm":        "S ppm norm",
+        "H2Om": "H<sub>2</sub>O<sup>melt</sup> total (wt%)",
+        "CO2m": "CO<sub>2</sub><sup>melt</sup> total (ppm)",
+        "Sm": "S<sup>melt</sup> total (ppm)",
+        "fO2_FMQ": "log<sub>10</sub><i>f</i>\u2009O<sub>2</sub> (\u0394FMQ)",
+        "Fe_speciation": "Fe<sup>3+</sup>/Fe<sup>T</sup>",
+        "S_speciation": "S<sup>6+</sup>/S<sup>T</sup>",
+        "C_S_vapor": "C/S<sup>vapor</sup> (mol fraction)",
+        "Sm_norm": "S ppm norm",
     }
 
     for yv, y_variable in enumerate(y_variable_list, start=1):
@@ -347,12 +354,21 @@ def plot_results(
                     logger.warning("No color defined for %s — skipping trace", model)
                     continue
                 add_trace_to_subplot(
-                    fig, basalt[model], model, y_variable,
-                    lc_list[model], lw, ld,
-                    row=yv, col=b, p_norm=p_norm,
+                    fig,
+                    basalt[model],
+                    model,
+                    y_variable,
+                    lc_list[model],
+                    lw,
+                    ld,
+                    row=yv,
+                    col=b,
+                    p_norm=p_norm,
                 )
                 fig.update_yaxes(
-                    title=y_axis_labels[y_variable], row=yv, col=1,
+                    title=y_axis_labels[y_variable],
+                    row=yv,
+                    col=1,
                 )
                 fig.update_xaxes(
                     title=x_axis_name,
@@ -381,14 +397,26 @@ def plot_results(
         margin=dict(t=40, r=30, l=60, b=50),
     )
     fig.update_xaxes(
-        showline=True, linewidth=1, linecolor="black", mirror=True,
-        ticks="inside", ticklen=5, title_standoff=0, tickcolor="black",
+        showline=True,
+        linewidth=1,
+        linecolor="black",
+        mirror=True,
+        ticks="inside",
+        ticklen=5,
+        title_standoff=0,
+        tickcolor="black",
         title_font=dict(size=15, family="Helvetica", color="black"),
         tickfont=dict(family="Helvetica", color="black", size=12),
     )
     fig.update_yaxes(
-        showline=True, linewidth=1, linecolor="black", mirror=True,
-        ticks="inside", ticklen=5, title_standoff=0, tickcolor="black",
+        showline=True,
+        linewidth=1,
+        linecolor="black",
+        mirror=True,
+        ticks="inside",
+        ticklen=5,
+        title_standoff=0,
+        tickcolor="black",
         title_font=dict(size=15, family="Helvetica", color="black"),
         tickfont=dict(family="Helvetica", color="black", size=12),
     )
@@ -465,11 +493,11 @@ def _default_variable_names(param: str) -> str:
     _labels = {
         "H2OT_m_wtpc": r"H$_2$O$^{melt}$ total",
         "CO2T_m_ppmw": r"CO$_2^{melt}$ total",
-        "ST_m_ppmw":   r"S$^{melt}$ total",
-        "dFMQ":        r"$\Delta$FMQ",
-        "Fe3Fet_m":    r"Fe$^{3+}$/Fe$^{T}$",
-        "S6St_m":      r"S$^{6+}$/S$^{T}$",
-        "CS_v_mf":     r"C/S$^{vapor}$",
+        "ST_m_ppmw": r"S$^{melt}$ total",
+        "dFMQ": r"$\Delta$FMQ",
+        "Fe3Fet_m": r"Fe$^{3+}$/Fe$^{T}$",
+        "S6St_m": r"S$^{6+}$/S$^{T}$",
+        "CS_v_mf": r"C/S$^{vapor}$",
     }
     return _labels.get(param, param)
 
@@ -511,8 +539,11 @@ def _compute_deviation_envelope(
 
         try:
             f = _interp1d(
-                sub["P_norm"], sub[param],
-                kind="linear", bounds_error=False, fill_value=np.nan,
+                sub["P_norm"],
+                sub[param],
+                kind="linear",
+                bounds_error=False,
+                fill_value=np.nan,
             )
             interp_data[model_name] = f(x_common)
             model_names.append(model_name)
@@ -538,13 +569,13 @@ def _compute_deviation_envelope(
         dev_abs_max = np.nanmax(deviations_abs, axis=1)
 
     return {
-        "P_norm":      x_common,
+        "P_norm": x_common,
         "dev_pct_min": dev_pct_min,
         "dev_pct_max": dev_pct_max,
         "dev_abs_min": dev_abs_min,
         "dev_abs_max": dev_abs_max,
-        "mean":        ensemble_mean,
-        "n_models":    len(model_names),
+        "mean": ensemble_mean,
+        "n_models": len(model_names),
         "model_names": model_names,
     }
 
@@ -599,8 +630,14 @@ def plot_deviation_envelopes(
         exclude_dict = exclude_models
 
     default_colors = [
-        "#0072B2", "#E69F00", "#009E73", "#CC79A7",
-        "#F0E442", "#56B4E9", "#D55E00", "#000000",
+        "#0072B2",
+        "#E69F00",
+        "#009E73",
+        "#CC79A7",
+        "#F0E442",
+        "#56B4E9",
+        "#D55E00",
+        "#000000",
     ]
     system_names = list(systems_dict.keys())
 
@@ -613,8 +650,7 @@ def plot_deviation_envelopes(
         color_dict = colors
     else:
         color_dict = {
-            name: colors[i % len(colors)]
-            for i, name in enumerate(system_names)
+            name: colors[i % len(colors)] for i, name in enumerate(system_names)
         }
 
     if ax is None:
@@ -627,14 +663,22 @@ def plot_deviation_envelopes(
     for system_name, data_dict in systems_dict.items():
         system_excludes = exclude_dict.get(system_name, [])
         env = _compute_deviation_envelope(
-            data_dict, param, x_col, n_points,
+            data_dict,
+            param,
+            x_col,
+            n_points,
             exclude_models=system_excludes,
         )
         if env is None:
             logger.info("  Skipping %s: no valid models for %s", system_name, param)
             continue
         if system_excludes:
-            logger.info("  %s: excluded %s, using %s", system_name, system_excludes, env['model_names'])
+            logger.info(
+                "  %s: excluded %s, using %s",
+                system_name,
+                system_excludes,
+                env["model_names"],
+            )
         envelope_width = env["dev_pct_max"] - env["dev_pct_min"]
         env["mean_spread"] = np.nanmean(envelope_width)
         envelope_data[system_name] = env
@@ -642,7 +686,9 @@ def plot_deviation_envelopes(
     # Sort (largest in back)
     if sort_by_spread:
         sorted_systems = sorted(
-            envelope_data, key=lambda s: envelope_data[s]["mean_spread"], reverse=True,
+            envelope_data,
+            key=lambda s: envelope_data[s]["mean_spread"],
+            reverse=True,
         )
     else:
         sorted_systems = [s for s in system_names if s in envelope_data]
@@ -653,12 +699,21 @@ def plot_deviation_envelopes(
         color = color_dict.get(system_name, "#333333")
 
         ax.fill_between(
-            env["P_norm"], env["dev_pct_min"], env["dev_pct_max"],
-            alpha=alpha, color=color, label=system_name, linewidth=0,
+            env["P_norm"],
+            env["dev_pct_min"],
+            env["dev_pct_max"],
+            alpha=alpha,
+            color=color,
+            label=system_name,
+            linewidth=0,
         )
         if show_edges:
-            ax.plot(env["P_norm"], env["dev_pct_min"], color=color, alpha=edge_alpha, lw=1)
-            ax.plot(env["P_norm"], env["dev_pct_max"], color=color, alpha=edge_alpha, lw=1)
+            ax.plot(
+                env["P_norm"], env["dev_pct_min"], color=color, alpha=edge_alpha, lw=1
+            )
+            ax.plot(
+                env["P_norm"], env["dev_pct_max"], color=color, alpha=edge_alpha, lw=1
+            )
 
     ax.axhline(0, color="gray", lw=0.8, ls="--", zorder=0)
     ax.set_xlim(0, 1)
@@ -700,33 +755,51 @@ def plot_all_melt_volatiles(
     _ensure_mpl()
 
     fig, (ax_h2o, ax_co2, ax_s) = _plt.subplots(
-        3, 1, figsize=figsize, sharex=True,
+        3,
+        1,
+        figsize=figsize,
+        sharex=True,
         gridspec_kw={"hspace": 0.15},
     )
 
     all_data = {}
 
     env_h2o, _, _ = plot_deviation_envelopes(
-        systems_dict, param="H2OT_m_wtpc", colors=colors, ax=ax_h2o,
-        sort_by_spread=sort_by_spread, legend_order=legend_order,
-        exclude_models=exclude_models, **kwargs,
+        systems_dict,
+        param="H2OT_m_wtpc",
+        colors=colors,
+        ax=ax_h2o,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        exclude_models=exclude_models,
+        **kwargs,
     )
     all_data["H2O"] = env_h2o
     ax_h2o.set_xlabel("")
 
     env_co2, _, _ = plot_deviation_envelopes(
-        systems_dict, param="CO2T_m_ppmw", colors=colors, ax=ax_co2,
-        sort_by_spread=sort_by_spread, legend_order=legend_order,
-        exclude_models=exclude_models, **kwargs,
+        systems_dict,
+        param="CO2T_m_ppmw",
+        colors=colors,
+        ax=ax_co2,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        exclude_models=exclude_models,
+        **kwargs,
     )
     all_data["CO2"] = env_co2
     ax_co2.set_xlabel("")
     ax_co2.legend().remove()
 
     env_s, _, _ = plot_deviation_envelopes(
-        systems_dict, param="ST_m_ppmw", colors=colors, ax=ax_s,
-        sort_by_spread=sort_by_spread, legend_order=legend_order,
-        exclude_models=exclude_models, **kwargs,
+        systems_dict,
+        param="ST_m_ppmw",
+        colors=colors,
+        ax=ax_s,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        exclude_models=exclude_models,
+        **kwargs,
     )
     all_data["S"] = env_s
     ax_s.legend().remove()
@@ -750,30 +823,48 @@ def plot_all_redox_variables(
     _ensure_mpl()
 
     fig, (ax_fo2, ax_fe_spec, ax_s_spec) = _plt.subplots(
-        3, 1, figsize=figsize, sharex=True,
+        3,
+        1,
+        figsize=figsize,
+        sharex=True,
         gridspec_kw={"hspace": 0.15},
     )
 
     all_data = {}
 
     env_fo2, _, _ = plot_deviation_envelopes(
-        systems_dict, param="dFMQ", colors=colors, ax=ax_fo2,
-        sort_by_spread=sort_by_spread, legend_order=legend_order, **kwargs,
+        systems_dict,
+        param="dFMQ",
+        colors=colors,
+        ax=ax_fo2,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        **kwargs,
     )
     all_data["fO2"] = env_fo2
     ax_fo2.set_xlabel("")
 
     env_fe, _, _ = plot_deviation_envelopes(
-        systems_dict, param="Fe3Fet_m", colors=colors, ax=ax_fe_spec,
-        sort_by_spread=sort_by_spread, legend_order=legend_order, **kwargs,
+        systems_dict,
+        param="Fe3Fet_m",
+        colors=colors,
+        ax=ax_fe_spec,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        **kwargs,
     )
     all_data["Fe_spec"] = env_fe
     ax_fe_spec.set_xlabel("")
     ax_fe_spec.legend().remove()
 
     env_s, _, _ = plot_deviation_envelopes(
-        systems_dict, param="S6St_m", colors=colors, ax=ax_s_spec,
-        sort_by_spread=sort_by_spread, legend_order=legend_order, **kwargs,
+        systems_dict,
+        param="S6St_m",
+        colors=colors,
+        ax=ax_s_spec,
+        sort_by_spread=sort_by_spread,
+        legend_order=legend_order,
+        **kwargs,
     )
     all_data["S_spec"] = env_s
     ax_s_spec.legend().remove()
@@ -836,13 +927,12 @@ def plot_composition_overview(
     axes : ndarray of Axes
     """
     _ensure_mpl()
-    import matplotlib.ticker as mticker
 
     variables = [
-        ("H2O",  r"H$_2$O (wt%)"),
-        ("CO2",  r"CO$_2$ (wt%)"),
-        ("S",    "S (wt%)"),
-        ("T_C",  "Temperature (\u00b0C)"),
+        ("H2O", r"H$_2$O (wt%)"),
+        ("CO2", r"CO$_2$ (wt%)"),
+        ("S", "S (wt%)"),
+        ("T_C", "Temperature (\u00b0C)"),
         ("dNNO", r"$\Delta$NNO"),
     ]
 
@@ -861,8 +951,7 @@ def plot_composition_overview(
         color_dict = colors
     else:
         color_dict = {
-            name: colors[i % len(colors)]
-            for i, name in enumerate(volcano_order)
+            name: colors[i % len(colors)] for i, name in enumerate(volcano_order)
         }
 
     fig, axes = _plt.subplots(1, len(variables), figsize=figsize)
@@ -875,10 +964,13 @@ def plot_composition_overview(
                 continue
             val = _get_comp_value(comp, key)
             ax.scatter(
-                j, val,
+                j,
+                val,
                 color=color_dict.get(vname, "#333333"),
-                s=150, zorder=3,
-                edgecolors="k", linewidths=0.5,
+                s=150,
+                zorder=3,
+                edgecolors="k",
+                linewidths=0.5,
                 marker="D",
             )
 
@@ -961,16 +1053,10 @@ def plot_satp_grouped(
 
     # Panel bases and dividers
     panel_bases = {s: i * panel_width for i, s in enumerate(samples)}
-    dividers = [
-        (i + 1) * panel_width - 1.5
-        for i in range(len(samples) - 1)
-    ]
+    dividers = [(i + 1) * panel_width - 1.5 for i in range(len(samples) - 1)]
     panel_left = -2.5
     panel_right = len(samples) * panel_width - 3.5
-    panel_centres = [
-        panel_bases[s] + (x - 1) / 2
-        for s in samples
-    ]
+    panel_centres = [panel_bases[s] + (x - 1) / 2 for s in samples]
 
     fig, ax = _plt.subplots(figsize=figsize)
 
@@ -993,14 +1079,26 @@ def plot_satp_grouped(
 
         if mkr in ("x", "+", "|", "_"):
             ax.scatter(
-                xs, ys, marker=mkr, s=ms, color=ec,
-                linewidths=lw, label=lbl, zorder=3,
+                xs,
+                ys,
+                marker=mkr,
+                s=ms,
+                color=ec,
+                linewidths=lw,
+                label=lbl,
+                zorder=3,
             )
         else:
             ax.scatter(
-                xs, ys, marker=mkr, s=ms,
-                facecolors=fc, edgecolors=ec, linewidths=lw,
-                label=lbl, zorder=3,
+                xs,
+                ys,
+                marker=mkr,
+                s=ms,
+                facecolors=fc,
+                edgecolors=ec,
+                linewidths=lw,
+                label=lbl,
+                zorder=3,
             )
 
     # Vertical panel dividers
@@ -1018,14 +1116,16 @@ def plot_satp_grouped(
 
     ax.set_ylabel("Saturation Pressure (bar)", fontsize=15)
     ax.tick_params(axis="both", labelsize=12)
-    ax.yaxis.set_major_formatter(
-        mticker.FuncFormatter(lambda v, p: f"{v:,.0f}")
-    )
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, p: f"{v:,.0f}"))
     ax.set_xticks([])
 
     ax.legend(
-        fontsize=13, bbox_to_anchor=(0.54, 0.3),
-        frameon=True, edgecolor="k", facecolor="white", framealpha=1.0,
+        fontsize=13,
+        bbox_to_anchor=(0.54, 0.3),
+        frameon=True,
+        edgecolor="k",
+        facecolor="white",
+        framealpha=1.0,
         ncol=2,
     )
 
@@ -1133,24 +1233,39 @@ def plot_satp_deviation(
         # avoid a matplotlib UserWarning.
         if mkr in ("x", "+", "|", "_"):
             ax.scatter(
-                xs, ys, marker=mkr, s=ms, color=color,
-                linewidths=0.5, label=lbl, zorder=3,
+                xs,
+                ys,
+                marker=mkr,
+                s=ms,
+                color=color,
+                linewidths=0.5,
+                label=lbl,
+                zorder=3,
             )
         else:
             ax.scatter(
-                xs, ys, marker=mkr, s=ms, color=color,
-                edgecolors="k", linewidths=0.5, label=lbl, zorder=3,
+                xs,
+                ys,
+                marker=mkr,
+                s=ms,
+                color=color,
+                edgecolors="k",
+                linewidths=0.5,
+                label=lbl,
+                zorder=3,
             )
 
     # Reference line
-    ref_label = style.get(ref_model, (ref_model,))[0] if ref_model in style else ref_model
+    ref_label = (
+        style.get(ref_model, (ref_model,))[0] if ref_model in style else ref_model
+    )
     ax.axhline(0, color="k", linewidth=1.2, zorder=2, label=ref_label)
 
     # Axis labels
     x_labels = {
         "CO2": r"Starting CO$_2^{\,\mathrm{melt}}$ total (wt%)",
         "H2O": r"Starting H$_2$O$^{\mathrm{melt}}$ total (wt%)",
-        "S":   r"Starting S$^{\mathrm{melt}}$ total (wt%)",
+        "S": r"Starting S$^{\mathrm{melt}}$ total (wt%)",
     }
     ax.set_xlabel(x_labels.get(x_variable, f"Starting {x_variable}"), fontsize=12)
     ax.set_ylabel("Relative deviation from reference", fontsize=12)
@@ -1167,9 +1282,9 @@ def plot_satp_deviation(
 # ---------------------------------------------------------------------------
 
 # Physical constants for depth conversion
-RHO_BASALT = 2770      # kg/m³ (Poland et al. 2014)
-_G = 9.81              # m/s²
-P_PER_KM = RHO_BASALT * _G * 1000 / 1e5   # bars per km ≈ 271.6
+RHO_BASALT = 2770  # kg/m³ (Poland et al. 2014)
+_G = 9.81  # m/s²
+P_PER_KM = RHO_BASALT * _G * 1000 / 1e5  # bars per km ≈ 271.6
 
 # Vapor mass fraction threshold for numerical stability
 _VAPOR_WT_MIN = 1e-4
@@ -1408,7 +1523,7 @@ def plot_cs_depth_profile(
             f"system_data should be a single system dict "
             f"({{model_name: DataFrame}}), but got nested dicts for "
             f"keys {nested_keys}. Did you mean "
-            f"systems[\"YourSystem\"] instead of systems?"
+            f'systems["YourSystem"] instead of systems?'
         )
 
     _ensure_mpl()
@@ -1426,7 +1541,8 @@ def plot_cs_depth_profile(
     # -- Default model list and styles --
     if models is None:
         models = [
-            m for m, v in system_data.items()
+            m
+            for m, v in system_data.items()
             if isinstance(v, pd.DataFrame) and "CS_v_mf" in v.columns
         ]
     if model_style is None:
@@ -1442,23 +1558,37 @@ def plot_cs_depth_profile(
     # -- Depth constraint bands --
     for dc_label, dc in depth_constraints.items():
         ax.axhspan(
-            dc["belowsummit_lo"], dc["belowsummit_hi"],
-            color=dc["color"], alpha=0.10, zorder=0,
+            dc["belowsummit_lo"],
+            dc["belowsummit_hi"],
+            color=dc["color"],
+            alpha=0.10,
+            zorder=0,
         )
         ax.axhline(
-            dc["depth_belowsummit_km"], color=dc["color"],
-            ls="--", lw=1.2, alpha=0.5, zorder=1,
+            dc["depth_belowsummit_km"],
+            color=dc["color"],
+            ls="--",
+            lw=1.2,
+            alpha=0.5,
+            zorder=1,
         )
 
     # -- Gas data vertical bands --
     for gas_label, gd in gas_data.items():
         ax.axvspan(
-            gd["cs_lo"], gd["cs_hi"], color=gd["color"],
-            alpha=0.15, zorder=1,
+            gd["cs_lo"],
+            gd["cs_hi"],
+            color=gd["color"],
+            alpha=0.15,
+            zorder=1,
         )
         ax.axvline(
-            gd["cs"], color=gd["color"], ls="-", lw=1.5,
-            alpha=0.6, zorder=2,
+            gd["cs"],
+            color=gd["color"],
+            ls="-",
+            lw=1.5,
+            alpha=0.6,
+            zorder=2,
         )
 
     # -- Model curves --
@@ -1473,14 +1603,24 @@ def plot_cs_depth_profile(
         depth = p_to_depth(p, rho=rho)
         sty = model_style.get(model, {"color": "#333", "label": model})
         ax.plot(
-            cs, depth, color=sty["color"], lw=2.5, ls="-",
-            label=sty.get("label", model), zorder=3,
+            cs,
+            depth,
+            color=sty["color"],
+            lw=2.5,
+            ls="-",
+            label=sty.get("label", model),
+            zorder=3,
         )
         # Anchor marker at deepest (highest-P) point
         ax.plot(
-            cs[0], depth[0], marker="o", ms=8,
-            color=sty["color"], markeredgecolor="k",
-            markeredgewidth=0.8, zorder=5,
+            cs[0],
+            depth[0],
+            marker="o",
+            ms=8,
+            color=sty["color"],
+            markeredgecolor="k",
+            markeredgewidth=0.8,
+            zorder=5,
         )
 
     # -- Mark where curves cross gas data --
@@ -1496,18 +1636,28 @@ def plot_cs_depth_profile(
             for pc in crossings:
                 dc_val = p_to_depth(pc, rho=rho)
                 ax.plot(
-                    gd["cs"], dc_val, marker="*", ms=14,
-                    color=sty["color"], markeredgecolor="k",
-                    markeredgewidth=0.6, zorder=6,
+                    gd["cs"],
+                    dc_val,
+                    marker="*",
+                    ms=14,
+                    color=sty["color"],
+                    markeredgecolor="k",
+                    markeredgewidth=0.6,
+                    zorder=6,
                 )
                 inferred[gas_label][model] = {
-                    "P_bars": pc, "depth_km": dc_val,
+                    "P_bars": pc,
+                    "depth_km": dc_val,
                 }
 
     # -- MI equilibrium overlay (boxes / points / both) --
     if equil_state_df is not None and not equil_state_df.empty:
         _draw_satp_boxes(
-            ax, equil_state_df, model_curves, model_style, rho,
+            ax,
+            equil_state_df,
+            model_curves,
+            model_style,
+            rho,
             mi_display=mi_display,
             mi_scatter_kw=mi_scatter_kw,
         )
@@ -1534,11 +1684,17 @@ def plot_cs_depth_profile(
             ax.get_xlim()[1] * 0.6,
             dc["depth_belowsummit_km"] + 0.1,
             dc_label.replace("\n", " "),
-            fontsize=8, color=dc["color"], fontweight="bold",
-            va="top", ha="right",
+            fontsize=8,
+            color=dc["color"],
+            fontweight="bold",
+            va="top",
+            ha="right",
             bbox=dict(
-                boxstyle="round,pad=0.15", fc="white",
-                ec=dc["color"], alpha=0.8, lw=0.5,
+                boxstyle="round,pad=0.15",
+                fc="white",
+                ec=dc["color"],
+                alpha=0.8,
+                lw=0.5,
             ),
         )
 
@@ -1546,13 +1702,21 @@ def plot_cs_depth_profile(
     for gas_label, gd in gas_data.items():
         label_clean = gas_label.replace("\n", " ")
         ax.text(
-            gd["cs_hi"] * 1.15, 0.05,
+            gd["cs_hi"] * 1.15,
+            0.05,
             f"{label_clean}\n{gd.get('source', '')}",
-            fontsize=8, color=gd["color"], fontweight="bold",
-            va="top", ha="left", rotation=90,
+            fontsize=8,
+            color=gd["color"],
+            fontweight="bold",
+            va="top",
+            ha="left",
+            rotation=90,
             bbox=dict(
-                boxstyle="round,pad=0.2", fc="white",
-                ec=gd["color"], alpha=0.85, lw=0.5,
+                boxstyle="round,pad=0.2",
+                fc="white",
+                ec=gd["color"],
+                alpha=0.85,
+                lw=0.5,
             ),
         )
 
@@ -1574,8 +1738,12 @@ def plot_cs_depth_profile(
 
     # Legend
     ax.legend(
-        loc="lower left", fontsize=9, edgecolor="k",
-        framealpha=0.9, title="Models", title_fontsize=10,
+        loc="lower left",
+        fontsize=9,
+        edgecolor="k",
+        framealpha=0.9,
+        title="Models",
+        title_fontsize=10,
     )
 
     fig.tight_layout()
@@ -1583,7 +1751,11 @@ def plot_cs_depth_profile(
 
 
 def _draw_satp_boxes(
-    ax, equil_state_df, model_curves, model_style, rho,
+    ax,
+    equil_state_df,
+    model_curves,
+    model_style,
+    rho,
     mi_display="boxes",
     mi_scatter_kw=None,
 ):
@@ -1619,8 +1791,8 @@ def _draw_satp_boxes(
     show_boxes = mi_display in ("boxes", "both")
     show_points = mi_display in ("points", "both")
     # Auto-detect satP columns → model keys, and matching CS columns
-    satp_cols = {}          # {satp_col_name: model_key}
-    cs_col_map = {}         # {satp_col_name: cs_col_name}
+    satp_cols = {}  # {satp_col_name: model_key}
+    cs_col_map = {}  # {satp_col_name: cs_col_name}
     all_model_keys = set(model_curves) | set(model_style)
 
     for col in equil_state_df.columns:
@@ -1670,7 +1842,9 @@ def _draw_satp_boxes(
         elif has_curve:
             try:
                 x_pos = find_cs_at_pressure(
-                    p_curve, cs_curve, np.median(vals),
+                    p_curve,
+                    cs_curve,
+                    np.median(vals),
                 )
             except Exception:
                 continue
@@ -1680,8 +1854,12 @@ def _draw_satp_boxes(
         # ── Scatter points ──
         if show_points and len(cs_vals) > 0:
             scatter_defaults = dict(
-                c=sty["color"], marker="o", s=18,
-                edgecolors="k", linewidths=0.4, alpha=0.55,
+                c=sty["color"],
+                marker="o",
+                s=18,
+                edgecolors="k",
+                linewidths=0.4,
+                alpha=0.55,
                 zorder=4,
             )
             scatter_defaults.update(mi_scatter_kw)
@@ -1716,21 +1894,28 @@ def _draw_satp_boxes(
                 median.set_linewidth(1.5)
             for flier in bp["fliers"]:
                 flier.set(
-                    marker="o", markerfacecolor=sty["color"],
-                    markeredgecolor="k", markersize=3, alpha=0.6,
+                    marker="o",
+                    markerfacecolor=sty["color"],
+                    markeredgecolor="k",
+                    markersize=3,
+                    alpha=0.6,
                 )
 
 
 # Kilauea defaults (used by figure_10 convenience function)
 KILAUEA_GAS_DATA = {
     "2018 LERZ Fissures": {
-        "cs": 0.3, "cs_lo": 0.2, "cs_hi": 0.4,
+        "cs": 0.3,
+        "cs_lo": 0.2,
+        "cs_hi": 0.4,
         "source": "Kern+ 2020",
         "type": "UAS-mounted MultiGAS",
         "color": "#f36e15",
     },
     "HMM Reservoir": {
-        "cs": 2.0, "cs_lo": 1.0, "cs_hi": 3.0,
+        "cs": 2.0,
+        "cs_lo": 1.0,
+        "cs_hi": 3.0,
         "source": "Anderson+ 2019",
         "type": "restored gas",
         "color": "#1f77b4",
@@ -1738,17 +1923,23 @@ KILAUEA_GAS_DATA = {
 }
 
 KILAUEA_DEPTH_CONSTRAINTS = {
-    "Halema\u02BBuma\u02BBu reservoir": {
-        "depth_bsl_km": 0.75, "bsl_lo": 0.0, "bsl_hi": 1.5,
+    "Halema\u02bbuma\u02bbu reservoir": {
+        "depth_bsl_km": 0.75,
+        "bsl_lo": 0.0,
+        "bsl_hi": 1.5,
         "depth_belowsummit_km": 2.0,
-        "belowsummit_lo": 1.25, "belowsummit_hi": 2.75,
+        "belowsummit_lo": 1.25,
+        "belowsummit_hi": 2.75,
         "source": "Anderson+ 2019",
         "color": "#d62728",
     },
     "South Caldera reservoir": {
-        "depth_bsl_km": 2.5, "bsl_lo": 0.75, "bsl_hi": 3.25,
+        "depth_bsl_km": 2.5,
+        "bsl_lo": 0.75,
+        "bsl_hi": 3.25,
         "depth_belowsummit_km": 3.75,
-        "belowsummit_lo": 3.0, "belowsummit_hi": 4.5,
+        "belowsummit_lo": 3.0,
+        "belowsummit_hi": 4.5,
         "source": "Poland+ 2014, Anderson+ 2019",
         "color": "#9467bd",
     },
@@ -1756,11 +1947,11 @@ KILAUEA_DEPTH_CONSTRAINTS = {
 
 # Default C/S figure model styles (models with sulfur)
 _CS_MODEL_STYLE = {
-    "DCompress": {"color": "#01B0F0", "marker": "s",  "label": "D-Compress"},
-    "EVo":       {"color": "#E46C0A", "marker": "o",  "label": "EVo"},
-    "MAGEC":     {"color": "#DD94BB", "marker": "s",  "label": "MAGEC"},
-    "VolFe":     {"color": "#FFC00D", "marker": "^",  "label": "VolFe"},
-    "SulfurX":   {"color": "#009E73", "marker": "s",  "label": "Sulfur_X"},
+    "DCompress": {"color": "#01B0F0", "marker": "s", "label": "D-Compress"},
+    "EVo": {"color": "#E46C0A", "marker": "o", "label": "EVo"},
+    "MAGEC": {"color": "#DD94BB", "marker": "s", "label": "MAGEC"},
+    "VolFe": {"color": "#FFC00D", "marker": "^", "label": "VolFe"},
+    "SulfurX": {"color": "#009E73", "marker": "s", "label": "Sulfur_X"},
 }
 
 
@@ -1834,9 +2025,14 @@ def _apply_standard_legend(fig):
     fig = unify_legend(fig)
     fig.update_layout(
         legend=dict(
-            x=0.995, y=0.02, xanchor="right", yanchor="bottom",
-            orientation="v", bgcolor="rgba(255,255,255,0.8)",
-            bordercolor="black", borderwidth=1,
+            x=0.995,
+            y=0.02,
+            xanchor="right",
+            yanchor="bottom",
+            orientation="v",
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="black",
+            borderwidth=1,
         ),
         margin=dict(r=50, b=50, t=50, l=50),
     )
@@ -1844,6 +2040,7 @@ def _apply_standard_legend(fig):
 
 
 # ---- Figure 1 ----
+
 
 def figure_1(compositions, save_path=None, dpi=300, **kwargs):
     """Figure 1: Starting composition overview (5-panel dot chart).
@@ -1863,20 +2060,27 @@ def figure_1(compositions, save_path=None, dpi=300, **kwargs):
     order = kwargs.pop("volcano_order", None)
     if order is None:
         order = [_get_sample_name(c) for c in compositions]
-    colors = kwargs.pop("colors", {
-        name: SYSTEM_COLORS.get(
-            name, _VOLCANO_COLORS_DEFAULT[i % len(_VOLCANO_COLORS_DEFAULT)]
-        )
-        for i, name in enumerate(order)
-    })
+    colors = kwargs.pop(
+        "colors",
+        {
+            name: SYSTEM_COLORS.get(
+                name, _VOLCANO_COLORS_DEFAULT[i % len(_VOLCANO_COLORS_DEFAULT)]
+            )
+            for i, name in enumerate(order)
+        },
+    )
     fig, axes = plot_composition_overview(
-        compositions, volcano_order=order, colors=colors, **kwargs,
+        compositions,
+        volcano_order=order,
+        colors=colors,
+        **kwargs,
     )
     _save_figure(fig, save_path, dpi=dpi)
     return fig, axes
 
 
 # ---- Figure 2 ----
+
 
 def figure_2(satp_df, save_path=None, dpi=300, **kwargs):
     """Figure 2: Absolute saturation pressures grouped by sample.
@@ -1899,6 +2103,7 @@ def figure_2(satp_df, save_path=None, dpi=300, **kwargs):
 
 # ---- Figure 3 ----
 
+
 def figure_3(satp_df, compositions, save_path=None, dpi=300, **kwargs):
     """Figure 3: SatP deviation from reference model vs. starting CO2.
 
@@ -1915,13 +2120,16 @@ def figure_3(satp_df, compositions, save_path=None, dpi=300, **kwargs):
     ax : matplotlib Axes
     """
     fig, ax = plot_satp_deviation(
-        satp_df, compositions=compositions, **kwargs,
+        satp_df,
+        compositions=compositions,
+        **kwargs,
     )
     _save_figure(fig, save_path, dpi=dpi)
     return fig, ax
 
 
 # ---- Figure 4 ----
+
 
 def figure_4(systems, save_path=None, scale=4, **kwargs):
     """Figure 4: P-normalized H2O, CO2, S degassing paths (Plotly).
@@ -1940,8 +2148,12 @@ def figure_4(systems, save_path=None, scale=4, **kwargs):
     basalt_list = list(systems.values())
     colors = get_line_properties()
     fig = plot_results(
-        models, basalt_list, ["H2Om", "CO2m", "Sm"],
-        colors, p_norm=True, scale=scale,
+        models,
+        basalt_list,
+        ["H2Om", "CO2m", "Sm"],
+        colors,
+        p_norm=True,
+        scale=scale,
     )
     fig = _apply_standard_legend(fig)
     _save_figure(fig, save_path, scale=scale)
@@ -1949,6 +2161,7 @@ def figure_4(systems, save_path=None, scale=4, **kwargs):
 
 
 # ---- Figure 5 ----
+
 
 def figure_5(systems, save_path=None, dpi=300, **kwargs):
     """Figure 5: Melt volatile deviation envelopes (H2O, CO2, S).
@@ -1968,8 +2181,11 @@ def figure_5(systems, save_path=None, dpi=300, **kwargs):
     ylim = kwargs.pop("ylim", (-100, 350))
     legend_order = kwargs.pop("legend_order", SYSTEM_ORDER)
     _, fig, axes = plot_all_melt_volatiles(
-        systems, colors=colors, alpha=0.35,
-        legend_order=legend_order, exclude_models=exclude,
+        systems,
+        colors=colors,
+        alpha=0.35,
+        legend_order=legend_order,
+        exclude_models=exclude,
         **kwargs,
     )
     for ax in axes:
@@ -1979,6 +2195,7 @@ def figure_5(systems, save_path=None, dpi=300, **kwargs):
 
 
 # ---- Figure 6 ----
+
 
 def figure_6(systems, save_path=None, scale=4, **kwargs):
     """Figure 6: P-normalized redox variables (Plotly).
@@ -1995,14 +2212,17 @@ def figure_6(systems, save_path=None, scale=4, **kwargs):
     plotly.graph_objs.Figure
     """
     models = kwargs.pop("models", None) or _models_from_systems(
-        systems, require_col="S6St_m",
+        systems,
+        require_col="S6St_m",
     )
     basalt_list = list(systems.values())
     colors = get_line_properties()
     fig = plot_results(
-        models, basalt_list,
+        models,
+        basalt_list,
         ["fO2_FMQ", "Fe_speciation", "S_speciation"],
-        colors, p_norm=True,
+        colors,
+        p_norm=True,
     )
     # S6+/ST row (row 3): clamp to [0, 1]
     n_cols = len(basalt_list)
@@ -2017,6 +2237,7 @@ def figure_6(systems, save_path=None, scale=4, **kwargs):
 
 
 # ---- Figure 7 ----
+
 
 def figure_7(systems, save_path=None, dpi=300, **kwargs):
     """Figure 7: Redox deviation envelopes (fO2, Fe3+/FeT, S6+/ST).
@@ -2035,8 +2256,11 @@ def figure_7(systems, save_path=None, dpi=300, **kwargs):
     ylim = kwargs.pop("ylim", (-200, 350))
     legend_order = kwargs.pop("legend_order", SYSTEM_ORDER)
     _, fig, axes = plot_all_redox_variables(
-        systems, colors=colors, alpha=0.35,
-        legend_order=legend_order, **kwargs,
+        systems,
+        colors=colors,
+        alpha=0.35,
+        legend_order=legend_order,
+        **kwargs,
     )
     for ax in axes:
         ax.set_ylim(*ylim)
@@ -2046,8 +2270,10 @@ def figure_7(systems, save_path=None, dpi=300, **kwargs):
 
 # ---- Figure 8 ----
 
-def figure_8(systems, save_path_lines=None, save_path_envelopes=None,
-             scale=4, dpi=300, **kwargs):
+
+def figure_8(
+    systems, save_path_lines=None, save_path_envelopes=None, scale=4, dpi=300, **kwargs
+):
     """Figure 8: C/S vapor paths (A) and deviation envelopes (B).
 
     Parameters
@@ -2066,7 +2292,8 @@ def figure_8(systems, save_path_lines=None, save_path_envelopes=None,
     """
     # 8A: C/S vapor line plots
     models = kwargs.pop("models", None) or _models_from_systems(
-        systems, require_col="CS_v_mf",
+        systems,
+        require_col="CS_v_mf",
     )
     basalt_list = list(systems.values())
     colors = get_line_properties()
@@ -2078,14 +2305,20 @@ def figure_8(systems, save_path_lines=None, save_path_envelopes=None,
     _save_figure(fig_8a, save_path_lines, scale=scale)
 
     # 8B: C/S vapor deviation envelopes
-    exclude = kwargs.pop("exclude_models", {
-        "MORB": ["DCompress", "EVo"],
-        "Kilauea": ["DCompress"],
-    })
+    exclude = kwargs.pop(
+        "exclude_models",
+        {
+            "MORB": ["DCompress", "EVo"],
+            "Kilauea": ["DCompress"],
+        },
+    )
     sys_colors = list(SYSTEM_COLORS.values())
     _, fig_8b, ax_8b = plot_deviation_envelopes(
-        systems, param="CS_v_mf", colors=sys_colors,
-        exclude_models=exclude, legend_order=SYSTEM_ORDER,
+        systems,
+        param="CS_v_mf",
+        colors=sys_colors,
+        exclude_models=exclude,
+        legend_order=SYSTEM_ORDER,
     )
     ax_8b.legend(loc="upper right", framealpha=1)
     ax_8b.text(0.025, 250, "*Excluding outlier tools")
@@ -2095,6 +2328,7 @@ def figure_8(systems, save_path_lines=None, save_path_envelopes=None,
 
 
 # ---- Figure 9 ----
+
 
 def figure_9(systems, save_path=None, dpi=300, **kwargs):
     """Figure 9: O2 mass balance (reported vs. by-difference X_O2).
@@ -2113,10 +2347,12 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
     axes : ndarray of Axes or None
     """
     _ensure_mpl()
-    exclude_o2 = kwargs.pop("exclude_models", ["SulfurX", "VESIcal_Iacono",
-                                               "VESIcal_MS", "VESIcal_Dixon"])
+    exclude_o2 = kwargs.pop(
+        "exclude_models", ["SulfurX", "VESIcal_Iacono", "VESIcal_MS", "VESIcal_Dixon"]
+    )
     o2_models = [
-        m for m in _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
+        m
+        for m in _models_from_systems(systems, require_col="XO2_BYDIFF_v_mf")
         if m not in exclude_o2
     ]
     if not o2_models:
@@ -2148,9 +2384,14 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
             if model in abs_y_models:
                 y_vals = y_vals.abs()
             ax.scatter(
-                df["O2_v_mf"], y_vals,
-                s=15, color=data_colors[enum % len(data_colors)],
-                edgecolors="k", linewidths=0.4, marker="D", alpha=0.9,
+                df["O2_v_mf"],
+                y_vals,
+                s=15,
+                color=data_colors[enum % len(data_colors)],
+                edgecolors="k",
+                linewidths=0.4,
+                marker="D",
+                alpha=0.9,
             )
 
         # 1:1 reference line
@@ -2164,16 +2405,26 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
         if model in abs_y_models:
             ylabel = r"|By Difference $X_{O_2}^{vapor}$| (molar frac)"
             ax.text(
-                0.05, 0.95,
+                0.05,
+                0.95,
                 "y-axis: absolute value\n(raw values are negative)",
-                transform=ax.transAxes, ha="left", va="top",
-                fontsize=9, fontstyle="italic", color="dimgray",
+                transform=ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize=9,
+                fontstyle="italic",
+                color="dimgray",
             )
         ax.set_ylabel(ylabel)
         ax.text(
-            0.95, 0.05, f"{panel_labels[idx]}) {model}",
-            transform=ax.transAxes, ha="right", va="bottom",
-            fontsize=12, fontweight="bold",
+            0.95,
+            0.05,
+            f"{panel_labels[idx]}) {model}",
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=12,
+            fontweight="bold",
         )
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -2189,6 +2440,7 @@ def figure_9(systems, save_path=None, dpi=300, **kwargs):
 
 
 # ---- Figure 10 ----
+
 
 def figure_10(
     system_data,
@@ -2262,6 +2514,7 @@ def figure_10(
 
 # ---- Generate all ----
 
+
 def generate_all_figures(
     systems,
     compositions=None,
@@ -2314,6 +2567,7 @@ def generate_all_figures(
     """
     if output_dir is None:
         from volcatenate.config import RunConfig
+
         output_dir = os.path.join(RunConfig().output_dir, "figures")
     if figure_kwargs is None:
         figure_kwargs = {}
@@ -2331,7 +2585,8 @@ def generate_all_figures(
         logger.info("Figure 1: Composition overview")
         figs["figure_1"], _ = figure_1(
             compositions,
-            save_path=_path("Fig1_composition_overview.png"), dpi=dpi,
+            save_path=_path("Fig1_composition_overview.png"),
+            dpi=dpi,
             **_kw("figure_1"),
         )
 
@@ -2339,39 +2594,50 @@ def generate_all_figures(
         logger.info("Figure 2: Saturation pressures")
         figs["figure_2"], _ = figure_2(
             satp_df,
-            save_path=_path("Fig2_satp_grouped.png"), dpi=dpi,
+            save_path=_path("Fig2_satp_grouped.png"),
+            dpi=dpi,
             **_kw("figure_2"),
         )
 
     if satp_df is not None and compositions is not None:
         logger.info("Figure 3: SatP deviation")
         figs["figure_3"], _ = figure_3(
-            satp_df, compositions,
-            save_path=_path("Fig3_satp_deviation.png"), dpi=dpi,
+            satp_df,
+            compositions,
+            save_path=_path("Fig3_satp_deviation.png"),
+            dpi=dpi,
             **_kw("figure_3"),
         )
 
     logger.info("Figure 4: Melt volatile degassing paths")
     figs["figure_4"] = figure_4(
-        systems, save_path=_path("Fig4_melt_volatiles.png"), scale=scale,
+        systems,
+        save_path=_path("Fig4_melt_volatiles.png"),
+        scale=scale,
         **_kw("figure_4"),
     )
 
     logger.info("Figure 5: Melt volatile envelopes")
     figs["figure_5"], _ = figure_5(
-        systems, save_path=_path("Fig5_melt_volatile_envelopes.png"), dpi=dpi,
+        systems,
+        save_path=_path("Fig5_melt_volatile_envelopes.png"),
+        dpi=dpi,
         **_kw("figure_5"),
     )
 
     logger.info("Figure 6: Redox variable degassing paths")
     figs["figure_6"] = figure_6(
-        systems, save_path=_path("Fig6_redox_variables.png"), scale=scale,
+        systems,
+        save_path=_path("Fig6_redox_variables.png"),
+        scale=scale,
         **_kw("figure_6"),
     )
 
     logger.info("Figure 7: Redox envelopes")
     figs["figure_7"], _ = figure_7(
-        systems, save_path=_path("Fig7_redox_envelopes.png"), dpi=dpi,
+        systems,
+        save_path=_path("Fig7_redox_envelopes.png"),
+        dpi=dpi,
         **_kw("figure_7"),
     )
 
@@ -2380,7 +2646,8 @@ def generate_all_figures(
         systems,
         save_path_lines=_path("Fig8A_CS_vapor.png"),
         save_path_envelopes=_path("Fig8B_CS_vapor_envelopes.png"),
-        scale=scale, dpi=dpi,
+        scale=scale,
+        dpi=dpi,
         **_kw("figure_8"),
     )
     figs["figure_8a"] = fig_8a
@@ -2388,7 +2655,9 @@ def generate_all_figures(
 
     logger.info("Figure 9: O2 mass balance")
     fig9, _ = figure_9(
-        systems, save_path=_path("Fig9_O2_mass_balance.png"), dpi=dpi,
+        systems,
+        save_path=_path("Fig9_O2_mass_balance.png"),
+        dpi=dpi,
         **_kw("figure_9"),
     )
     if fig9 is not None:
@@ -2401,7 +2670,8 @@ def generate_all_figures(
         fig10, _, inferred = figure_10(
             systems["Kilauea"],
             equil_state_df=_fig10_df,
-            save_path=_path("Fig10_CS_depth_profile.png"), dpi=dpi,
+            save_path=_path("Fig10_CS_depth_profile.png"),
+            dpi=dpi,
             **_kw("figure_10"),
         )
         figs["figure_10"] = fig10

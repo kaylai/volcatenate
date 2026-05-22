@@ -24,8 +24,11 @@ from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.evo_converter import convert
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
-
+from volcatenate.convert import (
+    compute_cs_v_mf,
+    normalize_volatiles,
+    ensure_standard_columns,
+)
 
 # ── Patch EVo's interactive prompts ──────────────────────────────
 # EVo sometimes asks y/N questions (e.g. SiO2-composition mismatch,
@@ -33,10 +36,11 @@ from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_sta
 # volcatenate there is no terminal, so we monkey-patch query_yes_no
 # to always answer "yes" and emit a Python warning instead.
 
+
 def _auto_yes(question, default="yes"):
     """Non-interactive replacement for ``evo.messages.query_yes_no``."""
     warnings.warn(
-        f"EVo asked: \"{question}\" — automatically continuing. "
+        f'EVo asked: "{question}" — automatically continuing. '
         "Check your composition and settings if this is unexpected.",
         stacklevel=2,
     )
@@ -47,6 +51,7 @@ def _patch_evo_prompts():
     """Replace interactive prompts in the evo.messages module."""
     try:
         import evo.messages
+
         evo.messages.query_yes_no = _auto_yes
     except (ImportError, AttributeError):
         pass
@@ -85,18 +90,20 @@ def _quiet_evo():
 
 # ── Custom YAML dumper (EVo expects True/False not true/false) ──────
 
+
 class _EvoDumper(yaml.SafeDumper):
     pass
+
 
 _EvoDumper.add_representer(
     bool,
     lambda dumper, data: dumper.represent_scalar(
-        "tag:yaml.org,2002:bool", "True" if data else "False"),
+        "tag:yaml.org,2002:bool", "True" if data else "False"
+    ),
 )
 _EvoDumper.add_representer(
     type(None),
-    lambda dumper, data: dumper.represent_scalar(
-        "tag:yaml.org,2002:null", ""),
+    lambda dumper, data: dumper.represent_scalar("tag:yaml.org,2002:null", ""),
 )
 
 
@@ -109,6 +116,7 @@ class Backend(ModelBackend):
     def is_available(self) -> bool:
         try:
             import evo  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -122,14 +130,20 @@ class Backend(ModelBackend):
         config: RunConfig,
     ) -> pd.Series | None:
         import evo
+
         _patch_evo_prompts()
 
         cfg = resolve_sample_config(config.evo, comp.sample)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_satp")
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_satp"
+        )
         os.makedirs(work_dir, exist_ok=True)
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
-            comp, cfg, work_dir, run_type="closed",
+            comp,
+            cfg,
+            work_dir,
+            run_type="closed",
             output_dir=config.output_dir,
         )
 
@@ -186,14 +200,20 @@ class Backend(ModelBackend):
         config: RunConfig,
     ) -> pd.DataFrame:
         import evo
+
         _patch_evo_prompts()
 
         cfg = resolve_sample_config(config.evo, comp.sample)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_degas")
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, f"{comp.sample}_evo_degas"
+        )
         os.makedirs(work_dir, exist_ok=True)
 
         chem_path, env_path, out_yaml = _write_yaml_configs(
-            comp, cfg, work_dir, run_type=cfg.run_type,
+            comp,
+            cfg,
+            work_dir,
+            run_type=cfg.run_type,
             output_dir=config.output_dir,
         )
 
@@ -274,7 +294,8 @@ def _pick_evo_buffer(comp: MeltComposition, cfg) -> dict:
     # No explicit buffer offset — use config default
     logger.warning(
         "[EVo] No dNNO or dFMQ for %s; using %s buffer with offset 0",
-        comp.sample, cfg.fo2_buffer,
+        comp.sample,
+        cfg.fo2_buffer,
     )
     return {
         "FO2_buffer": cfg.fo2_buffer,
@@ -303,11 +324,12 @@ def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
             )
         logger.info(
             "[EVo] %s: fO2 set absolutely (FO2_START=%g bar)",
-            comp.sample, cfg.fo2_start,
+            comp.sample,
+            cfg.fo2_start,
         )
         return {
             "FO2_buffer_SET": False,
-            "FO2_buffer": cfg.fo2_buffer,   # ignored but must be valid
+            "FO2_buffer": cfg.fo2_buffer,  # ignored but must be valid
             "FO2_buffer_START": 0.0,
             "FO2_SET": True,
             "FO2_START": float(cfg.fo2_start),
@@ -322,11 +344,13 @@ def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
             )
         logger.info(
             "[EVo] %s: fO2 driven by Fe3+/FeT=%.4f via FO2_MODEL=%s",
-            comp.sample, comp.fe3fet_computed, cfg.fo2_model,
+            comp.sample,
+            comp.fe3fet_computed,
+            cfg.fo2_model,
         )
         return {
             "FO2_buffer_SET": False,
-            "FO2_buffer": cfg.fo2_buffer,   # ignored
+            "FO2_buffer": cfg.fo2_buffer,  # ignored
             "FO2_buffer_START": 0.0,
             "FO2_SET": False,
             "FO2_START": 0.0,
@@ -353,13 +377,15 @@ def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
         # IW: no comp field exists — the user is responsible for using a
         # composition that actually buffers at IW. Use offset 0.
         offset = (
-            float(comp.dNNO) if wanted == "NNO" and comp.dNNO is not None
-            else float(comp.dFMQ) if wanted == "FMQ" and comp.dFMQ is not None
-            else 0.0
+            float(comp.dNNO)
+            if wanted == "NNO" and comp.dNNO is not None
+            else float(comp.dFMQ) if wanted == "FMQ" and comp.dFMQ is not None else 0.0
         )
         logger.info(
             "[EVo] %s: fO2 set via %s buffer offset %+.3f",
-            comp.sample, wanted, offset,
+            comp.sample,
+            wanted,
+            offset,
         )
         return {
             "FO2_buffer_SET": True,
@@ -376,7 +402,9 @@ def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
         logger.info(
             "[EVo] %s: fo2_source=auto → Fe3+/FeT=%.4f available, "
             "driving fO2 via FO2_MODEL=%s",
-            comp.sample, comp.fe3fet_computed, cfg.fo2_model,
+            comp.sample,
+            comp.fe3fet_computed,
+            cfg.fo2_model,
         )
         return {
             "FO2_buffer_SET": False,
@@ -389,7 +417,9 @@ def _resolve_fo2_source(comp: MeltComposition, cfg) -> dict:
     picked = _pick_evo_buffer(comp, cfg)
     logger.info(
         "[EVo] %s: fo2_source=auto → no Fe3+/FeT, using %s buffer offset %+.3f",
-        comp.sample, picked["FO2_buffer"], picked["FO2_buffer_START"],
+        comp.sample,
+        picked["FO2_buffer"],
+        picked["FO2_buffer_START"],
     )
     return {
         "FO2_buffer_SET": True,
@@ -408,13 +438,21 @@ def _write_yaml_configs(
 ) -> tuple[str, str, str]:
     """Write chem.yaml, env.yaml, and output.yaml for an EVo run.
 
-    Returns (chem_path, env_path, output_yaml_path). When ``output_dir`` is provided, also captures the resolved env / chem / output dicts via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks them up.
+    Returns (chem_path, env_path, output_yaml_path). When ``output_dir`` is provided, also captures
+    the resolved env / chem / output dicts via :mod:`volcatenate.resolved_inputs` so a sidecar yaml
+    is written and the run-bundle picks them up.
     """
     # --- chem.yaml ---
     oxide_map = {
-        "SiO2": "SIO2", "TiO2": "TIO2", "Al2O3": "AL2O3",
-        "MnO": "MNO", "MgO": "MGO",
-        "CaO": "CAO", "Na2O": "NA2O", "K2O": "K2O", "P2O5": "P2O5",
+        "SiO2": "SIO2",
+        "TiO2": "TIO2",
+        "Al2O3": "AL2O3",
+        "MnO": "MNO",
+        "MgO": "MGO",
+        "CaO": "CAO",
+        "Na2O": "NA2O",
+        "K2O": "K2O",
+        "P2O5": "P2O5",
     }
     chem_data = {}
     for src_key, evo_key in oxide_map.items():
@@ -430,11 +468,7 @@ def _write_yaml_configs(
     # when ``fo2_source="absolute"`` — EVo raises if both FO2_SET=True
     # and the iron split are present (readin.py:164).
     fe3fet = comp.fe3fet_computed
-    split_iron = (
-        cfg.fo2_source != "absolute"
-        and not np.isnan(fe3fet)
-        and fe3fet > 0
-    )
+    split_iron = cfg.fo2_source != "absolute" and not np.isnan(fe3fet) and fe3fet > 0
     if split_iron:
         feot = comp.FeOT
         # MW ratio: Fe2O3 / (2 * FeO) = 159.69 / (2 * 71.844) ≈ 1.11134
@@ -461,12 +495,10 @@ def _write_yaml_configs(
         "SINGLE_STEP": cfg.single_step,
         "FIND_SATURATION": cfg.find_saturation,
         "ATOMIC_MASS_SET": cfg.atomic_mass_set,
-
         "GAS_SYS": cfg.gas_system,
         "FE_SYSTEM": cfg.fe_system,
         "OCS": cfg.ocs,
         "S_SAT_WARN": cfg.s_sat_warn,
-
         "T_START": t_kelvin,
         "P_START": cfg.p_start,
         "P_STOP": cfg.p_stop,
@@ -475,7 +507,6 @@ def _write_yaml_configs(
         "MASS": cfg.mass,
         "WgT": cfg.wgt,
         "LOSS_FRAC": cfg.loss_frac,
-
         "DENSITY_MODEL": cfg.density_model,
         "FO2_MODEL": cfg.fo2_model,
         "FMQ_MODEL": cfg.fmq_model,
@@ -488,31 +519,24 @@ def _write_yaml_configs(
         "SULFATE_CAPACITY": cfg.sulfate_capacity,
         "SCSS": cfg.scss,
         "N_MODEL": cfg.n_model,
-
         # fO2 / fugacity initialization (dispatched above).
         **fo2_block,
-
         "ATOMIC_H": cfg.atomic_h,
         "ATOMIC_C": cfg.atomic_c,
         "ATOMIC_S": cfg.atomic_s,
         "ATOMIC_N": cfg.atomic_n,
-
         "FH2_SET": cfg.fh2_set,
         "FH2_START": cfg.fh2_start,
         "FH2O_SET": cfg.fh2o_set,
         "FH2O_START": cfg.fh2o_start,
         "FCO2_SET": cfg.fco2_set,
         "FCO2_START": cfg.fco2_start,
-
         "WTH2O_SET": True,
-        "WTH2O_START": comp.H2O / 100.0,     # wt% → weight fraction
-
+        "WTH2O_START": comp.H2O / 100.0,  # wt% → weight fraction
         "WTCO2_SET": True,
         "WTCO2_START": comp.CO2 / 100.0,
-
         "SULFUR_SET": True,
         "SULFUR_START": comp.S / 100.0,
-
         "NITROGEN_SET": cfg.nitrogen_set,
         # When the user has enabled nitrogen, prefer the sample's N
         # (ppm → mass fraction); fall back to ``cfg.nitrogen_start``
@@ -522,7 +546,6 @@ def _write_yaml_configs(
             if cfg.nitrogen_set and getattr(comp, "N_ppm", 0.0) > 0
             else cfg.nitrogen_start
         ),
-
         "GRAPHITE_SATURATED": cfg.graphite_saturated,
         "GRAPHITE_START": cfg.graphite_start,
     }
@@ -547,6 +570,7 @@ def _write_yaml_configs(
     # Capture the resolved input for the run-bundle and the per-run
     # resolved-inputs sidecar yaml.
     from volcatenate.resolved_inputs import capture as _capture_resolved
+
     _capture_resolved(
         sample=comp.sample,
         backend="EVo",

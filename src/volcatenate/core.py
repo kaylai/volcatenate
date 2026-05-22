@@ -21,9 +21,12 @@ import pandas as pd
 
 from volcatenate.backends import get_backend, list_backends
 from volcatenate import columns as col
-from volcatenate.composition import MeltComposition, read_compositions, composition_from_dict
+from volcatenate.composition import (
+    MeltComposition,
+    read_compositions,
+    composition_from_dict,
+)
 from volcatenate.config import RunConfig
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
 from volcatenate.log import logger, setup_logging
 from volcatenate.progress import VolcProgress
 from volcatenate.result import SaturationResult
@@ -47,12 +50,9 @@ def _validate_override_sample_names(config, sample_names):
                 bad.append((f.name, sample))
     if bad:
         msg = "; ".join(
-            f"{b}.overrides references unknown sample '{s}'"
-            for b, s in bad
+            f"{b}.overrides references unknown sample '{s}'" for b, s in bad
         )
-        raise ValueError(
-            f"{msg}. Known samples: {sorted(known)}"
-        )
+        raise ValueError(f"{msg}. Known samples: {sorted(known)}")
 
 
 def _resolve_models(models: Optional[list[str]]) -> list[str]:
@@ -104,13 +104,19 @@ def _init_progress(config, _progress, total, description):
         )
         _progress.__enter__()
     if config.verbose and _progress.console:
-        setup_logging(config.verbose, config.log_file, console=_progress.console, level=config.verbose_level)
+        setup_logging(
+            config.verbose,
+            config.log_file,
+            console=_progress.console,
+            level=config.verbose_level,
+        )
     return _progress, owns
 
 
 # ------------------------------------------------------------------
 # Saturation Pressure
 # ------------------------------------------------------------------
+
 
 def calculate_saturation_pressure(
     compositions: Union[str, dict, list, MeltComposition],
@@ -164,6 +170,7 @@ def calculate_saturation_pressure(
     if config.save_bundle and _progress is None:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
+
         _resolved_inputs_mod.reset()
         bundle_obj = create_bundle(
             run_type="saturation_pressure",
@@ -175,7 +182,9 @@ def calculate_saturation_pressure(
 
     total_iters = len(model_names) * len(comps)
     _progress, owns_progress = _init_progress(
-        config, _progress, total_iters,
+        config,
+        _progress,
+        total_iters,
         "\U0001f30b Saturation pressures",
     )
 
@@ -193,9 +202,7 @@ def calculate_saturation_pressure(
 
             if not backend.is_available():
                 _progress.add_warning(f"{model_name}: skipped (not available)")
-                detail_data[model_name] = [
-                    {"Sample": c.sample} for c in comps
-                ]
+                detail_data[model_name] = [{"Sample": c.sample} for c in comps]
                 _progress.advance(len(comps))
                 continue
 
@@ -208,15 +215,16 @@ def calculate_saturation_pressure(
             if getattr(backend, "supports_batch_satp", False):
                 try:
                     states = backend.calculate_saturation_pressure_batch(
-                        comps, config,
+                        comps,
+                        config,
                     )
                 except Exception as exc:
                     logger.warning(
-                        "    %s batch satP failed: %s", model_name, exc,
+                        "    %s batch satP failed: %s",
+                        model_name,
+                        exc,
                     )
-                    _progress.add_warning(
-                        f"{model_name} batch satP failed: {exc}"
-                    )
+                    _progress.add_warning(f"{model_name} batch satP failed: {exc}")
                     states = [None] * len(comps)
                 # Advance progress for all samples at once
                 _progress.advance(len(comps))
@@ -225,12 +233,15 @@ def calculate_saturation_pressure(
                 for comp in comps:
                     try:
                         state = backend.calculate_saturation_pressure(
-                            comp, config,
+                            comp,
+                            config,
                         )
                     except Exception as exc:
                         logger.warning(
                             "    %s satP failed for %s: %s",
-                            model_name, comp.sample, exc,
+                            model_name,
+                            comp.sample,
+                            exc,
                         )
                         _progress.add_warning(
                             f"{model_name} satP failed for {comp.sample}: {exc}"
@@ -258,14 +269,13 @@ def calculate_saturation_pressure(
             _progress.__exit__(None, None, None)
 
     # Build per-model DataFrames
-    equilibrium_state = {
-        name: pd.DataFrame(rows) for name, rows in detail_data.items()
-    }
+    equilibrium_state = {name: pd.DataFrame(rows) for name, rows in detail_data.items()}
 
     # Re-save the bundle with resolved_inputs populated from the run.
     if bundle_obj is not None:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import save_bundle
+
         bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
         save_bundle(bundle_obj, config.save_bundle)
 
@@ -278,6 +288,7 @@ def calculate_saturation_pressure(
 # ------------------------------------------------------------------
 # Degassing Path
 # ------------------------------------------------------------------
+
 
 def calculate_degassing(
     composition: Union[str, dict, MeltComposition],
@@ -324,6 +335,7 @@ def calculate_degassing(
     if config.save_bundle and _progress is None:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
+
         _resolved_inputs_mod.reset()
         bundle_obj = create_bundle(
             run_type="degassing",
@@ -336,7 +348,9 @@ def calculate_degassing(
     results: dict[str, pd.DataFrame] = {}
 
     _progress, owns_progress = _init_progress(
-        config, _progress, len(model_names),
+        config,
+        _progress,
+        len(model_names),
         f"\U0001f30b Degassing \u2022 {comp.sample}",
     )
 
@@ -363,11 +377,15 @@ def calculate_degassing(
             except Exception as exc:
                 logger.warning(
                     "    %s degassing failed for %s: %s",
-                    model_name, comp.sample, exc,
+                    model_name,
+                    comp.sample,
+                    exc,
                 )
                 logger.debug(
                     "    %s degassing traceback for %s:",
-                    model_name, comp.sample, exc_info=True,
+                    model_name,
+                    comp.sample,
+                    exc_info=True,
                 )
                 _progress.add_warning(f"{model_name} degassing failed: {exc}")
             _progress.advance()
@@ -379,6 +397,7 @@ def calculate_degassing(
     if bundle_obj is not None:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import save_bundle
+
         bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
         save_bundle(bundle_obj, config.save_bundle)
 
@@ -388,6 +407,7 @@ def calculate_degassing(
 # ------------------------------------------------------------------
 # Export Helpers
 # ------------------------------------------------------------------
+
 
 def export_saturation_pressure(
     df: Union[SaturationResult, pd.DataFrame],
@@ -423,7 +443,8 @@ def export_saturation_pressure(
             detail_df.to_csv(detail_path, index=False)
         logger.info(
             "  Saturation pressures saved to %s (details in %s/)",
-            path, detail_dir,
+            path,
+            detail_dir,
         )
     else:
         # Plain DataFrame (backward compat)
@@ -487,6 +508,7 @@ def export_degassing_paths(
 # ------------------------------------------------------------------
 # Output-directory post-processing (DCompress import + satP summary)
 # ------------------------------------------------------------------
+
 
 def _standardize_dropped_dcompress_csvs(output_dir: str) -> list[str]:
     """Standardize any raw DCompress CSVs the user dropped into the run dir.
@@ -678,6 +700,7 @@ def _write_satp_summary_from_outputs(
 # End-to-end workflow
 # ------------------------------------------------------------------
 
+
 def run_comparison(
     satp_compositions: Optional[Union[str, dict, list, MeltComposition]] = None,
     degassing_compositions: Optional[Union[str, dict, list, MeltComposition]] = None,
@@ -755,11 +778,13 @@ def run_comparison(
 
     satp_comps = (
         _resolve_compositions(satp_compositions)
-        if satp_compositions is not None else []
+        if satp_compositions is not None
+        else []
     )
     degas_comps = (
         _resolve_compositions(degassing_compositions)
-        if degassing_compositions is not None else []
+        if degassing_compositions is not None
+        else []
     )
 
     all_sample_names = [c.sample for c in satp_comps] + [c.sample for c in degas_comps]
@@ -771,6 +796,7 @@ def run_comparison(
     if config.save_bundle:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import create_bundle, save_bundle
+
         _resolved_inputs_mod.reset()
         # Use the union of all compositions for the bundle
         all_comps = satp_comps if satp_comps else degas_comps
@@ -792,14 +818,21 @@ def run_comparison(
         enabled=config.show_progress,
     ) as vp:
         if config.verbose and vp.console:
-            setup_logging(config.verbose, config.log_file, console=vp.console, level=config.verbose_level)
+            setup_logging(
+                config.verbose,
+                config.log_file,
+                console=vp.console,
+                level=config.verbose_level,
+            )
 
         # --- Saturation pressure ---
         if satp_compositions is not None:
             vp.update_description("\U0001f30b Saturation pressures")
             logger.info("=== Calculating saturation pressures ===")
             satp_df = calculate_saturation_pressure(
-                satp_compositions, models=models, config=config,
+                satp_compositions,
+                models=models,
+                config=config,
                 _progress=vp,
             )
             export_saturation_pressure(satp_df, satp_output)
@@ -816,7 +849,9 @@ def run_comparison(
                 )
                 logger.info("--- %s ---", comp.sample)
                 results = calculate_degassing(
-                    comp, models=models, config=config,
+                    comp,
+                    models=models,
+                    config=config,
                     _progress=vp,
                 )
                 export_degassing_paths(
@@ -837,7 +872,9 @@ def run_comparison(
     if satp_compositions is not None or degassing_compositions is not None:
         known_samples = [c.sample for c in (satp_comps + degas_comps)]
         _write_satp_summary_from_outputs(
-            degassing_output_dir, satp_output, output.get("satp_df"),
+            degassing_output_dir,
+            satp_output,
+            output.get("satp_df"),
             tools=list(model_names) + list(_USER_DROPPED_TOOLS),
             known_samples=known_samples,
         )
@@ -852,6 +889,7 @@ def run_comparison(
     if bundle_obj is not None:
         from volcatenate import resolved_inputs as _resolved_inputs_mod
         from volcatenate.reproducible import save_bundle
+
         bundle_obj.resolved_inputs = _resolved_inputs_mod.snapshot()
         save_bundle(bundle_obj, config.save_bundle)
 

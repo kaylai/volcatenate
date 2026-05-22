@@ -1,11 +1,15 @@
 """MAGEC backend — Magma And Gas Equilibrium Calculator (Sun & Yao, 2024).
 
-Runs MAGEC's compiled MATLAB solver (``.p``) via subprocess, using a bundled CSV wrapper for fast I/O. Requires:
-
-- MATLAB installed (with the bundled fsolve / lsqnonlin shims if the Optimization Toolbox is not available).
+Runs MAGEC's compiled MATLAB solver (``.p``) via subprocess, using a bundled CSV wrapper for fast
+I/O. Requires:
+- MATLAB installed (with the bundled fsolve / lsqnonlin shims if the Optimization Toolbox is not
+available).
 - ``MAGEC_Solver_v1b.p`` in the configured solver directory.
 
-The backend generates CSV input files, writes a MATLAB batch script that passes settings as a struct, and calls ``MAGEC_CSV_Wrapper.m`` which handles CSV↔xlsx conversion inside MATLAB before calling the ``.p`` solver. Python-side I/O is pure CSV, eliminating the slow openpyxl dependency for MAGEC.
+The backend generates CSV input files, writes a MATLAB batch script that passes settings as a
+struct, and calls ``MAGEC_CSV_Wrapper.m`` which handles CSV↔xlsx conversion inside MATLAB before
+calling the ``.p`` solver. Python-side I/O is pure CSV, eliminating the slow openpyxl dependency for
+MAGEC.
 """
 
 from __future__ import annotations
@@ -23,14 +27,15 @@ from volcatenate import columns as col
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.magec_converter import convert
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.convert import (
+    compute_cs_v_mf,
+    normalize_volatiles,
+    ensure_standard_columns,
+)
 from volcatenate.log import logger
 
-
 # ── Resolve bundled data directories (computed once at import) ──────
-_DATA_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir, "data")
-)
+_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "data"))
 _SOLVER_DIR = os.path.join(_DATA_DIR, "magec_solver")
 _SHIMS_DIR = os.path.join(_DATA_DIR, "magec_shims")
 
@@ -99,26 +104,32 @@ class Backend(ModelBackend):
         if info["status"] == "no_version_info":
             logger.warning(
                 "[MAGEC] No MAGEC_Solver_v*.p file found under %s — "
-                "version cannot be identified.", solver_dir,
+                "version cannot be identified.",
+                solver_dir,
             )
             return
 
         tag = info.get("tag") or "unknown"
         logger.info(
             "[MAGEC] Using %s (sha256 %s, source=%s) at %s",
-            tag, info["id"], info["source"], solver_dir,
+            tag,
+            info["id"],
+            info["source"],
+            solver_dir,
         )
         if info["source"] == "filename":
             logger.warning(
                 "[MAGEC] Solver hash %s does not match any known release. "
                 "Filename suggests %s but results with this version have "
                 "not been validated against volcatenate's MAGEC wrapper.",
-                info["id"], tag,
+                info["id"],
+                tag,
             )
         elif not info["tested"]:
             logger.warning(
                 "[MAGEC] %s has not been validated against volcatenate's "
-                "MAGEC wrapper. Proceeding anyway.", tag,
+                "MAGEC wrapper. Proceeding anyway.",
+                tag,
             )
 
     # ----------------------------------------------------------------
@@ -133,7 +144,9 @@ class Backend(ModelBackend):
         self._check_solver(config)
 
         cfg = resolve_sample_config(config.magec, comp.sample)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, "magec", comp.sample
+        )
         os.makedirs(work_dir, exist_ok=True)
 
         safe_name = comp.sample.replace("/", "_").replace(" ", "_")
@@ -171,8 +184,11 @@ class Backend(ModelBackend):
                     "MAGEC: no saturation found for %s in "
                     "%.1f–%.3f kbar range (%d steps, timeout=%ds). "
                     "Try increasing magec.p_start_kbar.",
-                    comp.sample, cfg.p_start_kbar, cfg.p_final_kbar,
-                    cfg.n_steps, cfg.timeout,
+                    comp.sample,
+                    cfg.p_start_kbar,
+                    cfg.p_final_kbar,
+                    cfg.n_steps,
+                    cfg.timeout,
                 )
                 return None
 
@@ -206,7 +222,10 @@ class Backend(ModelBackend):
 
         cfg = config.magec
         work_dir = os.path.join(
-            config.output_dir, config.raw_output_dir, "magec", "_batch_satp",
+            config.output_dir,
+            config.raw_output_dir,
+            "magec",
+            "_batch_satp",
         )
         os.makedirs(work_dir, exist_ok=True)
 
@@ -218,18 +237,22 @@ class Backend(ModelBackend):
         results: list[pd.Series | None] = [None] * len(comps)
         all_rows: list[dict] = []
         comp_index: dict[str, int] = {}  # sample name → index in comps
-        sample_cfgs: dict[str, Any] = {}  # sample name → resolved cfg
+        sample_cfgs: dict[str, Any] = {}  # sample name → resolved cfg # noqa
 
         for i, comp in enumerate(comps):
             try:
                 sample_cfg = resolve_sample_config(config.magec, comp.sample)
-                rows = _build_sample_input_rows(comp, sample_cfg, output_dir=config.output_dir)
+                rows = _build_sample_input_rows(
+                    comp, sample_cfg, output_dir=config.output_dir
+                )
                 all_rows.extend(rows)
                 comp_index[comp.sample] = i
                 sample_cfgs[comp.sample] = sample_cfg
             except Exception as exc:
                 logger.warning(
-                    "[MAGEC] Skipping %s in batch: %s", comp.sample, exc,
+                    "[MAGEC] Skipping %s in batch: %s",
+                    comp.sample,
+                    exc,
                 )
 
         if not all_rows:
@@ -243,14 +266,15 @@ class Backend(ModelBackend):
         batch_timeout = cfg.timeout + len(comp_index) * 10
         logger.info(
             "  MAGEC batch: %d samples, %d total rows, timeout=%ds",
-            len(comp_index), len(all_rows), batch_timeout,
+            len(comp_index),
+            len(all_rows),
+            batch_timeout,
         )
         _run_magec_matlab(in_csv, out_csv, cfg, timeout=batch_timeout)
 
         if not os.path.isfile(out_csv):
             warnings.warn(
-                "MAGEC batch produced no output. "
-                f"Check MATLAB logs in {work_dir}."
+                "MAGEC batch produced no output. " f"Check MATLAB logs in {work_dir}."
             )
             return results
 
@@ -277,7 +301,9 @@ class Backend(ModelBackend):
             sample_labels: list[str] = []
             for comp in comps:
                 if comp.sample in comp_index:
-                    sample_labels.extend([comp.sample] * sample_cfgs[comp.sample].n_steps)
+                    sample_labels.extend(
+                        [comp.sample] * sample_cfgs[comp.sample].n_steps
+                    )
             if len(sample_labels) == len(df):
                 df["_sample"] = sample_labels
             else:
@@ -305,9 +331,14 @@ class Backend(ModelBackend):
                 )
                 continue
 
-            state = saturated.iloc[0].drop(
-                ["_sample", "Run_ID"], errors="ignore",
-            ).copy()
+            state = (
+                saturated.iloc[0]
+                .drop(
+                    ["_sample", "Run_ID"],
+                    errors="ignore",
+                )
+                .copy()
+            )
             results[idx] = state
 
         # Cleanup
@@ -328,7 +359,9 @@ class Backend(ModelBackend):
         self._check_solver(config)
 
         cfg = resolve_sample_config(config.magec, comp.sample)
-        work_dir = os.path.join(config.output_dir, config.raw_output_dir, "magec", comp.sample)
+        work_dir = os.path.join(
+            config.output_dir, config.raw_output_dir, "magec", comp.sample
+        )
         os.makedirs(work_dir, exist_ok=True)
 
         safe_name = comp.sample.replace("/", "_").replace(" ", "_")
@@ -361,6 +394,7 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
 def _kc91_from_buffer(comp: MeltComposition) -> tuple[float, str]:
     """Compute Fe3+/FeT for a sample that only has dNNO or dFMQ.
 
@@ -392,7 +426,9 @@ def _kc91_from_buffer(comp: MeltComposition) -> tuple[float, str]:
     if np.isnan(fe3fet):
         logger.warning(
             "[MAGEC] KC91 inversion failed for %s (logfO2=%.3f at %.0f K)",
-            comp.sample, log_fo2, T_K,
+            comp.sample,
+            log_fo2,
+            T_K,
         )
         return float("nan"), src
 
@@ -443,10 +479,10 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
         # MAGEC doesn't accept dNNO directly — need KC91 conversion.
         # We surface this rather than silently switching to dFMQ.
         raise ValueError(
-            f"[MAGEC] redox_source='dnno' is not directly supported "
-            f"(MAGEC does not accept dNNO as a redox column). Use "
-            f"'kc91_from_buffer' to convert dNNO → Fe3+/FeT via KC91, "
-            f"or 'dfmq' / 'fe3fet' if those are available."
+            "[MAGEC] redox_source='dnno' is not directly supported "
+            "(MAGEC does not accept dNNO as a redox column). Use "
+            "'kc91_from_buffer' to convert dNNO → Fe3+/FeT via KC91, "
+            "or 'dfmq' / 'fe3fet' if those are available."
         )
     if src == "kc91_from_buffer":
         computed, label = _kc91_from_buffer(comp)
@@ -457,13 +493,15 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
             )
         logger.info(
             "[MAGEC] %s: KC91 conversion %s → Fe3+/FeT=%.4f",
-            comp.sample, label, computed,
+            comp.sample,
+            label,
+            computed,
         )
         return "Fe3+/FeT", computed
 
     # ── "auto" (default): preserve the existing behavior, with INFO ──
     # logging on each choice so the path is visible.
-    requested = cfg.redox_option   # e.g. "Fe3+/FeT"
+    requested = cfg.redox_option  # e.g. "Fe3+/FeT"
 
     # 1. honor the requested option if data is present.
     if requested == "Fe3+/FeT" and not np.isnan(fe3fet):
@@ -480,7 +518,9 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     if not np.isnan(fe3fet):
         logger.info(
             "[MAGEC] %s: requested redox=%s missing; using Fe3+/FeT (%.4f)",
-            comp.sample, requested, fe3fet,
+            comp.sample,
+            requested,
+            fe3fet,
         )
         return "Fe3+/FeT", float(fe3fet)
 
@@ -492,7 +532,9 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
             logger.warning(
                 "[MAGEC] %s: no Fe3+/FeT; computed %.4f via KC91 from %s "
                 "(see redox_source='kc91_from_buffer' to make this explicit)",
-                comp.sample, computed, label,
+                comp.sample,
+                computed,
+                label,
             )
             return "Fe3+/FeT", computed
 
@@ -509,9 +551,11 @@ def _build_sample_input_rows(
 ) -> list[dict]:
     """Build MAGEC input rows for a single sample (one row per pressure step).
 
-    Returns a list of row dicts ready for ``pd.DataFrame(rows)``. Raises ``ValueError`` if no usable redox indicator is available.
+    Returns a list of row dicts ready for ``pd.DataFrame(rows)``. Raises ``ValueError`` if no usable
+    redox indicator is available.
 
-    When ``output_dir`` is provided, also captures the resolved input via :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
+    When ``output_dir`` is provided, also captures the resolved input via
+    :mod:`volcatenate.resolved_inputs` so a sidecar yaml is written and the run-bundle picks it up.
     """
 
     redox_option, redox_value = _resolve_magec_redox(comp, cfg)
@@ -521,22 +565,32 @@ def _build_sample_input_rows(
     # 100 wt% (confirmed by MAGEC supplement example1.xlsx).  Typical
     # petrological input data includes volatiles in the ~100% total, so
     # oxides sum to ~96%.  We normalize here.
-    anhydrous_sum = (comp.SiO2 + comp.TiO2 + comp.Al2O3 + comp.Cr2O3
-                     + comp.FeOT + comp.MnO + comp.MgO + comp.CaO
-                     + comp.Na2O + comp.K2O + comp.P2O5)
+    anhydrous_sum = (
+        comp.SiO2
+        + comp.TiO2
+        + comp.Al2O3
+        + comp.Cr2O3
+        + comp.FeOT
+        + comp.MnO
+        + comp.MgO
+        + comp.CaO
+        + comp.Na2O
+        + comp.K2O
+        + comp.P2O5
+    )
     norm = 100.0 / anhydrous_sum
 
-    sio2  = comp.SiO2  * norm
-    tio2  = comp.TiO2  * norm
+    sio2 = comp.SiO2 * norm
+    tio2 = comp.TiO2 * norm
     al2o3 = comp.Al2O3 * norm
     cr2o3 = comp.Cr2O3 * norm
-    feot  = comp.FeOT  * norm
-    mno   = comp.MnO   * norm
-    mgo   = comp.MgO   * norm
-    cao   = comp.CaO   * norm
-    na2o  = comp.Na2O  * norm
-    k2o   = comp.K2O   * norm
-    p2o5  = comp.P2O5  * norm
+    feot = comp.FeOT * norm
+    mno = comp.MnO * norm
+    mgo = comp.MgO * norm
+    cao = comp.CaO * norm
+    na2o = comp.Na2O * norm
+    k2o = comp.K2O * norm
+    p2o5 = comp.P2O5 * norm
 
     # ── Convert volatile wt% → elemental wt% for MAGEC ──
     # MAGEC expects Bulk_H, Bulk_C, Bulk_S as ELEMENTAL weight percent
@@ -549,12 +603,12 @@ def _build_sample_input_rows(
     #   H2O → H:  multiply by 2*M_H / M_H2O = 2.0 / 18 = 1/9
     #   CO2 → C:  multiply by M_C / M_CO2    = 12 / 44  = 3/11
     #   S:         already elemental, just renormalize
-    _H2O_TO_H = 2.0 / 18   # ≈ 0.1111
-    _CO2_TO_C = 12. / 44    # ≈ 0.2727
+    _H2O_TO_H = 2.0 / 18  # ≈ 0.1111
+    _CO2_TO_C = 12.0 / 44  # ≈ 0.2727
 
     bulk_h = comp.H2O * norm * _H2O_TO_H
     bulk_c = comp.CO2 * norm * _CO2_TO_C
-    bulk_s = comp.S   * norm
+    bulk_s = comp.S * norm
 
     # Pressure grid (log-spaced, high -> low). Per-sample overrides
     # are already applied to cfg via resolve_sample_config.
@@ -569,34 +623,37 @@ def _build_sample_input_rows(
     # MAGEC solver expectations exactly.
     input_rows = []
     for i, p_kbar in enumerate(p_grid):
-        input_rows.append({
-            "Run_ID":                   f"{comp.sample}_{i+1}",
-            "T_degas (C)":              comp.T_C,
-            "P_final (kbar)":           cfg.p_final_kbar,
-            "P_degas (kbar)":           float(p_kbar),
-            "Initial redox options":    redox_option,
-            "Initial redox values":     redox_value,
-            "Reference P (kbar)":       np.nan,
-            "melt_SiO2 (wt%)":         sio2,
-            "melt_TiO2 (wt%)":         tio2,
-            "melt_Al2O3 (wt%)":        al2o3,
-            "melt_Cr2O3 (wt%)":        cr2o3,
-            "melt_FeOT (wt%)":         feot,
-            "melt_MgO (wt%)":          mgo,
-            "melt_MnO (wt%)":          mno,
-            "melt_CaO (wt%)":          cao,
-            "melt_Na2O (wt%)":         na2o,
-            "melt_K2O (wt%)":          k2o,
-            "melt_P2O5 (wt%)":         p2o5,
-            "Bulk_H (wt%)":            bulk_h,
-            "Bulk_C (wt%)":            bulk_c,
-            "Bulk_S (wt%)":            bulk_s,
-            "Reference":               "auto_satP",
-        })
+        input_rows.append(
+            {
+                "Run_ID": f"{comp.sample}_{i+1}",
+                "T_degas (C)": comp.T_C,
+                "P_final (kbar)": cfg.p_final_kbar,
+                "P_degas (kbar)": float(p_kbar),
+                "Initial redox options": redox_option,
+                "Initial redox values": redox_value,
+                "Reference P (kbar)": np.nan,
+                "melt_SiO2 (wt%)": sio2,
+                "melt_TiO2 (wt%)": tio2,
+                "melt_Al2O3 (wt%)": al2o3,
+                "melt_Cr2O3 (wt%)": cr2o3,
+                "melt_FeOT (wt%)": feot,
+                "melt_MgO (wt%)": mgo,
+                "melt_MnO (wt%)": mno,
+                "melt_CaO (wt%)": cao,
+                "melt_Na2O (wt%)": na2o,
+                "melt_K2O (wt%)": k2o,
+                "melt_P2O5 (wt%)": p2o5,
+                "Bulk_H (wt%)": bulk_h,
+                "Bulk_C (wt%)": bulk_c,
+                "Bulk_S (wt%)": bulk_s,
+                "Reference": "auto_satP",
+            }
+        )
 
     # Capture resolved input (first row + settings) for the bundle and sidecar yaml.
     if output_dir:
         from volcatenate.resolved_inputs import capture as _capture_resolved
+
         settings = {
             "solver_opt": float(cfg.solver),
             "sat_sulfide": float(cfg.sulfide_sat),
@@ -621,7 +678,8 @@ def _build_sample_input_rows(
                 "n_pressure_steps": len(input_rows),
                 "p_grid_kbar_first_last": (
                     [input_rows[0]["P_degas (kbar)"], input_rows[-1]["P_degas (kbar)"]]
-                    if input_rows else []
+                    if input_rows
+                    else []
                 ),
                 "settings": settings,
             },
@@ -675,11 +733,15 @@ def _create_magec_input_csv(
 ) -> None:
     """Generate the MAGEC input CSV file.
 
-    Column names and structure must match exactly what the MAGEC solver expects — see the original example files distributed with the MAGEC supplement.
+    Column names and structure must match exactly what the MAGEC solver expects — see the original
+    example files distributed with the MAGEC supplement.
 
-    When ``output_dir`` is provided, the wrapper also captures the resolved input via :mod:`volcatenate.resolved_inputs`.
+    When ``output_dir`` is provided, the wrapper also captures the resolved input via
+    :mod:`volcatenate.resolved_inputs`.
     """
-    _write_magec_csv(_build_sample_input_rows(comp, cfg, output_dir=output_dir), cfg, csv_path)
+    _write_magec_csv(
+        _build_sample_input_rows(comp, cfg, output_dir=output_dir), cfg, csv_path
+    )
 
 
 def _run_magec_matlab(
@@ -738,14 +800,14 @@ def _run_magec_matlab(
         # If the Optimization Toolbox IS installed, its functions stay
         # earlier on the path and take priority.
         f"addpath('{_SHIMS_DIR}', '-end');",
-        f"try",
+        "try",
         f"    settings = {settings_struct};",
         f"    MAGEC_CSV_Wrapper('{in_basename}', '{out_basename}', settings);",
-        f"    fprintf('MAGEC: OK\\n');",
-        f"catch ME",
-        f"    fprintf('MAGEC: FAILED - %s\\n', ME.message);",
-        f"end",
-        f"exit;",
+        "    fprintf('MAGEC: OK\\n');",
+        "catch ME",
+        "    fprintf('MAGEC: FAILED - %s\\n', ME.message);",
+        "end",
+        "exit;",
     ]
 
     with open(script_path, "w", encoding="ascii") as f:
@@ -766,7 +828,9 @@ def _run_magec_matlab(
             "saturation pressure is outside the search range "
             "(%s–%s kbar). "
             "Try increasing magec.p_start_kbar (or magec.timeout) in your config.",
-            effective_timeout, cfg.p_start_kbar, cfg.p_final_kbar,
+            effective_timeout,
+            cfg.p_start_kbar,
+            cfg.p_final_kbar,
         )
         return
 

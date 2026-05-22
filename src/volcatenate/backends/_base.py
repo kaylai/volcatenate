@@ -125,7 +125,9 @@ class ModelBackend(ABC):
             except Exception as exc:
                 logger.debug(
                     "%s batch satP failed for %s: %s",
-                    self.name, comp.sample, exc,
+                    self.name,
+                    comp.sample,
+                    exc,
                 )
                 state = None
             results.append(state)

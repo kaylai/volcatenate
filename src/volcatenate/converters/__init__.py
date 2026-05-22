@@ -31,10 +31,16 @@ from volcatenate.converters.dcompress_converter import (
 )
 
 __all__ = [
-    "convert_evo", "is_raw_evo",
-    "convert_volfe", "is_raw_volfe",
-    "convert_magec", "is_raw_magec",
-    "convert_vesical", "is_raw_vesical",
-    "convert_sulfurx", "is_raw_sulfurx",
-    "convert_dcompress", "is_raw_dcompress",
+    "convert_evo",
+    "is_raw_evo",
+    "convert_volfe",
+    "is_raw_volfe",
+    "convert_magec",
+    "is_raw_magec",
+    "convert_vesical",
+    "is_raw_vesical",
+    "convert_sulfurx",
+    "is_raw_sulfurx",
+    "convert_dcompress",
+    "is_raw_dcompress",
 ]

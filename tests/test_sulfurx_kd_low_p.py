@@ -7,6 +7,7 @@ Covers:
     when the wrapped block raises).
   - Runtime warning fires only when ``kd_low_p_threshold_mpa >= 20``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -22,8 +23,8 @@ from volcatenate.config import (
     save_config,
 )
 
-
 # ── YAML round-trip ─────────────────────────────────────────────────────────
+
 
 class TestKdLowPYamlRoundTrip:
     def test_defaults_survive_round_trip(self, tmp_path):
@@ -65,6 +66,7 @@ class TestKdLowPYamlRoundTrip:
 
 
 # ── _patch_kd_low_p set + restore ───────────────────────────────────────────
+
 
 @pytest.fixture
 def fake_degassingrun():
@@ -118,11 +120,21 @@ class TestPatchKdLowP:
 _KILAUEA = {
     "Sample": "KilaueaKdLowP",
     "T_C": 1200.0,
-    "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
-    "FeOT": 11.34, "MnO": 0.18, "MgO": 9.23, "CaO": 10.44,
-    "Na2O": 2.39, "K2O": 0.43, "P2O5": 0.27,
-    "H2O": 0.30, "CO2": 0.008, "S": 0.15,
-    "Fe3FeT": 0.18, "dNNO": -0.23,
+    "SiO2": 50.19,
+    "TiO2": 2.34,
+    "Al2O3": 12.79,
+    "FeOT": 11.34,
+    "MnO": 0.18,
+    "MgO": 9.23,
+    "CaO": 10.44,
+    "Na2O": 2.39,
+    "K2O": 0.43,
+    "P2O5": 0.27,
+    "H2O": 0.30,
+    "CO2": 0.008,
+    "S": 0.15,
+    "Fe3FeT": 0.18,
+    "dNNO": -0.23,
 }
 
 
@@ -146,15 +158,17 @@ class TestHighThresholdWarning:
 
         backend = Backend()
         comp = composition_from_dict(_KILAUEA)
-        
+
         cfg = _fast_sulfurx_run_config(tmp_path, kd_low_p_threshold_mpa=25.0)
 
         with caplog.at_level(logging.WARNING, logger="volcatenate"):
             backend.calculate_degassing(comp, cfg)
 
         matches = [
-            r for r in caplog.records
-            if "kd_low_p_threshold_mpa" in r.getMessage() and ">= 20 MPa" in r.getMessage()
+            r
+            for r in caplog.records
+            if "kd_low_p_threshold_mpa" in r.getMessage()
+            and ">= 20 MPa" in r.getMessage()
         ]
         assert matches, (
             "Expected a kd_low_p_threshold_mpa >= 20 MPa warning, but "
@@ -176,8 +190,10 @@ class TestHighThresholdWarning:
             backend.calculate_degassing(comp, cfg)
 
         matches = [
-            r for r in caplog.records
-            if "kd_low_p_threshold_mpa" in r.getMessage() and ">= 20 MPa" in r.getMessage()
+            r
+            for r in caplog.records
+            if "kd_low_p_threshold_mpa" in r.getMessage()
+            and ">= 20 MPa" in r.getMessage()
         ]
         assert not matches, (
             "Did not expect a >= 20 MPa warning at threshold=5.0; "

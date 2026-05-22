@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 from unittest import mock
-
-import pytest
 
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig
 from volcatenate.reproducible import (
-    RunBundle,
     create_bundle,
     save_bundle,
     load_bundle,
@@ -84,7 +80,9 @@ def test_resolved_inputs_capture_helper_writes_sidecar(tmp_path):
         output_dir=str(tmp_path),
     )
     snap = ri.snapshot()
-    assert snap == {"Sample1": {"TestBackend": {"a": 1, "b": [1, 2, 3], "nested": {"x": 1.5}}}}
+    assert snap == {
+        "Sample1": {"TestBackend": {"a": 1, "b": [1, 2, 3], "nested": {"x": 1.5}}}
+    }
     sidecar = tmp_path / "resolved_inputs" / "Sample1" / "TestBackend.yaml"
     assert sidecar.is_file()
 

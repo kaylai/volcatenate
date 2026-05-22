@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -25,8 +25,8 @@ class MeltComposition:
     SiO2: float = 0.0
     TiO2: float = 0.0
     Al2O3: float = 0.0
-    Cr2O3: float = 0.0     # only used by MAGEC; default 0
-    FeOT: float = 0.0      # total iron as FeO
+    Cr2O3: float = 0.0  # only used by MAGEC; default 0
+    FeOT: float = 0.0  # total iron as FeO
     MnO: float = 0.0
     MgO: float = 0.0
     CaO: float = 0.0
@@ -158,7 +158,9 @@ _COLUMN_ALIASES: dict[str, str] = {
 }
 
 
-def _mapped_to_composition(mapped: dict[str, object], fallback_name: str = "unknown") -> MeltComposition:
+def _mapped_to_composition(
+    mapped: dict[str, object], fallback_name: str = "unknown"
+) -> MeltComposition:
     """Build a MeltComposition from an alias-mapped dict.
 
     This is the shared logic used by both :func:`read_compositions`

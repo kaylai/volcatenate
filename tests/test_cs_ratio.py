@@ -17,8 +17,8 @@ import pytest
 from volcatenate import columns as col
 from volcatenate.convert import compute_cs_v_mf
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def all_species_zero() -> pd.DataFrame:
@@ -53,9 +53,16 @@ def _full_row(**overrides: float) -> pd.DataFrame:
     """
     row = {c: 0.0 for c in col.VAPOR_MF_COLUMNS}
     _alias = {
-        "CO2": _CO2, "CO": _CO, "CH4": _CH4, "OCS": _OCS,
-        "SO2": _SO2, "H2S": _H2S, "S2": _S2,
-        "H2O": _H2O, "H2": col.H2_V_MF, "O2": col.O2_V_MF,
+        "CO2": _CO2,
+        "CO": _CO,
+        "CH4": _CH4,
+        "OCS": _OCS,
+        "SO2": _SO2,
+        "H2S": _H2S,
+        "S2": _S2,
+        "H2O": _H2O,
+        "H2": col.H2_V_MF,
+        "O2": col.O2_V_MF,
     }
     for k, v in overrides.items():
         row[_alias.get(k, k)] = v
@@ -68,9 +75,16 @@ def _partial_row(**species: float) -> pd.DataFrame:
     Use when testing behavior with missing columns.
     """
     _alias = {
-        "CO2": _CO2, "CO": _CO, "CH4": _CH4, "OCS": _OCS,
-        "SO2": _SO2, "H2S": _H2S, "S2": _S2,
-        "H2O": _H2O, "H2": col.H2_V_MF, "O2": col.O2_V_MF,
+        "CO2": _CO2,
+        "CO": _CO,
+        "CH4": _CH4,
+        "OCS": _OCS,
+        "SO2": _SO2,
+        "H2S": _H2S,
+        "S2": _S2,
+        "H2O": _H2O,
+        "H2": col.H2_V_MF,
+        "O2": col.O2_V_MF,
     }
     return pd.DataFrame({_alias.get(k, k): [v] for k, v in species.items()})
 
@@ -87,17 +101,18 @@ def _expect(df: pd.DataFrame, expected: float) -> None:
 
 # ── 1. Stoichiometric correctness ────────────────────────────────────
 
+
 class TestStoichiometry:
     """Each species must contribute the correct number of C or S atoms."""
 
     @pytest.mark.parametrize(
         "c_col, c_val, s_col, s_val, expected",
         [
-            ("CO2", 0.6, "SO2", 0.3, 2.0),   # 1C : 1S
-            ("CO",  0.4, "SO2", 0.2, 2.0),   # 1C : 1S
+            ("CO2", 0.6, "SO2", 0.3, 2.0),  # 1C : 1S
+            ("CO", 0.4, "SO2", 0.2, 2.0),  # 1C : 1S
             ("CH4", 0.1, "SO2", 0.05, 2.0),  # 1C : 1S
-            ("CO2", 0.6, "H2S", 0.3, 2.0),   # 1C : 1S
-            ("CO2", 0.5, "S2",  0.25, 1.0),  # 1C : 2S → 0.5 / (2×0.25)
+            ("CO2", 0.6, "H2S", 0.3, 2.0),  # 1C : 1S
+            ("CO2", 0.5, "S2", 0.25, 1.0),  # 1C : 2S → 0.5 / (2×0.25)
         ],
         ids=["CO2:SO2", "CO:SO2", "CH4:SO2", "CO2:H2S", "CO2:S2"],
     )
@@ -118,10 +133,11 @@ class TestStoichiometry:
 
     def test_full_formula_all_species(self):
         """Hand-verified calculation with every species populated."""
-        df = _full_row(CO2=0.20, CO=0.05, CH4=0.02, OCS=0.03,
-                       SO2=0.10, H2S=0.04, S2=0.01)
-        c = 0.20 + 0.05 + 0.02 + 0.03            # = 0.30
-        s = 0.10 + 0.04 + 2 * 0.01 + 0.03        # = 0.19
+        df = _full_row(
+            CO2=0.20, CO=0.05, CH4=0.02, OCS=0.03, SO2=0.10, H2S=0.04, S2=0.01
+        )
+        c = 0.20 + 0.05 + 0.02 + 0.03  # = 0.30
+        s = 0.10 + 0.04 + 2 * 0.01 + 0.03  # = 0.19
         _expect(df, c / s)
 
     def test_s2_as_sole_sulfur_species(self):
@@ -131,11 +147,13 @@ class TestStoichiometry:
 
 # ── 2. NaN handling ──────────────────────────────────────────────────
 
+
 class TestNaNHandling:
     """NaN in a species column means that model doesn't track it → 0."""
 
-    @pytest.mark.parametrize("nan_col", [_S2, _OCS, _CO, _CH4],
-                             ids=["S2", "OCS", "CO", "CH4"])
+    @pytest.mark.parametrize(
+        "nan_col", [_S2, _OCS, _CO, _CH4], ids=["S2", "OCS", "CO", "CH4"]
+    )
     def test_single_nan_species_ignored(self, nan_col):
         """A NaN in one species doesn't poison the ratio."""
         df = _full_row(CO2=0.6, SO2=0.3)
@@ -162,13 +180,18 @@ class TestNaNHandling:
 
     def test_nan_per_row_independence(self):
         """NaN in one row doesn't affect another row's result."""
-        df = pd.DataFrame({
-            _CO2: [0.5, 0.5],
-            _SO2: [0.25, 0.25],
-            _S2:  [np.nan, 0.125],
-            **{c: [0.0, 0.0] for c in col.VAPOR_MF_COLUMNS
-               if c not in (_CO2, _SO2, _S2)},
-        })
+        df = pd.DataFrame(
+            {
+                _CO2: [0.5, 0.5],
+                _SO2: [0.25, 0.25],
+                _S2: [np.nan, 0.125],
+                **{
+                    c: [0.0, 0.0]
+                    for c in col.VAPOR_MF_COLUMNS
+                    if c not in (_CO2, _SO2, _S2)
+                },
+            }
+        )
         result = compute_cs_v_mf(df.copy())
         # Row 0: S₂ NaN→0 → S=0.25 → C/S=2.0
         assert result[col.CS_V_MF].iloc[0] == pytest.approx(2.0)
@@ -177,6 +200,7 @@ class TestNaNHandling:
 
 
 # ── 3. Zero denominator ─────────────────────────────────────────────
+
 
 class TestZeroDenominator:
     """C/S must be NaN when total sulfur atoms = 0."""
@@ -192,6 +216,7 @@ class TestZeroDenominator:
 
 
 # ── 4. Missing columns ──────────────────────────────────────────────
+
 
 class TestMissingColumns:
     """DataFrames that lack some or all species columns entirely."""
@@ -224,30 +249,30 @@ class TestMissingColumns:
 
 # ── 5. Per-model scenarios ───────────────────────────────────────────
 
+
 class TestModelScenarios:
     """Realistic species availability for each volcanic model backend."""
 
     def test_evo(self):
         """EVo: 9 gas species, OCS = 0.0 (not modeled)."""
-        df = _full_row(CO2=0.30, CO=0.02, CH4=0.001,
-                       SO2=0.05, H2S=0.01, S2=0.005)
-        c = 0.30 + 0.02 + 0.001       # OCS=0
-        s = 0.05 + 0.01 + 2 * 0.005   # OCS=0
+        df = _full_row(CO2=0.30, CO=0.02, CH4=0.001, SO2=0.05, H2S=0.01, S2=0.005)
+        c = 0.30 + 0.02 + 0.001  # OCS=0
+        s = 0.05 + 0.01 + 2 * 0.005  # OCS=0
         _expect(df, c / s)
 
     def test_volfe(self):
         """VolFe: all species including OCS with real values."""
-        df = _full_row(CO2=0.25, CO=0.01, CH4=0.001, OCS=0.005,
-                       SO2=0.04, H2S=0.008, S2=0.003)
+        df = _full_row(
+            CO2=0.25, CO=0.01, CH4=0.001, OCS=0.005, SO2=0.04, H2S=0.008, S2=0.003
+        )
         c = 0.25 + 0.01 + 0.001 + 0.005
         s = 0.04 + 0.008 + 2 * 0.003 + 0.005
         _expect(df, c / s)
 
     def test_magec(self):
         """MAGEC: all species, COS mapped to OCS column."""
-        df = _full_row(CO2=0.20, CO=0.005, OCS=0.002,
-                       SO2=0.03, H2S=0.01, S2=0.001)
-        c = 0.20 + 0.005 + 0.002      # CH4=0
+        df = _full_row(CO2=0.20, CO=0.005, OCS=0.002, SO2=0.03, H2S=0.01, S2=0.001)
+        c = 0.20 + 0.005 + 0.002  # CH4=0
         s = 0.03 + 0.01 + 2 * 0.001 + 0.002
         _expect(df, c / s)
 
@@ -270,30 +295,39 @@ class TestModelScenarios:
 
 # ── 6. Multi-row / degassing path ───────────────────────────────────
 
+
 class TestMultiRow:
     """Element-wise computation across rows in a degassing path."""
 
     def test_each_row_independent(self):
         """Two rows with different compositions get different C/S."""
-        df = pd.DataFrame({
-            _CO2: [0.6, 0.3],
-            _SO2: [0.3, 0.1],
-            **{c: [0.0, 0.0] for c in col.VAPOR_MF_COLUMNS
-               if c not in (_CO2, _SO2)},
-        })
+        df = pd.DataFrame(
+            {
+                _CO2: [0.6, 0.3],
+                _SO2: [0.3, 0.1],
+                **{
+                    c: [0.0, 0.0] for c in col.VAPOR_MF_COLUMNS if c not in (_CO2, _SO2)
+                },
+            }
+        )
         result = compute_cs_v_mf(df.copy())
         assert result[col.CS_V_MF].iloc[0] == pytest.approx(2.0)
         assert result[col.CS_V_MF].iloc[1] == pytest.approx(3.0)
 
     def test_degassing_path_monotonic_decrease(self):
         """C/S decreases as sulfur species increase during degassing."""
-        df = pd.DataFrame({
-            col.P_BARS: [1000, 500, 100],
-            _CO2: [0.50, 0.40, 0.20],
-            _SO2: [0.01, 0.05, 0.15],
-            **{c: [0.0, 0.0, 0.0] for c in col.VAPOR_MF_COLUMNS
-               if c not in (_CO2, _SO2)},
-        })
+        df = pd.DataFrame(
+            {
+                col.P_BARS: [1000, 500, 100],
+                _CO2: [0.50, 0.40, 0.20],
+                _SO2: [0.01, 0.05, 0.15],
+                **{
+                    c: [0.0, 0.0, 0.0]
+                    for c in col.VAPOR_MF_COLUMNS
+                    if c not in (_CO2, _SO2)
+                },
+            }
+        )
         result = compute_cs_v_mf(df.copy())
         cs = result[col.CS_V_MF].values
         assert cs[0] == pytest.approx(50.0)
@@ -303,6 +337,7 @@ class TestMultiRow:
 
 
 # ── 7. Function contract ────────────────────────────────────────────
+
 
 class TestFunctionContract:
     """Verify API behavior: mutation, return value, overwrite."""
@@ -345,6 +380,7 @@ class TestFunctionContract:
 
 # ── 8. Empty DataFrame ──────────────────────────────────────────────
 
+
 class TestEmptyDataFrame:
 
     def test_empty_with_species_columns(self):
@@ -364,6 +400,7 @@ class TestEmptyDataFrame:
 
 # ── 9. Column definitions ───────────────────────────────────────────
 
+
 class TestColumnDefinitions:
     """Verify columns.py definitions are self-consistent."""
 
@@ -373,9 +410,9 @@ class TestColumnDefinitions:
 
     def test_all_species_in_vapor_mf_columns(self):
         for species in {*col.C_SPECIES, *col.S_SPECIES}:
-            assert species in col.VAPOR_MF_COLUMNS, (
-                f"{species} in C/S dicts but not in VAPOR_MF_COLUMNS"
-            )
+            assert (
+                species in col.VAPOR_MF_COLUMNS
+            ), f"{species} in C/S dicts but not in VAPOR_MF_COLUMNS"
 
     def test_stoichiometric_coefficients(self):
         """Pin the exact coefficients that define the formula."""

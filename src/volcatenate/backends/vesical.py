@@ -23,16 +23,19 @@ from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.vesical_converter import convert
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
-
+from volcatenate.convert import (
+    compute_cs_v_mf,
+    normalize_volatiles,
+    ensure_standard_columns,
+)
 
 # Display name → VESIcal internal model name
 VARIANT_MAP: dict[str, str] = {
-    "VESIcal_MS":                   "MagmaSat",
-    "VESIcal_Dixon":                "Dixon",
-    "VESIcal_Iacono":               "IaconoMarziano",
-    "VESIcal_IaconoMarziano":       "IaconoMarziano",
-    "VESIcal_Liu":                  "Liu",
+    "VESIcal_MS": "MagmaSat",
+    "VESIcal_Dixon": "Dixon",
+    "VESIcal_Iacono": "IaconoMarziano",
+    "VESIcal_IaconoMarziano": "IaconoMarziano",
+    "VESIcal_Liu": "Liu",
     "VESIcal_ShishkinaIdealMixing": "ShishkinaIdealMixing",
 }
 
@@ -65,6 +68,7 @@ class Backend(ModelBackend):
     def is_available(self) -> bool:
         try:
             import VESIcal  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -112,6 +116,7 @@ class Backend(ModelBackend):
 
             except Exception as exc:
                 from volcatenate.log import logger
+
                 _log_captured_warnings(captured, comp.sample, "satP")
                 logger.warning("[VESIcal] satP failed for %s: %s", comp.sample, exc)
                 return None
@@ -153,6 +158,7 @@ class Backend(ModelBackend):
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
+
 
 def _get_vesical_model(variant: str):
     """Return the VESIcal solubility-model object for ``variant``.
@@ -202,6 +208,7 @@ def _quiet_vesical():
             yield
     finally:
         from volcatenate.log import logger
+
         for buf in (buf_out, buf_err):
             captured = buf.getvalue()
             if captured.strip():
@@ -221,10 +228,14 @@ def _log_captured_warnings(captured, sample: str, phase: str) -> None:
     if not captured:
         return
     from volcatenate.log import logger
+
     for w in captured:
         logger.debug(
             "[VESIcal/%s/%s] %s: %s",
-            phase, sample, w.category.__name__, w.message,
+            phase,
+            sample,
+            w.category.__name__,
+            w.message,
         )
 
 
@@ -233,8 +244,7 @@ def _build_sample_dict(comp: MeltComposition) -> dict:
     d = {}
 
     # Major oxides
-    for key in ["SiO2", "TiO2", "Al2O3", "MnO", "MgO", "CaO",
-                "Na2O", "K2O", "P2O5"]:
+    for key in ["SiO2", "TiO2", "Al2O3", "MnO", "MgO", "CaO", "Na2O", "K2O", "P2O5"]:
         val = getattr(comp, key, 0.0)
         if val > 0:
             d[key] = val

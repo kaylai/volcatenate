@@ -82,21 +82,29 @@ def feot_from_speciated(feo: float, fe2o3: float) -> float:
 #
 # Molecular weights for single-cation mole fractions:
 _MW_SINGLE_CATION = {
-    "SiO2": 60.08,    # SiO₂
-    "TiO2": 79.87,    # TiO₂
-    "Al2O3": 50.98,   # AlO₁.₅ (= Al₂O₃/2)
-    "FeOT": 71.844,   # FeO
-    "MnO": 70.94,     # MnO
-    "MgO": 40.30,     # MgO
-    "CaO": 56.08,     # CaO
-    "Na2O": 30.99,    # NaO₀.₅ (= Na₂O/2)
-    "K2O": 47.10,     # KO₀.₅ (= K₂O/2)
-    "P2O5": 70.97,    # PO₂.₅ (= P₂O₅/2)
+    "SiO2": 60.08,  # SiO₂
+    "TiO2": 79.87,  # TiO₂
+    "Al2O3": 50.98,  # AlO₁.₅ (= Al₂O₃/2)
+    "FeOT": 71.844,  # FeO
+    "MnO": 70.94,  # MnO
+    "MgO": 40.30,  # MgO
+    "CaO": 56.08,  # CaO
+    "Na2O": 30.99,  # NaO₀.₅ (= Na₂O/2)
+    "K2O": 47.10,  # KO₀.₅ (= K₂O/2)
+    "P2O5": 70.97,  # PO₂.₅ (= P₂O₅/2)
 }
 # Number of single-cation formula units per formula unit:
 _N_CATION = {
-    "SiO2": 1, "TiO2": 1, "Al2O3": 2, "FeOT": 1, "MnO": 1,
-    "MgO": 1, "CaO": 1, "Na2O": 2, "K2O": 2, "P2O5": 2,
+    "SiO2": 1,
+    "TiO2": 1,
+    "Al2O3": 2,
+    "FeOT": 1,
+    "MnO": 1,
+    "MgO": 1,
+    "CaO": 1,
+    "Na2O": 2,
+    "K2O": 2,
+    "P2O5": 2,
 }
 
 
@@ -160,34 +168,38 @@ def fe3fet_kc91(
     c = -6.675
     d = {
         "Al2O3": -2.243,
-        "FeOT":  -1.828,
-        "CaO":    3.201,
-        "Na2O":   5.854,
-        "K2O":    6.215,
+        "FeOT": -1.828,
+        "CaO": 3.201,
+        "Na2O": 5.854,
+        "K2O": 6.215,
     }
     e = -3.36
-    f = -7.01e-7   # Pa⁻¹ — note: KC91 uses P in Pascal
+    f = -7.01e-7  # Pa⁻¹ — note: KC91 uses P in Pascal
     g = -1.114
-    T0 = 1673.0    # reference T (K)
+    T0 = 1673.0  # reference T (K)
 
     xmf = _oxide_mole_fractions(composition)
 
     # ln(XFe2O3/XFeO) term
     ln_ratio = (
-        a * np.log(10.0) * log_fo2   # a * ln(fO₂)
+        a * np.log(10.0) * log_fo2  # a * ln(fO₂)
         + b / T_K
         + c
         + sum(coeff * xmf.get(ox, 0.0) for ox, coeff in d.items())
-        + e * (
-            xmf.get("Al2O3", 0.0) * xmf.get("FeOT", 0.0)
+        + e
+        * (
+            xmf.get("Al2O3", 0.0)
+            * xmf.get("FeOT", 0.0)
             / max(
-                xmf.get("Al2O3", 0.0) + xmf.get("FeOT", 0.0)
-                + xmf.get("CaO", 0.0) + xmf.get("Na2O", 0.0)
+                xmf.get("Al2O3", 0.0)
+                + xmf.get("FeOT", 0.0)
+                + xmf.get("CaO", 0.0)
+                + xmf.get("Na2O", 0.0)
                 + xmf.get("K2O", 0.0),
                 1e-20,
             )
         )
-        + f * (P_bar * 1e5) / T_K     # convert bar → Pa
+        + f * (P_bar * 1e5) / T_K  # convert bar → Pa
         + g * (T0 / T_K * np.log(T_K / T0) + 1.0 - T0 / T_K)
     )
 

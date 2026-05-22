@@ -26,7 +26,11 @@ from volcatenate.backends._base import ModelBackend
 from volcatenate.composition import MeltComposition
 from volcatenate.config import RunConfig, resolve_sample_config
 from volcatenate.converters.sulfurx_converter import convert
-from volcatenate.convert import compute_cs_v_mf, normalize_volatiles, ensure_standard_columns
+from volcatenate.convert import (
+    compute_cs_v_mf,
+    normalize_volatiles,
+    ensure_standard_columns,
+)
 from volcatenate.iron import fe3fet_kc91
 
 
@@ -77,7 +81,9 @@ def _build_composition(comp: MeltComposition) -> dict:
     }
 
 
-def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, constant_h2o):
+def _find_saturation_pressure_im(
+    composition, tk, co2_ppm, h2o_wt, slope_h2o, constant_h2o
+):
     """Find Iacono-Marziano saturation pressure using multiple initial guesses.
 
     SulfurX's ``IaconoMarziano.saturation_pressure()`` uses
@@ -114,9 +120,11 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
         # Build the IM object once per pressure — it computes derived
         # quantities (mole fractions, NBO) in __init__.
         coh = IaconoMarziano(
-            pressure=g_mpa, temperature_k=tk,
+            pressure=g_mpa,
+            temperature_k=tk,
             composition=composition,
-            a=slope_h2o, b=constant_h2o,
+            a=slope_h2o,
+            b=constant_h2o,
         )
 
         # Pre-compute the args that saturation_pressure() normally
@@ -137,11 +145,22 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
         xcao = coh.ncao / ntot_h
         denom = xcao + xna2o + xk2o
         AI = xal2o3 / denom if denom > 0 else 0.0
-        NBO = (2 * (xh2o + xk2o + xna2o + xcao + xmgo + xfeo - xal2o3)
-               / (2 * xsio2 + 2 * xtio2 + 3 * xal2o3
-                  + xmgo + xfeo + xcao + xna2o + xk2o + xh2o))
-        args = (h2o_0, co2_0, AI, xfeo + xmgo, xna2o + xk2o,
-                NBO, coh.ntot, coh.Tkc)
+        NBO = (
+            2
+            * (xh2o + xk2o + xna2o + xcao + xmgo + xfeo - xal2o3)
+            / (
+                2 * xsio2
+                + 2 * xtio2
+                + 3 * xal2o3
+                + xmgo
+                + xfeo
+                + xcao
+                + xna2o
+                + xk2o
+                + xh2o
+            )
+        )
+        args = (h2o_0, co2_0, AI, xfeo + xmgo, xna2o + xk2o, NBO, coh.ntot, coh.Tkc)
 
         for xh2o_g in xh2o_guesses:
             u0 = np.array([guess_bar, xh2o_g])
@@ -159,8 +178,13 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
             if P_sat <= 0 or XH2O_f <= 0 or XH2O_f >= 1:
                 continue
 
-            logger.debug("[SulfurX] guess %g MPa xh2o=%.2f → %.0f bar XH2O=%.4f ✓",
-                         g_mpa, xh2o_g, P_sat, XH2O_f)
+            logger.debug(
+                "[SulfurX] guess %g MPa xh2o=%.2f → %.0f bar XH2O=%.4f ✓",
+                g_mpa,
+                xh2o_g,
+                P_sat,
+                XH2O_f,
+            )
             candidates.append((P_sat, XH2O_f, g_mpa))
 
     n_total = len(guesses_mpa) * len(xh2o_guesses)
@@ -196,7 +220,10 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     )
     logger.debug(
         "[SulfurX] %d cluster(s) from %d/%d converged guesses: %s",
-        len(clusters), len(candidates), n_total, cluster_summary,
+        len(clusters),
+        len(candidates),
+        n_total,
+        cluster_summary,
     )
 
     # Within the winning cluster, take the median
@@ -205,7 +232,10 @@ def _find_saturation_pressure_im(composition, tk, co2_ppm, h2o_wt, slope_h2o, co
     logger.debug(
         "[SulfurX] Final satP: %.1f bar (from %d/%d converged guesses, "
         "best initial guess %d MPa)",
-        P_sat, len(candidates), n_total, g_mpa,
+        P_sat,
+        len(candidates),
+        n_total,
+        g_mpa,
     )
     return P_sat, XH2O_f
 
@@ -239,6 +269,7 @@ def _patch_composition(composition: dict):
 
     class _Patched:
         """Drop-in replacement that returns the volcatenate composition."""
+
         def __init__(self, melt_fraction, choice):
             self.composition = dict(normed)  # fresh copy each time
 
@@ -288,13 +319,15 @@ def _nno_frost1991(T_K: float, P_bar: float = 1.0) -> float:
     return -24930.0 / T_K + 9.36 + 0.046 * (P_bar - 1) / T_K
 
 
-def _logfo2_from_fe3fet(fe3fet: float, T_K: float,
-                        composition: dict[str, float]) -> float:
+def _logfo2_from_fe3fet(
+    fe3fet: float, T_K: float, composition: dict[str, float]
+) -> float:
     """Invert KC91 to get logfO2 from Fe3+/FeT at 1 bar.
 
     Uses Brent's method to find the logfO2 that makes
     ``fe3fet_kc91(logfO2, T_K, composition) == fe3fet``.
     """
+
     def residual(logfo2):
         return fe3fet_kc91(logfo2, T_K, composition, P_bar=1.0) - fe3fet
 
@@ -336,14 +369,19 @@ def _compute_delta_fmq(comp: MeltComposition) -> float:
             logger.info(
                 "[SulfurX] Fe3FeT=%.3f → logfO2=%.3f → dFMQ=%.4f "
                 "(Frost 1991 FMQ at %.0f °C = %.3f)",
-                fe3fet, logfo2, delta, comp.T_C, fmq_1bar,
+                fe3fet,
+                logfo2,
+                delta,
+                comp.T_C,
+                fmq_1bar,
             )
             return delta
         except ValueError as exc:
             logger.warning(
                 "[SulfurX] KC91 inversion failed for Fe3FeT=%.3f: %s. "
                 "Falling back to dNNO.",
-                fe3fet, exc,
+                fe3fet,
+                exc,
             )
 
     # --- Path 3: dNNO → Frost NNO → logfO2 → dFMQ ---
@@ -353,16 +391,20 @@ def _compute_delta_fmq(comp: MeltComposition) -> float:
         logger.info(
             "[SulfurX] dNNO=%.3f → dFMQ=%.4f "
             "(Frost 1991: NNO=%.3f, FMQ=%.3f at %.0f °C)",
-            comp.dNNO, delta, nno_1bar, fmq_1bar, comp.T_C,
+            comp.dNNO,
+            delta,
+            nno_1bar,
+            fmq_1bar,
+            comp.T_C,
         )
         return delta
 
-    raise ValueError(
-        "SulfurX requires a redox constraint: dFMQ, Fe3FeT, or dNNO."
-    )
+    raise ValueError("SulfurX requires a redox constraint: dFMQ, Fe3FeT, or dNNO.")
 
 
-def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) -> pd.DataFrame:
+def _run_degassing(
+    comp: MeltComposition, cfg, output_dir: str | None = None
+) -> pd.DataFrame:
     """Run the full SulfurX degassing path.
 
     Translates the workflow from SulfurX's ``main_Fuego.py`` into a callable function, bypassing
@@ -416,13 +458,14 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
         "Fe": cfg.sulfide.fe,
         "Ni": cfg.sulfide.ni,
         "Cu": cfg.sulfide.cu,
-        "O":  cfg.sulfide.o,
-        "S":  cfg.sulfide.s,
+        "O": cfg.sulfide.o,
+        "S": cfg.sulfide.s,
     }
 
     # Capture resolved input for the bundle / sidecar yaml.
     if output_dir is not None:
         from volcatenate.resolved_inputs import capture as _capture_resolved
+
         _capture_resolved(
             sample=comp.sample,
             backend="SulfurX",
@@ -459,23 +502,32 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
     # and picks the converged result.
     if coh_model == 0:
         P_initial, XH2Of_initial = _find_saturation_pressure_im(
-            composition, tk, co2_ppm, h2o_wt, slope_h2o, constant_h2o,
+            composition,
+            tk,
+            co2_ppm,
+            h2o_wt,
+            slope_h2o,
+            constant_h2o,
         )
         # Reinitialize at saturation pressure (as main_Fuego.py does)
         from Iacono_Marziano_COH import IaconoMarziano
 
-        coh = IaconoMarziano(
-            pressure=P_initial / 10, temperature_k=tk,
+        coh = IaconoMarziano( # noqa
+            pressure=P_initial / 10,
+            temperature_k=tk,
             composition=composition,
-            a=slope_h2o, b=constant_h2o,
+            a=slope_h2o,
+            b=constant_h2o,
         )
     else:
         # VC_COH is SulfurX's port of Newman & Lowenstern (2002) VolatileCalc.
         from VC_COH import VolatileCalc
 
         vc = VolatileCalc(
-            TK=tk, sio2=composition["SiO2"],
-            a=slope_h2o, b=constant_h2o,
+            TK=tk,
+            sio2=composition["SiO2"],
+            a=slope_h2o,
+            b=constant_h2o,
         )
         result = vc.SatPress(WtH2O=h2o_wt, PPMCO2=co2_ppm)
         P_initial = result[0]
@@ -504,13 +556,21 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
 
     phi = Fugacity(P_initial / 10, temperature)
     re = PartitionCoefficient(
-        P_initial / 10, tk, composition, h2o_wt,
-        phi.phiH2O, phi.phiH2S, phi.phiSO2, monte=0,
+        P_initial / 10,
+        tk,
+        composition,
+        h2o_wt,
+        phi.phiH2O,
+        phi.phiH2S,
+        phi.phiSO2,
+        monte=0,
     )
     solubility = Sulfur_Saturation(
-        P=P_initial / 10, T=temperature,
+        P=P_initial / 10,
+        T=temperature,
         sulfide_composition=sulfide,
-        composition=composition, h2o=h2o_wt,
+        composition=composition,
+        h2o=h2o_wt,
         ferric_fe=ferric_ratio_0,
     )
 
@@ -520,20 +580,22 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
         fo2=10 ** fo2_0.fo2(ferric_ratio_0),
     )
     rs_melt = Sulfur_Iron(
-        ferric_iron=ferric_ratio_0, temperature=temperature,
-        model_choice=s_fe_choice, composition=composition,
+        ferric_iron=ferric_ratio_0,
+        temperature=temperature,
+        model_choice=s_fe_choice,
+        composition=composition,
         o2=fo2_0.fmq() + delta_FMQ,
     )
     rs_melt_initial = rs_melt.sulfate
 
-    e_balance_initial = (
-        (s_ppm / 10000) * (1 - rs_melt_initial) * 8 / 32.065
-        + (1 - ferric_ratio_0) * composition["FeOT"] / (55.845 + 15.999)
-    )
+    e_balance_initial = (s_ppm / 10000) * (1 - rs_melt_initial) * 8 / 32.065 + (
+        1 - ferric_ratio_0
+    ) * composition["FeOT"] / (55.845 + 15.999)
 
     logger.debug(
         "[SulfurX] Initial Fe3+/FeT: %.4f, S6+/ST: %.4f",
-        ferric_ratio_0, rs_melt_initial,
+        ferric_ratio_0,
+        rs_melt_initial,
     )
 
     # ── Step 4: Populate initial row ───────────────────────────────
@@ -549,8 +611,7 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
 
     if sulfide_pre == 0:
         XS_initial = (s_ppm / (10000 * 32.065)) / (
-            re.ntot + s_ppm / (10000 * 32.065)
-            + re.nh + co2_ppm / (10000 * 44.01)
+            re.ntot + s_ppm / (10000 * 32.065) + re.nh + co2_ppm / (10000 * 44.01)
         )
         df_results.iloc[0, i0("wS_melt")] = s_ppm
         df_results.iloc[0, i0("sulfide_frac")] = 0
@@ -560,17 +621,18 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
             df_results.iloc[0, i0("wS_melt")] = s_ppm
             df_results.iloc[0, i0("sulfide_frac")] = 0
             XS_initial = (s_ppm / (10000 * 32.065)) / (
-                re.ntot + s_ppm / (10000 * 32.065)
-                + re.nh + co2_ppm / (10000 * 44.01)
+                re.ntot + s_ppm / (10000 * 32.065) + re.nh + co2_ppm / (10000 * 44.01)
             )
         else:
             df_results.iloc[0, i0("wS_melt")] = scss_val
-            df_results.iloc[0, i0("sulfide_frac")] = (
-                (s_ppm - scss_val) / (sulfide["S"] * 10000)
+            df_results.iloc[0, i0("sulfide_frac")] = (s_ppm - scss_val) / (
+                sulfide["S"] * 10000
             )
             XS_initial = (scss_val / (10000 * 32.065)) / (
-                re.ntot + scss_val / (10000 * 32.065)
-                + re.nh + co2_ppm / (10000 * 44.01)
+                re.ntot
+                + scss_val / (10000 * 32.065)
+                + re.nh
+                + co2_ppm / (10000 * 44.01)
             )
 
     df_results.iloc[0, i0("wH2O_melt")] = h2o_wt
@@ -612,8 +674,12 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
     # Also patch SulfurX's INC / BAR globals (the low-P kd-increment
     # knob in degassingrun.py) to the values from SulfurXConfig, so
     # repeated runs in the same Python session don't leak state.
-    with _patch_composition(composition), _patch_kd_low_p(
-        kd_low_p_increment, kd_low_p_threshold_mpa,
+    with (
+        _patch_composition(composition),
+        _patch_kd_low_p(
+            kd_low_p_increment,
+            kd_low_p_threshold_mpa,
+        ),
     ):
         for i in range(1, n_steps):
             degas = COHS_degassing(
@@ -633,14 +699,18 @@ def _run_degassing(comp: MeltComposition, cfg, output_dir: str | None = None) ->
             )
             if fo2_tracker == 1:
                 df_results.iloc[i] = degas.degassing_redox(
-                    df_results=df_results, index=i,
+                    df_results=df_results,
+                    index=i,
                     e_balance_initial=df_results["electron_balance"][i - 1],
-                    sigma=sigma, sulfide_pre=sulfide_pre,
+                    sigma=sigma,
+                    sulfide_pre=sulfide_pre,
                 )
             else:
                 df_results.iloc[i] = degas.degassing_noredox(
-                    df_results=df_results, index=i,
-                    delta_FMQ=delta_FMQ, sulfide_pre=sulfide_pre,
+                    df_results=df_results,
+                    index=i,
+                    delta_FMQ=delta_FMQ,
+                    sulfide_pre=sulfide_pre,
                 )
 
     return df_results
@@ -704,8 +774,14 @@ def _compute_saturation_state(
 
     # Compute partition coefficients for sulfur vapor species
     re = PartitionCoefficient(
-        P_sat / 10, tk, composition, h2o_wt,
-        phi.phiH2O, phi.phiH2S, phi.phiSO2, monte=0,
+        P_sat / 10,
+        tk,
+        composition,
+        h2o_wt,
+        phi.phiH2O,
+        phi.phiH2S,
+        phi.phiSO2,
+        monte=0,
     )
 
     # --- Sulfur vapor species at saturation ---
@@ -715,15 +791,17 @@ def _compute_saturation_state(
     XS_melt = s_moles / (re.ntot + s_moles + re.nh + co2_moles)
 
     # Partition coefficients for H2S (RxnI) and SO2 (RxnII)
-    kd1 = re.kd_rxn1(XH2O_f)               # H2S Kd
-    fO2_linear = 10.0 ** logfo2             # linear fO2 in bars
-    kd2 = re.kd_rxn2(fO2_linear)            # SO2 Kd
+    kd1 = re.kd_rxn1(XH2O_f)  # H2S Kd
+    fO2_linear = 10.0**logfo2  # linear fO2 in bars
+    kd2 = re.kd_rxn2(fO2_linear)  # SO2 Kd
 
     # SO2 / (SO2 + H2S) ratio in vapor from gas equilibrium
-    fH2O = XH2O_f * P_sat * phi.phiH2O     # H2O fugacity in bars
+    fH2O = XH2O_f * P_sat * phi.phiH2O  # H2O fugacity in bars
     SO2_ST_vapor = re.gas_quilibrium(
-        fo2=fO2_linear, fh2o=fH2O,
-        phiso2=phi.phiSO2, phih2s=phi.phiH2S,
+        fo2=fO2_linear,
+        fh2o=fH2O,
+        phiso2=phi.phiSO2,
+        phih2s=phi.phiH2S,
     )
 
     # Combined molar Kd weighted by S6+/ST in melt
@@ -740,24 +818,26 @@ def _compute_saturation_state(
 
     # Build the equilibrium state Series
     # Include all vapor species so compute_cs_v_mf can calculate C/S ratio
-    return pd.Series({
-        col.P_BARS: P_sat,
-        col.H2OT_M_WTPC: h2o_wt,
-        col.CO2T_M_PPMW: co2_ppm,
-        col.ST_M_PPMW: s_ppm,
-        col.FE3FET_M: ferric_ratio,
-        col.S6ST_M: S6ST,
-        col.LOGFO2: logfo2,
-        col.DFMQ: delta_FMQ,
-        col.VAPOR_WT: 0.0,          # at saturation onset
-        col.H2O_V_MF: XH2O_f,
-        col.CO2_V_MF: XCO2_f,
-        col.SO2_V_MF: XSO2_fluid,
-        col.H2S_V_MF: XH2S_fluid,
-        col.S2_V_MF: np.nan,        # not modeled by SulfurX
-        col.CO_V_MF: np.nan,        # not modeled by SulfurX
-        col.CH4_V_MF: np.nan,       # not modeled by SulfurX
-    })
+    return pd.Series(
+        {
+            col.P_BARS: P_sat,
+            col.H2OT_M_WTPC: h2o_wt,
+            col.CO2T_M_PPMW: co2_ppm,
+            col.ST_M_PPMW: s_ppm,
+            col.FE3FET_M: ferric_ratio,
+            col.S6ST_M: S6ST,
+            col.LOGFO2: logfo2,
+            col.DFMQ: delta_FMQ,
+            col.VAPOR_WT: 0.0,  # at saturation onset
+            col.H2O_V_MF: XH2O_f,
+            col.CO2_V_MF: XCO2_f,
+            col.SO2_V_MF: XSO2_fluid,
+            col.H2S_V_MF: XH2S_fluid,
+            col.S2_V_MF: np.nan,  # not modeled by SulfurX
+            col.CO_V_MF: np.nan,  # not modeled by SulfurX
+            col.CH4_V_MF: np.nan,  # not modeled by SulfurX
+        }
+    )
 
 
 class Backend(ModelBackend):
@@ -779,9 +859,7 @@ class Backend(ModelBackend):
                 "Set config.sulfurx.path to the SulfurX source directory."
             )
         if not os.path.isdir(sx_path):
-            raise FileNotFoundError(
-                f"SulfurX directory not found at '{sx_path}'."
-            )
+            raise FileNotFoundError(f"SulfurX directory not found at '{sx_path}'.")
         if sx_path not in sys.path:
             sys.path.insert(0, sx_path)
             self._log_version(sx_path)
@@ -795,7 +873,8 @@ class Backend(ModelBackend):
         if info["status"] == "no_version_info":
             logger.warning(
                 "[SulfurX] Source at %s is not a git checkout — "
-                "version cannot be identified.", sx_path,
+                "version cannot be identified.",
+                sx_path,
             )
             return
 
@@ -803,23 +882,29 @@ class Backend(ModelBackend):
         suffix = " (uncommitted changes)" if info["dirty"] else ""
         logger.info(
             "[SulfurX] Using %s (%s)%s at %s",
-            tag, info["id"], suffix, sx_path,
+            tag,
+            info["id"],
+            suffix,
+            sx_path,
         )
         if info["dirty"]:
             logger.warning(
                 "[SulfurX] Working tree at %s has uncommitted changes — "
-                "results may not be reproducible.", sx_path,
+                "results may not be reproducible.",
+                sx_path,
             )
         if info["tag"] is None:
             logger.warning(
                 "[SulfurX] Commit %s does not match any known release tag. "
                 "Results produced with this version have not been validated "
-                "against volcatenate's SulfurX wrapper.", info["id"],
+                "against volcatenate's SulfurX wrapper.",
+                info["id"],
             )
         elif not info["tested"]:
             logger.warning(
                 "[SulfurX] %s has not been validated against volcatenate's "
-                "SulfurX wrapper. Proceeding anyway.", tag,
+                "SulfurX wrapper. Proceeding anyway.",
+                tag,
             )
 
     # ----------------------------------------------------------------
@@ -846,6 +931,7 @@ class Backend(ModelBackend):
         # so we deliberately omit them rather than record values that
         # didn't influence the answer.
         from volcatenate.resolved_inputs import capture as _capture_resolved
+
         s_ppm = comp.S * 10_000
         _capture_resolved(
             sample=comp.sample,
@@ -867,8 +953,10 @@ class Backend(ModelBackend):
                     "sulfide_pre": int(cfg.sulfide_pre),
                 },
                 "sulfide": {
-                    "Fe": cfg.sulfide.fe, "Ni": cfg.sulfide.ni,
-                    "Cu": cfg.sulfide.cu, "O": cfg.sulfide.o,
+                    "Fe": cfg.sulfide.fe,
+                    "Ni": cfg.sulfide.ni,
+                    "Cu": cfg.sulfide.cu,
+                    "O": cfg.sulfide.o,
                     "S": cfg.sulfide.s,
                 },
                 "run_type": "satp",
@@ -880,8 +968,12 @@ class Backend(ModelBackend):
             if cfg.coh_model == 0:
                 with _quiet_sulfurx():
                     P_sat, XH2O_f = _find_saturation_pressure_im(
-                        composition, tk, co2_ppm, h2o_wt,
-                        cfg.slope_h2o, cfg.constant_h2o,
+                        composition,
+                        tk,
+                        co2_ppm,
+                        h2o_wt,
+                        cfg.slope_h2o,
+                        cfg.constant_h2o,
                     )
             else:
                 with _quiet_sulfurx():
@@ -889,8 +981,10 @@ class Backend(ModelBackend):
                     from VC_COH import VolatileCalc
 
                     vc = VolatileCalc(
-                        TK=tk, sio2=composition["SiO2"],
-                        a=cfg.slope_h2o, b=cfg.constant_h2o,
+                        TK=tk,
+                        sio2=composition["SiO2"],
+                        a=cfg.slope_h2o,
+                        b=cfg.constant_h2o,
                     )
                     result = vc.SatPress(WtH2O=h2o_wt, PPMCO2=co2_ppm)
                     P_sat = float(result[0])

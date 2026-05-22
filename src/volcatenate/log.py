@@ -92,6 +92,7 @@ def setup_logging(
         if console is not None:
             try:
                 from rich.logging import RichHandler
+
                 sh = RichHandler(
                     console=console,
                     show_time=False,
@@ -102,12 +103,14 @@ def setup_logging(
                 logger.addHandler(sh)
             except ImportError:
                 import sys
+
                 sh = logging.StreamHandler(sys.stdout)
                 sh.setLevel(terminal_level)
                 sh.setFormatter(logging.Formatter("%(message)s"))
                 logger.addHandler(sh)
         else:
             import sys
+
             sh = logging.StreamHandler(sys.stdout)
             sh.setLevel(terminal_level)
             sh.setFormatter(logging.Formatter("%(message)s"))
@@ -120,8 +123,9 @@ def setup_logging(
         fh = logging.FileHandler(log_file, mode=mode)
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(
-            logging.Formatter("%(asctime)s  %(levelname)-7s  %(message)s",
-                              datefmt="%H:%M:%S")
+            logging.Formatter(
+                "%(asctime)s  %(levelname)-7s  %(message)s", datefmt="%H:%M:%S"
+            )
         )
         logger.addHandler(fh)
         _log_files_opened.add(abs_path)

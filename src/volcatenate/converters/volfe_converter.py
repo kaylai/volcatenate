@@ -12,28 +12,27 @@ import pandas as pd
 
 from volcatenate import columns as col
 
-
 # ── Column rename mapping ───────────────────────────────────────────
 # Raw VolFe column → Standardized column
 _RENAME: dict[str, str] = {
-    "P_bar":          col.P_BARS,
-    "xgO2_mf":       col.O2_V_MF,
-    "xgCO2_mf":      col.CO2_V_MF,
-    "xgCO_mf":       col.CO_V_MF,
-    "xgH2O_mf":      col.H2O_V_MF,
-    "xgH2_mf":       col.H2_V_MF,
-    "xgS2_mf":       col.S2_V_MF,
-    "xgSO2_mf":      col.SO2_V_MF,
-    "xgH2S_mf":      col.H2S_V_MF,
-    "xgCH4_mf":      col.CH4_V_MF,
-    "xgOCS_mf":      col.OCS_V_MF,
-    "xgC_S_mf":      col.CS_V_MF,
-    "H2OT-eq_wtpc":  col.H2OT_M_WTPC,
-    "CO2T-eq_ppmw":  col.CO2T_M_PPMW,
-    "ST_ppmw":        col.ST_M_PPMW,
-    "Fe3+/FeT":       col.FE3FET_M,
-    "S6+/ST":         col.S6ST_M,
-    "fO2_DFMQ":      col.DFMQ,
+    "P_bar": col.P_BARS,
+    "xgO2_mf": col.O2_V_MF,
+    "xgCO2_mf": col.CO2_V_MF,
+    "xgCO_mf": col.CO_V_MF,
+    "xgH2O_mf": col.H2O_V_MF,
+    "xgH2_mf": col.H2_V_MF,
+    "xgS2_mf": col.S2_V_MF,
+    "xgSO2_mf": col.SO2_V_MF,
+    "xgH2S_mf": col.H2S_V_MF,
+    "xgCH4_mf": col.CH4_V_MF,
+    "xgOCS_mf": col.OCS_V_MF,
+    "xgC_S_mf": col.CS_V_MF,
+    "H2OT-eq_wtpc": col.H2OT_M_WTPC,
+    "CO2T-eq_ppmw": col.CO2T_M_PPMW,
+    "ST_ppmw": col.ST_M_PPMW,
+    "Fe3+/FeT": col.FE3FET_M,
+    "S6+/ST": col.S6ST_M,
+    "fO2_DFMQ": col.DFMQ,
 }
 # Note: wt_g_wtpc is NOT in _RENAME because it needs a division (wt% → fraction)
 

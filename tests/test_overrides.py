@@ -52,15 +52,15 @@ def test_resolve_returns_same_object_when_no_override():
 def test_resolve_applies_known_field_for_matching_sample():
     cfg = EVoConfig(overrides={"MORB": {"dp_max": 25}})
     out = resolve_sample_config(cfg, "MORB")
-    assert out is not cfg            # must be a copy
+    assert out is not cfg  # must be a copy
     assert out.dp_max == 25
-    assert cfg.dp_max == 100         # original untouched
+    assert cfg.dp_max == 100  # original untouched
 
 
 def test_resolve_falls_through_for_unmatched_sample():
     cfg = EVoConfig(overrides={"MORB": {"dp_max": 25}})
     out = resolve_sample_config(cfg, "Fogo")
-    assert out is cfg                 # no copy needed
+    assert out is cfg  # no copy needed
     assert out.dp_max == 100
 
 
@@ -68,7 +68,7 @@ def test_resolve_warns_and_skips_unknown_field(caplog):
     cfg = EVoConfig(overrides={"MORB": {"dp_maxx": 25}})  # typo
     with caplog.at_level(logging.WARNING, logger="volcatenate"):
         out = resolve_sample_config(cfg, "MORB")
-    assert out.dp_max == 100          # original kept
+    assert out.dp_max == 100  # original kept
     assert "dp_maxx" in caplog.text
     assert "MORB" in caplog.text
 
@@ -115,9 +115,19 @@ def morb_comp():
     return MeltComposition(
         sample="MORB",
         T_C=1200.0,
-        SiO2=50.0, TiO2=1.5, Al2O3=15.0, FeOT=10.0, MnO=0.18,
-        MgO=8.0, CaO=11.0, Na2O=2.5, K2O=0.2, P2O5=0.2,
-        H2O=0.5, CO2=0.05, S=0.1,
+        SiO2=50.0,
+        TiO2=1.5,
+        Al2O3=15.0,
+        FeOT=10.0,
+        MnO=0.18,
+        MgO=8.0,
+        CaO=11.0,
+        Na2O=2.5,
+        K2O=0.2,
+        P2O5=0.2,
+        H2O=0.5,
+        CO2=0.05,
+        S=0.1,
         dFMQ=-1.24,
     )
 
@@ -147,12 +157,14 @@ def test_evo_backend_applies_dp_max_override(tmp_path, morb_comp):
     # Make run_evo a no-op that writes a stub CSV so the backend can read it.
     def fake_run_evo(chem_path, env_path, out_yaml, folder):
         os.makedirs(folder, exist_ok=True)
-        stub = pd.DataFrame({
-            "P": [100.0, 50.0],
-            "T(K)": [1473.15, 1473.15],
-            "fO2": [-8.0, -8.5],
-            "F": [0.99, 0.95],
-        })
+        stub = pd.DataFrame(
+            {
+                "P": [100.0, 50.0],
+                "T(K)": [1473.15, 1473.15],
+                "fO2": [-8.0, -8.5],
+                "F": [0.99, 0.95],
+            }
+        )
         stub.to_csv(os.path.join(folder, "dgs_output_test.csv"), index=False)
 
     with patch("evo.run_evo", side_effect=fake_run_evo):
@@ -173,8 +185,9 @@ def test_evo_backend_uses_global_default_for_unlisted_sample(tmp_path, morb_comp
 
     def fake_run_evo(chem_path, env_path, out_yaml, folder):
         os.makedirs(folder, exist_ok=True)
-        pd.DataFrame({"P": [1.0], "T(K)": [1473.15], "fO2": [-8.0], "F": [1.0]}) \
-            .to_csv(os.path.join(folder, "dgs_output_test.csv"), index=False)
+        pd.DataFrame({"P": [1.0], "T(K)": [1473.15], "fO2": [-8.0], "F": [1.0]}).to_csv(
+            os.path.join(folder, "dgs_output_test.csv"), index=False
+        )
 
     with patch("evo.run_evo", side_effect=fake_run_evo):
         Backend().calculate_degassing(morb_comp, config)
@@ -201,12 +214,14 @@ def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
 
     def fake_run_evo(chem_path, env_path, out_yaml, folder):
         os.makedirs(folder, exist_ok=True)
-        pd.DataFrame({
-            "P": [3000.0],
-            "T(K)": [1473.15],
-            "fO2": [-8.0],
-            "F": [1.0],
-        }).to_csv(os.path.join(folder, "dgs_output_satp.csv"), index=False)
+        pd.DataFrame(
+            {
+                "P": [3000.0],
+                "T(K)": [1473.15],
+                "fO2": [-8.0],
+                "F": [1.0],
+            }
+        ).to_csv(os.path.join(folder, "dgs_output_satp.csv"), index=False)
 
     with patch("evo.run_evo", side_effect=fake_run_evo):
         Backend().calculate_saturation_pressure(morb_comp, config)
@@ -217,10 +232,7 @@ def test_evo_backend_satp_applies_override(tmp_path, morb_comp):
 
 def test_load_config_folds_deprecated_p_start_overrides(tmp_path, caplog):
     yaml_path = tmp_path / "cfg.yaml"
-    yaml_path.write_text(
-        "magec:\n"
-        "  p_start_overrides: {Fogo: 8.0, Fuego: 5.0}\n"
-    )
+    yaml_path.write_text("magec:\n" "  p_start_overrides: {Fogo: 8.0, Fuego: 5.0}\n")
     with caplog.at_level(logging.WARNING, logger="volcatenate"):
         cfg = load_config(str(yaml_path))
     assert cfg.magec.overrides == {
@@ -247,10 +259,7 @@ def test_load_config_new_overrides_win_on_conflict(tmp_path, caplog):
 
 def test_load_config_does_not_double_log_when_no_deprecation(tmp_path, caplog):
     yaml_path = tmp_path / "cfg.yaml"
-    yaml_path.write_text(
-        "magec:\n"
-        "  overrides: {Fogo: {p_start_kbar: 8.0}}\n"
-    )
+    yaml_path.write_text("magec:\n" "  overrides: {Fogo: {p_start_kbar: 8.0}}\n")
     with caplog.at_level(logging.WARNING, logger="volcatenate"):
         cfg = load_config(str(yaml_path))
     assert cfg.magec.overrides == {"Fogo": {"p_start_kbar": 8.0}}
@@ -294,6 +303,7 @@ def test_run_comparison_error_names_the_backend(tmp_path, morb_comp):
 def test_validate_override_sample_names_accepts_valid():
     """Direct unit test of the validation helper — accepts a valid sample."""
     from volcatenate.core import _validate_override_sample_names
+
     config = RunConfig()
     config.evo.overrides = {"MORB": {"dp_max": 25}}
     config.magec.overrides = {"MORB": {"p_start_kbar": 8.0}}
@@ -304,6 +314,7 @@ def test_validate_override_sample_names_accepts_valid():
 def test_validate_override_sample_names_raises_on_unknown():
     """Direct unit test — raises when a sample is not in the known list."""
     from volcatenate.core import _validate_override_sample_names
+
     config = RunConfig()
     config.evo.overrides = {"NotASample": {"dp_max": 25}}
     with pytest.raises(ValueError, match="NotASample"):
@@ -341,12 +352,14 @@ def test_default_yaml_loads_clean(caplog):
 
 def test_volfe_config_has_overrides_field():
     from volcatenate.config import VolFeConfig
+
     cfg = VolFeConfig()
     assert cfg.overrides == {}
 
 
 def test_volfe_overrides_field_is_independent_per_instance():
     from volcatenate.config import VolFeConfig
+
     a = VolFeConfig()
     b = VolFeConfig()
     a.overrides["MORB"] = {"gassing_style": "open"}
@@ -355,6 +368,7 @@ def test_volfe_overrides_field_is_independent_per_instance():
 
 def test_resolve_works_for_volfe_config():
     from volcatenate.config import VolFeConfig
+
     cfg = VolFeConfig(overrides={"Fogo": {"gassing_style": "open"}})
     out = resolve_sample_config(cfg, "Fogo")
     assert out.gassing_style == "open"
@@ -377,9 +391,13 @@ def test_volfe_backend_applies_override_to_models_df(tmp_path, morb_comp):
     def fake_calc_gassing(setup_df, models, suppress_warnings):
         return pd.DataFrame({"P_bar": [1.0], "wt_g_O": [0.0]})
 
-    with patch("volcatenate.backends.volfe._build_models_df",
-               side_effect=fake_build_models_df), \
-         patch("VolFe.calc_gassing", side_effect=fake_calc_gassing):
+    with (
+        patch(
+            "volcatenate.backends.volfe._build_models_df",
+            side_effect=fake_build_models_df,
+        ),
+        patch("VolFe.calc_gassing", side_effect=fake_calc_gassing),
+    ):
         try:
             Backend().calculate_degassing(morb_comp, config)
         except Exception:
@@ -394,12 +412,14 @@ def test_volfe_backend_applies_override_to_models_df(tmp_path, morb_comp):
 
 def test_vesical_config_has_overrides_field():
     from volcatenate.config import VESIcalConfig
+
     cfg = VESIcalConfig()
     assert cfg.overrides == {}
 
 
 def test_vesical_overrides_field_is_independent_per_instance():
     from volcatenate.config import VESIcalConfig
+
     a = VESIcalConfig()
     b = VESIcalConfig()
     a.overrides["MORB"] = {"steps": 50}
@@ -408,6 +428,7 @@ def test_vesical_overrides_field_is_independent_per_instance():
 
 def test_resolve_works_for_vesical_config():
     from volcatenate.config import VESIcalConfig
+
     cfg = VESIcalConfig(overrides={"Fogo": {"steps": 50, "final_pressure": 10.0}})
     out = resolve_sample_config(cfg, "Fogo")
     assert out.steps == 50
@@ -426,11 +447,25 @@ def test_vesical_backend_applies_steps_override(tmp_path, morb_comp):
     captured: dict = {}
 
     class _FakeModel:
-        def calculate_degassing_path(self, sample, temperature, pressure,
-                                     fractionate_vapor, final_pressure, steps):
+        def calculate_degassing_path(
+            self,
+            sample,
+            temperature,
+            pressure,
+            fractionate_vapor,
+            final_pressure,
+            steps,
+        ):
             captured["steps"] = steps
-            return pd.DataFrame({"Pressure_bars": [100.0], "H2O_liq": [0.0],
-                                 "CO2_liq": [0.0], "XH2O_fl": [0.5], "XCO2_fl": [0.5]})
+            return pd.DataFrame(
+                {
+                    "Pressure_bars": [100.0],
+                    "H2O_liq": [0.0],
+                    "CO2_liq": [0.0],
+                    "XH2O_fl": [0.5],
+                    "XCO2_fl": [0.5],
+                }
+            )
 
     with patch.dict("VESIcal.models.default_models", {"IaconoMarziano": _FakeModel()}):
         try:
@@ -447,12 +482,14 @@ def test_vesical_backend_applies_steps_override(tmp_path, morb_comp):
 
 def test_sulfurx_config_has_overrides_field():
     from volcatenate.config import SulfurXConfig
+
     cfg = SulfurXConfig()
     assert cfg.overrides == {}
 
 
 def test_sulfurx_overrides_field_is_independent_per_instance():
     from volcatenate.config import SulfurXConfig
+
     a = SulfurXConfig()
     b = SulfurXConfig()
     a.overrides["MORB"] = {"n_steps": 100}
@@ -461,6 +498,7 @@ def test_sulfurx_overrides_field_is_independent_per_instance():
 
 def test_resolve_works_for_sulfurx_config():
     from volcatenate.config import SulfurXConfig
+
     cfg = SulfurXConfig(overrides={"Fogo": {"n_steps": 100, "sigma": 0.001}})
     out = resolve_sample_config(cfg, "Fogo")
     assert out.n_steps == 100
@@ -482,9 +520,13 @@ def test_sulfurx_backend_passes_resolved_cfg_to_run_degassing(tmp_path, morb_com
         captured["n_steps"] = cfg.n_steps
         return pd.DataFrame()
 
-    with patch.object(Backend, "_ensure_on_path", lambda self, config: None), \
-         patch("volcatenate.backends.sulfurx._run_degassing",
-               side_effect=fake_run_degassing):
+    with (
+        patch.object(Backend, "_ensure_on_path", lambda self, config: None),
+        patch(
+            "volcatenate.backends.sulfurx._run_degassing",
+            side_effect=fake_run_degassing,
+        ),
+    ):
         try:
             Backend().calculate_degassing(morb_comp, config)
         except Exception:
@@ -518,6 +560,7 @@ def test_yaml_round_trip_preserves_all_backend_overrides(tmp_path):
 
 # ── Type validation: bad YAML values raise loudly ──────────────────────
 
+
 def test_load_config_rejects_dataclass_declaration_pasted_into_yaml(tmp_path):
     """The actual bug shape: a user pastes `kd_low_p_increment: float = 20.0`
     from the Python dataclass declaration directly into their YAML.  YAML
@@ -526,10 +569,7 @@ def test_load_config_rejects_dataclass_declaration_pasted_into_yaml(tmp_path):
     ``float(...)`` fails with an unhelpful message.
     """
     yaml_path = tmp_path / "bad.yaml"
-    yaml_path.write_text(
-        "sulfurx:\n"
-        "  kd_low_p_increment: float = 20.0\n"
-    )
+    yaml_path.write_text("sulfurx:\n" "  kd_low_p_increment: float = 20.0\n")
     with pytest.raises(ValueError) as exc_info:
         load_config(str(yaml_path))
     msg = str(exc_info.value)
@@ -543,10 +583,7 @@ def test_load_config_rejects_dataclass_declaration_pasted_into_yaml(tmp_path):
 def test_load_config_rejects_quoted_number(tmp_path):
     """Strict mode (D2a): quoted numbers are user error and must not silently work."""
     yaml_path = tmp_path / "quoted.yaml"
-    yaml_path.write_text(
-        "sulfurx:\n"
-        '  kd_low_p_threshold_mpa: "5.0"\n'
-    )
+    yaml_path.write_text("sulfurx:\n" '  kd_low_p_threshold_mpa: "5.0"\n')
     with pytest.raises(ValueError, match="kd_low_p_threshold_mpa"):
         load_config(str(yaml_path))
 
@@ -555,10 +592,7 @@ def test_load_config_rejects_bool_for_numeric_field(tmp_path):
     """bool ↔ numeric must be rejected in both directions to dodge the
     ``isinstance(True, int) is True`` Python footgun."""
     yaml_path = tmp_path / "boolish.yaml"
-    yaml_path.write_text(
-        "sulfurx:\n"
-        "  kd_low_p_increment: true\n"
-    )
+    yaml_path.write_text("sulfurx:\n" "  kd_low_p_increment: true\n")
     with pytest.raises(ValueError, match="kd_low_p_increment"):
         load_config(str(yaml_path))
 
@@ -567,23 +601,20 @@ def test_load_config_accepts_int_for_float_field(tmp_path):
     """A plain integer for a float-annotated field is fine; YAML routinely
     elides the trailing '.0'."""
     yaml_path = tmp_path / "good.yaml"
-    yaml_path.write_text(
-        "sulfurx:\n"
-        "  kd_low_p_increment: 25\n"
-    )
+    yaml_path.write_text("sulfurx:\n" "  kd_low_p_increment: 25\n")
     cfg = load_config(str(yaml_path))
     assert cfg.sulfurx.kd_low_p_increment == 25
 
 
 # ── Type validation: bad override values raise loudly ─────────────────
 
+
 def test_resolve_sample_config_rejects_dataclass_declaration_in_override():
     """An override block with the dataclass-declaration-paste shape — same root
     cause, different code path."""
     from volcatenate.config import SulfurXConfig
-    cfg = SulfurXConfig(
-        overrides={"Fuego": {"kd_low_p_increment": "float = 20.0"}}
-    )
+
+    cfg = SulfurXConfig(overrides={"Fuego": {"kd_low_p_increment": "float = 20.0"}})
     with pytest.raises(ValueError) as exc_info:
         resolve_sample_config(cfg, "Fuego")
     msg = str(exc_info.value)
@@ -594,9 +625,8 @@ def test_resolve_sample_config_rejects_dataclass_declaration_in_override():
 
 def test_resolve_sample_config_rejects_bool_for_numeric_override():
     from volcatenate.config import SulfurXConfig
-    cfg = SulfurXConfig(
-        overrides={"Fogo": {"kd_low_p_threshold_mpa": False}}
-    )
+
+    cfg = SulfurXConfig(overrides={"Fogo": {"kd_low_p_threshold_mpa": False}})
     with pytest.raises(ValueError, match="kd_low_p_threshold_mpa"):
         resolve_sample_config(cfg, "Fogo")
 
@@ -604,8 +634,7 @@ def test_resolve_sample_config_rejects_bool_for_numeric_override():
 def test_resolve_sample_config_accepts_valid_override():
     """Sanity: a well-typed override still works after the tightening."""
     from volcatenate.config import SulfurXConfig
-    cfg = SulfurXConfig(
-        overrides={"Fuego": {"kd_low_p_threshold_mpa": 15.0}}
-    )
+
+    cfg = SulfurXConfig(overrides={"Fuego": {"kd_low_p_threshold_mpa": 15.0}})
     out = resolve_sample_config(cfg, "Fuego")
     assert out.kd_low_p_threshold_mpa == 15.0

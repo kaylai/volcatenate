@@ -16,42 +16,42 @@ import pandas as pd
 
 from volcatenate import columns as col
 
-
 # ── Molecular weights (from evo.constants) ──────────────────────────
 _MW: dict[str, float] = {
-    "sio2":  60.0843,
-    "tio2":  79.8658,
+    "sio2": 60.0843,
+    "tio2": 79.8658,
     "al2o3": 101.961278,
-    "feo":   71.8444,
-    "mno":   70.937445,
-    "mgo":   40.3044,
-    "cao":   56.0774,
-    "na2o":  61.978938,
-    "k2o":   94.196,
-    "p2o5":  141.944524,
+    "feo": 71.8444,
+    "mno": 70.937445,
+    "mgo": 40.3044,
+    "cao": 56.0774,
+    "na2o": 61.978938,
+    "k2o": 94.196,
+    "p2o5": 141.944524,
 }
 
 # ── Direct column renames ───────────────────────────────────────────
 _RENAME: dict[str, str] = {
-    "P":   col.P_BARS,
+    "P": col.P_BARS,
     "FMQ": col.DFMQ,
 }
 
 # Vapor mole-fraction columns: m* prefix → *_v_mf
 _VAPOR_MF_MAP: dict[str, str] = {
     "mH2O": col.H2O_V_MF,
-    "mH2":  col.H2_V_MF,
-    "mO2":  col.O2_V_MF,
+    "mH2": col.H2_V_MF,
+    "mO2": col.O2_V_MF,
     "mCO2": col.CO2_V_MF,
-    "mCO":  col.CO_V_MF,
+    "mCO": col.CO_V_MF,
     "mCH4": col.CH4_V_MF,
     "mSO2": col.SO2_V_MF,
     "mH2S": col.H2S_V_MF,
-    "mS2":  col.S2_V_MF,
+    "mS2": col.S2_V_MF,
 }
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
+
 
 def _wt_to_molfrac(composition: dict[str, float]) -> dict[str, float]:
     """Convert oxide wt% dict → mole-fraction dict with lowercase keys.
@@ -59,9 +59,15 @@ def _wt_to_molfrac(composition: dict[str, float]) -> dict[str, float]:
     The output format is what EVo's :func:`kc91_fo2` expects.
     """
     key_map = {
-        "SiO2": "sio2", "TiO2": "tio2", "Al2O3": "al2o3",
-        "FeOT": "feo",  "MnO": "mno",   "MgO": "mgo",
-        "CaO": "cao",   "Na2O": "na2o",  "K2O": "k2o",
+        "SiO2": "sio2",
+        "TiO2": "tio2",
+        "Al2O3": "al2o3",
+        "FeOT": "feo",
+        "MnO": "mno",
+        "MgO": "mgo",
+        "CaO": "cao",
+        "Na2O": "na2o",
+        "K2O": "k2o",
         "P2O5": "p2o5",
     }
     moles: dict[str, float] = {}
@@ -74,6 +80,7 @@ def _wt_to_molfrac(composition: dict[str, float]) -> dict[str, float]:
 
 
 # ── Public API ──────────────────────────────────────────────────────
+
 
 def is_raw(df: pd.DataFrame) -> bool:
     """Return *True* if *df* looks like an unconverted EVo dgs_output file."""
@@ -148,8 +155,8 @@ def convert(
             mol = _wt_to_molfrac(composition)
             fe3fet_vals = np.empty(len(out))
             for idx, (_, row) in enumerate(out.iterrows()):
-                P_pa = row[col.P_BARS] * 1e5       # bar → Pa
-                lnfo2 = np.log(row["fo2"])          # natural log
+                P_pa = row[col.P_BARS] * 1e5  # bar → Pa
+                lnfo2 = np.log(row["fo2"])  # natural log
                 F = kc91_fo2(mol, T_K, P_pa, lnfo2)  # Fe2O3/FeO mole ratio
                 fe3fet_vals[idx] = 2.0 * F / (1.0 + 2.0 * F)
             out[col.FE3FET_M] = fe3fet_vals

@@ -61,7 +61,6 @@ import re
 import subprocess
 from typing import Callable, Optional
 
-
 # ---------------------------------------------------------------------------
 # Known-version tables (manually maintained)
 # ---------------------------------------------------------------------------
@@ -83,8 +82,7 @@ TESTED_SULFURX: set[str] = {"v.1.2"}
 # fall back to when the hash is unknown.
 #   shasum -a 256 MAGEC_Solver_v1b.p
 KNOWN_MAGEC: dict[str, str] = {
-    "45d3eee7c54e963678d7eeb0284415873359f63b2b982763a46ec4f1b9188735":
-        "v1b (Sun & Yao 2024)",
+    "45d3eee7c54e963678d7eeb0284415873359f63b2b982763a46ec4f1b9188735": "v1b (Sun & Yao 2024)",
 }
 TESTED_MAGEC: set[str] = {"v1b (Sun & Yao 2024)"}
 
@@ -105,6 +103,7 @@ TESTED_VESICAL: set[str] = set()
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
+
 
 def _git(path: str, *args: str) -> Optional[str]:
     """Run ``git -C <path> <args>`` and return stripped stdout, or None on failure."""
@@ -147,6 +146,7 @@ def _detect_git(path: str, known: dict[str, str], tested: set[str]) -> dict:
 # ---------------------------------------------------------------------------
 # File-hash helpers
 # ---------------------------------------------------------------------------
+
 
 def _sha256_of(file_path: str) -> str:
     h = hashlib.sha256()
@@ -208,6 +208,7 @@ def _detect_file_hash(
 # Python-module helpers
 # ---------------------------------------------------------------------------
 
+
 def _find_python_module_path(module_name: str) -> str:
     """Return the directory containing an importable module, or "" if absent.
 
@@ -216,6 +217,7 @@ def _find_python_module_path(module_name: str) -> str:
     """
     try:
         import importlib.util
+
         spec = importlib.util.find_spec(module_name)
     except (ImportError, ValueError):
         return ""
@@ -241,6 +243,7 @@ def _package_version(module_name: str) -> Optional[str]:
     """Return the installed package version via importlib.metadata, or None."""
     try:
         from importlib.metadata import version as _pkg_version
+
         return _pkg_version(module_name)
     except Exception:
         return None
@@ -291,13 +294,16 @@ def _detect_python_module(
 # Backend registry
 # ---------------------------------------------------------------------------
 
+
 def _sulfurx_path() -> str:
     from volcatenate.config import _find_sulfurx
+
     return _find_sulfurx()
 
 
 def _magec_path() -> str:
     from volcatenate.config import _find_magec_solver
+
     return _find_magec_solver()
 
 
@@ -336,7 +342,9 @@ _BACKENDS: dict[str, tuple[Callable[[], str], Callable[[str], dict]]] = {
     ),
     "vesical": (
         lambda: _find_python_module_path("VESIcal"),
-        lambda path: _detect_python_module(path, "VESIcal", KNOWN_VESICAL, TESTED_VESICAL),
+        lambda path: _detect_python_module(
+            path, "VESIcal", KNOWN_VESICAL, TESTED_VESICAL
+        ),
     ),
 }
 
@@ -344,6 +352,7 @@ _BACKENDS: dict[str, tuple[Callable[[], str], Callable[[str], dict]]] = {
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def backend_version_info(name: str, path: Optional[str] = None) -> dict:
     """Return a dict describing a backend's version.
@@ -432,7 +441,12 @@ def volcatenate_version_info() -> dict:
     if not path or not os.path.isdir(path):
         info["status"] = "not_installed"
         return info
-    info.update(_detect_python_module(
-        path, "volcatenate", KNOWN_VOLCATENATE, TESTED_VOLCATENATE,
-    ))
+    info.update(
+        _detect_python_module(
+            path,
+            "volcatenate",
+            KNOWN_VOLCATENATE,
+            TESTED_VOLCATENATE,
+        )
+    )
     return info

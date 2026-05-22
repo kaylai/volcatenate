@@ -21,13 +21,12 @@ import pandas as pd
 
 from volcatenate import columns as col
 
-
 # ── Column rename mapping ───────────────────────────────────────────
 # Raw VESIcal column → Standardized column
 _RENAME: dict[str, str] = {
-    "Pressure_bars":      col.P_BARS,
-    "H2O_liq":            col.H2OT_M_WTPC,       # already wt%
-    "FluidProportion_wt": col.VAPOR_WT,           # already weight fraction
+    "Pressure_bars": col.P_BARS,
+    "H2O_liq": col.H2OT_M_WTPC,  # already wt%
+    "FluidProportion_wt": col.VAPOR_WT,  # already weight fraction
 }
 
 

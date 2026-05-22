@@ -102,6 +102,7 @@ def test_quiet_volfe_restores_cwd_on_success(tmp_path):
 
 # ── verbose_level: tunable terminal log threshold ─────────────────────
 
+
 def test_verbose_level_filters_terminal_handler(capsys):
     """setup_logging(verbose=True, level='WARNING') must suppress INFO on stdout."""
     from volcatenate.log import logger, setup_logging
@@ -168,4 +169,3 @@ def test_log_file_always_debug_regardless_of_verbose_level(tmp_path):
         assert "info-must-be-in-file" in text
     finally:
         setup_logging(verbose=False, log_file="")
-        

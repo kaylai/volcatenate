@@ -14,6 +14,7 @@ To run only integration tests:
 To skip integration tests (default in CI):
     pytest tests/ -m "not integration"
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,17 +25,26 @@ from volcatenate import columns as col
 from volcatenate.composition import composition_from_dict
 from volcatenate.config import RunConfig
 
-
 # ── Shared test composition (Kilauea-like basalt) ─────────────────────────────
 
 KILAUEA = {
     "Sample": "KilaeaInteg",
     "T_C": 1200.0,
-    "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
-    "FeOT": 11.34, "MnO": 0.18, "MgO": 9.23, "CaO": 10.44,
-    "Na2O": 2.39, "K2O": 0.43, "P2O5": 0.27,
-    "H2O": 0.30, "CO2": 0.008, "S": 0.15,
-    "Fe3FeT": 0.18, "dNNO": -0.23,
+    "SiO2": 50.19,
+    "TiO2": 2.34,
+    "Al2O3": 12.79,
+    "FeOT": 11.34,
+    "MnO": 0.18,
+    "MgO": 9.23,
+    "CaO": 10.44,
+    "Na2O": 2.39,
+    "K2O": 0.43,
+    "P2O5": 0.27,
+    "H2O": 0.30,
+    "CO2": 0.008,
+    "S": 0.15,
+    "Fe3FeT": 0.18,
+    "dNNO": -0.23,
 }
 
 
@@ -49,24 +59,33 @@ def _fast_magec_config(tmp_path: str) -> RunConfig:
     so a coarser pressure grid is fine here.
     """
     from volcatenate.config import MAGECConfig
+
     return RunConfig(
-        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        output_dir=tmp_path,
+        keep_raw_output=False,
+        show_progress=False,
         magec=MAGECConfig(n_steps=20, p_start_kbar=3.0, p_final_kbar=0.001),
     )
 
 
 def _fast_vesical_config(tmp_path: str) -> RunConfig:
     from volcatenate.config import VESIcalConfig
+
     return RunConfig(
-        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        output_dir=tmp_path,
+        keep_raw_output=False,
+        show_progress=False,
         vesical=VESIcalConfig(steps=21),
     )
 
 
 def _fast_sulfurx_config(tmp_path: str) -> RunConfig:
     from volcatenate.config import SulfurXConfig
+
     return RunConfig(
-        output_dir=tmp_path, keep_raw_output=False, show_progress=False,
+        output_dir=tmp_path,
+        keep_raw_output=False,
+        show_progress=False,
         sulfurx=SulfurXConfig(n_steps=100),
     )
 
@@ -75,7 +94,9 @@ def _assert_satp_sane(state: "pd.Series | None", model: str) -> None:
     assert state is not None, f"{model} returned None"
     assert isinstance(state, pd.Series), f"{model} must return pd.Series"
     assert col.P_BARS in state.index, f"{model}: P_bars missing from result"
-    assert state[col.P_BARS] > 0, f"{model}: P_bars={state[col.P_BARS]} should be positive"
+    assert (
+        state[col.P_BARS] > 0
+    ), f"{model}: P_bars={state[col.P_BARS]} should be positive"
     assert not np.isnan(state[col.P_BARS]), f"{model}: P_bars is NaN"
 
 
@@ -83,13 +104,15 @@ def _assert_degassing_sane(df: pd.DataFrame, model: str) -> None:
     assert isinstance(df, pd.DataFrame), f"{model}: must return DataFrame"
     assert len(df) > 1, f"{model}: degassing path should have multiple rows"
     assert col.P_BARS in df.columns, f"{model}: P_bars column missing"
-    assert df[col.P_BARS].iloc[0] > df[col.P_BARS].iloc[-1], \
-        f"{model}: pressure should decrease along degassing path"
+    assert (
+        df[col.P_BARS].iloc[0] > df[col.P_BARS].iloc[-1]
+    ), f"{model}: pressure should decrease along degassing path"
     for c in col.STANDARD_COLUMNS:
         assert c in df.columns, f"{model}: missing standard column {c}"
 
 
 # ── VESIcal ───────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 def test_vesical_satp_smoke(tmp_path):
@@ -123,6 +146,7 @@ def test_vesical_degassing_smoke(tmp_path):
 
 # ── VolFe ─────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.integration
 def test_volfe_satp_smoke(tmp_path):
     """VolFe calculate_saturation_pressure returns a sane pd.Series."""
@@ -143,7 +167,10 @@ def test_volfe_satp_vs_raw_library(tmp_path):
     """Volcatenate VolFe satP must agree with the raw library within 2%."""
     vf = pytest.importorskip("VolFe")
     from volcatenate.backends.volfe import (
-        Backend, _build_setup_df, _build_models_df, _quiet_volfe,
+        Backend,
+        _build_setup_df,
+        _build_models_df,
+        _quiet_volfe,
     )
     from volcatenate.config import VolFeConfig
 
@@ -160,7 +187,8 @@ def test_volfe_satp_vs_raw_library(tmp_path):
         (c for c in ("P_bar", "P", "P_bars") if c in raw_result.columns),
         None,
     )
-    assert p_col is not None, f"Cannot find pressure column in raw VolFe output: {list(raw_result.columns)}"
+    assert p_col is not None, f"Cannot find pressure column in raw VolFe output: \
+        {list(raw_result.columns)}"
     raw_p = float(raw_result.iloc[0][p_col])
 
     backend = Backend()
@@ -168,9 +196,9 @@ def test_volfe_satp_vs_raw_library(tmp_path):
     assert state is not None
     volc_p = float(state[col.P_BARS])
 
-    assert abs(volc_p - raw_p) / max(raw_p, 1.0) < 0.02, (
-        f"Volcatenate P={volc_p:.1f} bar differs from raw VolFe P={raw_p:.1f} bar by >2%"
-    )
+    assert (
+        abs(volc_p - raw_p) / max(raw_p, 1.0) < 0.02
+    ), f"Volcatenate P={volc_p:.1f} bar differs from raw VolFe P={raw_p:.1f} bar by >2%"
 
 
 @pytest.mark.integration
@@ -189,6 +217,7 @@ def test_volfe_degassing_smoke(tmp_path):
 
 
 # ── EVo ───────────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.integration
 def test_evo_satp_smoke(tmp_path):
@@ -237,12 +266,14 @@ def test_evo_open_system_differs_from_closed(tmp_path):
     # default for open-system. Use the same step for closed for fair comparison.
     cfg_closed = RunConfig(
         output_dir=str(tmp_path / "closed"),
-        keep_raw_output=False, show_progress=False,
+        keep_raw_output=False,
+        show_progress=False,
         evo=EVoConfig(run_type="closed", dp_min=0.1, dp_max=0.1),
     )
     cfg_open = RunConfig(
         output_dir=str(tmp_path / "open"),
-        keep_raw_output=False, show_progress=False,
+        keep_raw_output=False,
+        show_progress=False,
         evo=EVoConfig(run_type="open", loss_frac=0.999, dp_min=0.1, dp_max=0.1),
     )
 
@@ -284,6 +315,7 @@ _KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
 def test_sulfurx_satp_smoke(tmp_path):
     """SulfurX calculate_saturation_pressure returns a sane pd.Series."""
     from volcatenate.backends.sulfurx import Backend
+
     backend = Backend()
     if not backend.is_available():
         pytest.skip("SulfurX not available (SULFURX_PATH not set or path not found)")
@@ -298,6 +330,7 @@ def test_sulfurx_satp_smoke(tmp_path):
 def test_sulfurx_degassing_smoke(tmp_path):
     """SulfurX calculate_degassing returns a valid degassing path."""
     from volcatenate.backends.sulfurx import Backend
+
     backend = Backend()
     if not backend.is_available():
         pytest.skip("SulfurX not available")
@@ -309,16 +342,20 @@ def test_sulfurx_degassing_smoke(tmp_path):
 
 # ── MAGEC ─────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.integration
 def test_magec_satp_smoke(tmp_path):
     """MAGEC calculate_saturation_pressure returns a sane pd.Series."""
     from volcatenate.backends.magec import Backend
+
     backend = Backend()
     if not backend.is_available():
         pytest.skip("MAGEC not available (MATLAB or solver not found)")
 
     comp = composition_from_dict(KILAUEA)
-    state = backend.calculate_saturation_pressure(comp, _fast_magec_config(str(tmp_path)))
+    state = backend.calculate_saturation_pressure(
+        comp, _fast_magec_config(str(tmp_path))
+    )
     _assert_satp_sane(state, "MAGEC")
 
 
@@ -326,6 +363,7 @@ def test_magec_satp_smoke(tmp_path):
 def test_magec_degassing_smoke(tmp_path):
     """MAGEC calculate_degassing returns a valid degassing path."""
     from volcatenate.backends.magec import Backend
+
     backend = Backend()
     if not backend.is_available():
         pytest.skip("MAGEC not available")

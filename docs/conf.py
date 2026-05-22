@@ -55,8 +55,8 @@ nbsphinx_prolog = r"""
       <p class="admonition-title">Run this notebook locally</p>
       <p>Download <a class="reference download external" download
         href="{{ basename }}.ipynb"
-      ><code class="docutils literal notranslate"><span class="pre">{{ basename }}.ipynb</span></code></a>
-      and open it in Jupyter, JupyterLab, or VS Code to run the cells interactively. nbsphinx copies the source notebook to the output tree alongside this page, so the link above is a direct download.</p>
+      ><code class="docutils literal notranslate"><span class="pre">{{ basename }}.ipynb</span></code></a> # noqa
+      and open it in Jupyter, JupyterLab, or VS Code to run the cells interactively. nbsphinx copies the source notebook to the output tree alongside this page, so the link above is a direct download.</p> # noqa
     </div>
 """
 
@@ -99,7 +99,14 @@ source_suffix = {
     ".md": "markdown",
 }
 master_doc = "index"
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "README.md", "**/README.md", "**/.ipynb_checkpoints"]
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "README.md",
+    "**/README.md",
+    "**/.ipynb_checkpoints",
+]
 
 # -- HTML output -------------------------------------------------------------
 

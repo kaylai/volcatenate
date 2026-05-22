@@ -36,6 +36,7 @@ Two test strategies
 To run (requires MATLAB + MAGEC solver):
     pytest tests/test_magec_black_box.py -v -m integration
 """
+
 from __future__ import annotations
 
 import os
@@ -49,49 +50,88 @@ from volcatenate.backends.magec import Backend
 from volcatenate.composition import composition_from_dict
 from volcatenate.config import MAGECConfig, RunConfig
 
-
 # ── Standard test compositions (from examples/example_satP_input.csv) ─────────
 
 MORB = {
     "Sample": "MORB",
     "T_C": 1100.0,
-    "SiO2": 47.40, "TiO2": 1.01, "Al2O3": 17.64,
-    "FeOT": 7.98, "MnO": 0.00, "MgO": 7.63, "CaO": 12.44,
-    "Na2O": 2.65, "K2O": 0.03, "P2O5": 0.08,
-    "H2O": 0.2, "CO2": 0.11, "S": 0.142, "Fe3FeT": 0.1,
+    "SiO2": 47.40,
+    "TiO2": 1.01,
+    "Al2O3": 17.64,
+    "FeOT": 7.98,
+    "MnO": 0.00,
+    "MgO": 7.63,
+    "CaO": 12.44,
+    "Na2O": 2.65,
+    "K2O": 0.03,
+    "P2O5": 0.08,
+    "H2O": 0.2,
+    "CO2": 0.11,
+    "S": 0.142,
+    "Fe3FeT": 0.1,
 }
 
 KILAUEA = {
     "Sample": "Kilauea",
     "T_C": 1200.0,
-    "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
-    "FeOT": 11.34, "MnO": 0.18, "MgO": 9.23, "CaO": 10.44,
-    "Na2O": 2.39, "K2O": 0.43, "P2O5": 0.27,
-    "H2O": 0.3, "CO2": 0.08, "S": 0.15, "Fe3FeT": 0.18,
+    "SiO2": 50.19,
+    "TiO2": 2.34,
+    "Al2O3": 12.79,
+    "FeOT": 11.34,
+    "MnO": 0.18,
+    "MgO": 9.23,
+    "CaO": 10.44,
+    "Na2O": 2.39,
+    "K2O": 0.43,
+    "P2O5": 0.27,
+    "H2O": 0.3,
+    "CO2": 0.08,
+    "S": 0.15,
+    "Fe3FeT": 0.18,
 }
 
 FOGO = {
     "Sample": "Fogo",
     "T_C": 1200.0,
-    "SiO2": 42.40, "TiO2": 3.26, "Al2O3": 11.17,
-    "FeOT": 12.00, "MnO": 0.14, "MgO": 9.55, "CaO": 13.31,
-    "Na2O": 3.36, "K2O": 1.57, "P2O5": 0.75,
-    "H2O": 2.11, "CO2": 1.152, "S": 0.469, "dNNO": 0.7,
+    "SiO2": 42.40,
+    "TiO2": 3.26,
+    "Al2O3": 11.17,
+    "FeOT": 12.00,
+    "MnO": 0.14,
+    "MgO": 9.55,
+    "CaO": 13.31,
+    "Na2O": 3.36,
+    "K2O": 1.57,
+    "P2O5": 0.75,
+    "H2O": 2.11,
+    "CO2": 1.152,
+    "S": 0.469,
+    "dNNO": 0.7,
 }
 
 FUEGO = {
     "Sample": "Fuego",
     "T_C": 1030.0,
-    "SiO2": 51.46, "TiO2": 1.06, "Al2O3": 17.43,
-    "FeOT": 9.42, "MnO": 0.19, "MgO": 3.78, "CaO": 7.99,
-    "Na2O": 3.47, "K2O": 0.78, "P2O5": 0.24,
-    "H2O": 4.5, "CO2": 0.33, "S": 0.265, "Fe3FeT": 0.24,
+    "SiO2": 51.46,
+    "TiO2": 1.06,
+    "Al2O3": 17.43,
+    "FeOT": 9.42,
+    "MnO": 0.19,
+    "MgO": 3.78,
+    "CaO": 7.99,
+    "Na2O": 3.47,
+    "K2O": 0.78,
+    "P2O5": 0.24,
+    "H2O": 4.5,
+    "CO2": 0.33,
+    "S": 0.265,
+    "Fe3FeT": 0.24,
 }
 
 ALL_COMPOSITIONS = [
-    pytest.param(MORB,    "MORB",    id="MORB"),
+    pytest.param(MORB, "MORB", id="MORB"),
     pytest.param(KILAUEA, "Kilauea", id="Kilauea"),
-    pytest.param(FOGO,    "Fogo",    id="Fogo"),
+    pytest.param(FOGO, "Fogo", id="Fogo"),
 ]
 
 # Fuego (4.5 wt% H2O, satP ~6 kbar) is excluded from the parametrize lists
@@ -107,8 +147,8 @@ ALL_COMPOSITIONS = [
 
 BENCHMARK_PARAMS = [
     pytest.param(KILAUEA, "Kilauea", "kilauea.csv", id="Kilauea"),
-    pytest.param(MORB,    "MORB",    "morb.csv",    id="MORB"),
-    pytest.param(FOGO,    "Fogo",    "fogo.csv",    id="Fogo"),
+    pytest.param(MORB, "MORB", "morb.csv", id="MORB"),
+    pytest.param(FOGO, "Fogo", "fogo.csv", id="Fogo"),
 ]
 
 
@@ -116,14 +156,14 @@ BENCHMARK_PARAMS = [
 
 MW_VAPOR = {
     col.H2O_V_MF: 18.015,
-    col.H2_V_MF:   2.016,
-    col.O2_V_MF:  31.998,
+    col.H2_V_MF: 2.016,
+    col.O2_V_MF: 31.998,
     col.CO2_V_MF: 44.010,
-    col.CO_V_MF:  28.010,
+    col.CO_V_MF: 28.010,
     col.CH4_V_MF: 16.043,
     col.SO2_V_MF: 64.066,
     col.H2S_V_MF: 34.082,
-    col.S2_V_MF:  64.130,
+    col.S2_V_MF: 64.130,
     col.OCS_V_MF: 60.076,
 }
 
@@ -131,24 +171,25 @@ MW_VAPOR = {
 S_ATOMS = {
     col.SO2_V_MF: 1,
     col.H2S_V_MF: 1,
-    col.S2_V_MF:  2,
+    col.S2_V_MF: 2,
     col.OCS_V_MF: 1,
 }
 
 # C atoms per molecule (for bulk-C mass balance)
 C_ATOMS = {
     col.CO2_V_MF: 1,
-    col.CO_V_MF:  1,
+    col.CO_V_MF: 1,
     col.CH4_V_MF: 1,
     col.OCS_V_MF: 1,
 }
 
-MW_S = 32.065   # g/mol S
-MW_C = 12.011   # g/mol C
+MW_S = 32.065  # g/mol S
+MW_C = 12.011  # g/mol C
 MW_CO2 = 44.010  # g/mol CO2
 
 
 # ── Locate author reference outputs ──────────────────────────────────────────
+
 
 def _find_author_dir() -> str:
     """Locate .claude/dev/Original_Author_Outputs/MAGEC/ from the test file.
@@ -159,17 +200,30 @@ def _find_author_dir() -> str:
 
     # From a git worktree at .claude/worktrees/<name>/tests/
     # go up 3 levels to reach .claude/, then into dev/
-    candidate_worktree = os.path.abspath(os.path.join(
-        tests_dir, "..", "..", "..", "dev",
-        "Original_Author_Outputs", "MAGEC",
-    ))
+    candidate_worktree = os.path.abspath(
+        os.path.join(
+            tests_dir,
+            "..",
+            "..",
+            "..",
+            "dev",
+            "Original_Author_Outputs",
+            "MAGEC",
+        )
+    )
 
     # From the main repo at volcatenate/tests/
     # go up 1 level to repo root, then into .claude/dev/
-    candidate_main = os.path.abspath(os.path.join(
-        tests_dir, "..", ".claude", "dev",
-        "Original_Author_Outputs", "MAGEC",
-    ))
+    candidate_main = os.path.abspath(
+        os.path.join(
+            tests_dir,
+            "..",
+            ".claude",
+            "dev",
+            "Original_Author_Outputs",
+            "MAGEC",
+        )
+    )
 
     for c in [candidate_worktree, candidate_main]:
         if os.path.isdir(c):
@@ -182,6 +236,7 @@ _AUTHOR_DIR = _find_author_dir()
 
 
 # ── Config & availability ───────────────────────────────────────────────────
+
 
 def _config(tmp_path: str, n_steps: int = 60) -> RunConfig:
     """Test config tuned for speed.
@@ -235,6 +290,7 @@ def _get_degassing(comp_dict: dict, tmp_path) -> pd.DataFrame:
 
 
 # ── Mass-balance helpers ────────────────────────────────────────────────────
+
 
 def _mean_mw(row: pd.Series) -> float:
     """Mean molecular weight of vapor at one output row."""
@@ -298,6 +354,7 @@ def _bulk_c(row: pd.Series) -> float:
 
 # ── Author-reference helpers ────────────────────────────────────────────────
 
+
 def _load_author_output(filename: str) -> pd.DataFrame:
     path = os.path.join(_AUTHOR_DIR, filename)
     if not os.path.isfile(path):
@@ -319,16 +376,19 @@ def _interp_at_p(df: pd.DataFrame, target_p: float, column: str) -> float:
     if len(valid) < 2:
         return np.nan
     # pressure is decreasing → reverse for np.interp (which needs increasing xp)
-    return float(np.interp(
-        target_p,
-        valid[col.P_BARS].values[::-1],
-        valid[column].values[::-1],
-    ))
+    return float(
+        np.interp(
+            target_p,
+            valid[col.P_BARS].values[::-1],
+            valid[column].values[::-1],
+        )
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STRATEGY 1: Conservation law checks
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("comp_dict,name", ALL_COMPOSITIONS)
@@ -374,12 +434,8 @@ def test_no_nan_inf_in_output(comp_dict, name, tmp_path):
     inf_mask = np.isinf(sub.select_dtypes(include=[np.number]))
     inf_cols = list(sub.columns[inf_mask.any()])
 
-    assert not nan_cols, (
-        f"{name}: NaN in standard physics columns {nan_cols}"
-    )
-    assert not inf_cols, (
-        f"{name}: Inf in standard physics columns {inf_cols}"
-    )
+    assert not nan_cols, f"{name}: NaN in standard physics columns {nan_cols}"
+    assert not inf_cols, f"{name}: Inf in standard physics columns {inf_cols}"
 
 
 @pytest.mark.integration
@@ -400,8 +456,7 @@ def test_metadata_columns_not_leaking(comp_dict, name, tmp_path):
     standard = set(col.STANDARD_COLUMNS)
     numeric = df.select_dtypes(include=[np.number])
     non_standard_with_nan = [
-        c for c in numeric.columns
-        if c not in standard and numeric[c].isnull().any()
+        c for c in numeric.columns if c not in standard and numeric[c].isnull().any()
     ]
 
     # Document but don't fail — this is a known converter gap, not a physics bug.
@@ -421,7 +476,10 @@ def test_no_negative_concentrations(comp_dict, name, tmp_path):
     df = _get_degassing(comp_dict, tmp_path)
 
     check_cols = [
-        col.H2OT_M_WTPC, col.CO2T_M_PPMW, col.ST_M_PPMW, col.VAPOR_WT,
+        col.H2OT_M_WTPC,
+        col.CO2T_M_PPMW,
+        col.ST_M_PPMW,
+        col.VAPOR_WT,
         *[c for c in col.VAPOR_MF_COLUMNS if c in df.columns],
     ]
 
@@ -472,7 +530,7 @@ def test_dissolved_volatiles_decrease_after_saturation(comp_dict, name, tmp_path
     for vcol, tol_abs in [
         (col.H2OT_M_WTPC, 0.001),
         (col.CO2T_M_PPMW, 1.0),
-        (col.ST_M_PPMW,   1.0),
+        (col.ST_M_PPMW, 1.0),
     ]:
         if vcol not in df.columns:
             continue
@@ -545,9 +603,7 @@ def test_sulfur_bulk_mass_conserved(comp_dict, name, tmp_path):
     if df[col.ST_M_PPMW].iloc[0] < 10:
         pytest.skip(f"{name}: initial S <10 ppm — too low for mass-balance check")
 
-    req = [col.VAPOR_WT, col.ST_M_PPMW] + [
-        c for c in S_ATOMS if c in df.columns
-    ]
+    req = [col.VAPOR_WT, col.ST_M_PPMW] + [c for c in S_ATOMS if c in df.columns]
     missing = [c for c in req if c not in df.columns]
     if missing:
         pytest.skip(f"{name}: missing columns for S mass balance: {missing}")
@@ -587,9 +643,7 @@ def test_carbon_bulk_mass_conserved(comp_dict, name, tmp_path):
     if df[col.CO2T_M_PPMW].iloc[0] < 10:
         pytest.skip(f"{name}: initial CO2 <10 ppm — too low for mass-balance check")
 
-    req = [col.VAPOR_WT, col.CO2T_M_PPMW] + [
-        c for c in C_ATOMS if c in df.columns
-    ]
+    req = [col.VAPOR_WT, col.CO2T_M_PPMW] + [c for c in C_ATOMS if c in df.columns]
     missing = [c for c in req if c not in df.columns]
     if missing:
         pytest.skip(f"{name}: missing columns for C mass balance: {missing}")
@@ -618,6 +672,7 @@ def test_carbon_bulk_mass_conserved(comp_dict, name, tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════
 # STRATEGY 2: Benchmark reproduction (Sun & Yao 2024 reference outputs)
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize("comp_dict,name,ref_csv", BENCHMARK_PARAMS)
@@ -721,7 +776,9 @@ def test_logfo2_at_satp_matches_author(comp_dict, name, ref_csv, tmp_path):
 
 @pytest.mark.integration
 @pytest.mark.parametrize("comp_dict,name,ref_csv", BENCHMARK_PARAMS)
-def test_vapor_composition_at_500_bars_matches_author(comp_dict, name, ref_csv, tmp_path):
+def test_vapor_composition_at_500_bars_matches_author(
+    comp_dict, name, ref_csv, tmp_path
+):
     """At 500 bars, XCO2 and XH2O in vapor must agree with reference within 20%.
 
     500 bars is well below saturation for all four compositions and

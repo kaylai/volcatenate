@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+
 def test_add_trace_to_subplot_p_norm_zero_p_init():
     """add_trace_to_subplot must not raise when P_bars.iloc[0] == 0."""
     pytest.importorskip("plotly")
@@ -11,15 +12,24 @@ def test_add_trace_to_subplot_p_norm_zero_p_init():
     from volcatenate.plotting import add_trace_to_subplot
 
     fig = make_subplots(rows=1, cols=1)
-    data = pd.DataFrame({
-        "P_bars": [0.0, 100.0, 200.0],
-        "H2OT_m_wtpc": [0.30, 0.25, 0.20],
-    })
+    data = pd.DataFrame(
+        {
+            "P_bars": [0.0, 100.0, 200.0],
+            "H2OT_m_wtpc": [0.30, 0.25, 0.20],
+        }
+    )
     # Should not raise ZeroDivisionError
     add_trace_to_subplot(
-        fig, data, "TestModel", "H2Om",
-        l_c="blue", l_w=2, l_d="solid",
-        row=1, col=1, p_norm=True,
+        fig,
+        data,
+        "TestModel",
+        "H2Om",
+        l_c="blue",
+        l_w=2,
+        l_d="solid",
+        row=1,
+        col=1,
+        p_norm=True,
     )
     # Falls back to absolute pressure — trace should still be added
     assert len(fig.data) == 1
@@ -32,14 +42,23 @@ def test_add_trace_to_subplot_p_norm_nan_p_init():
     from volcatenate.plotting import add_trace_to_subplot
 
     fig = make_subplots(rows=1, cols=1)
-    data = pd.DataFrame({
-        "P_bars": [np.nan, 100.0, 200.0],
-        "H2OT_m_wtpc": [0.30, 0.25, 0.20],
-    })
+    data = pd.DataFrame(
+        {
+            "P_bars": [np.nan, 100.0, 200.0],
+            "H2OT_m_wtpc": [0.30, 0.25, 0.20],
+        }
+    )
     add_trace_to_subplot(
-        fig, data, "TestModel", "H2Om",
-        l_c="blue", l_w=2, l_d="solid",
-        row=1, col=1, p_norm=True,
+        fig,
+        data,
+        "TestModel",
+        "H2Om",
+        l_c="blue",
+        l_w=2,
+        l_d="solid",
+        row=1,
+        col=1,
+        p_norm=True,
     )
     assert len(fig.data) == 1
 
@@ -51,14 +70,23 @@ def test_add_trace_to_subplot_p_norm_normal():
     from volcatenate.plotting import add_trace_to_subplot
 
     fig = make_subplots(rows=1, cols=1)
-    data = pd.DataFrame({
-        "P_bars": [1000.0, 500.0, 100.0],
-        "H2OT_m_wtpc": [0.30, 0.25, 0.10],
-    })
+    data = pd.DataFrame(
+        {
+            "P_bars": [1000.0, 500.0, 100.0],
+            "H2OT_m_wtpc": [0.30, 0.25, 0.10],
+        }
+    )
     add_trace_to_subplot(
-        fig, data, "TestModel", "H2Om",
-        l_c="blue", l_w=2, l_d="solid",
-        row=1, col=1, p_norm=True,
+        fig,
+        data,
+        "TestModel",
+        "H2Om",
+        l_c="blue",
+        l_w=2,
+        l_d="solid",
+        row=1,
+        col=1,
+        p_norm=True,
     )
     assert len(fig.data) == 1
     # x values should be [1.0, 0.5, 0.1]

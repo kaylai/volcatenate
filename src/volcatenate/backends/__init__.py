@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import importlib
 import warnings
-from typing import Optional
 
 from volcatenate.backends._base import ModelBackend
 
@@ -27,10 +26,10 @@ _REGISTRY: dict[str, ModelBackend] = {}
 
 # (module_name, class_name) for each backend that takes no constructor args.
 _BACKEND_MODULES = [
-    ("volcatenate.backends.volfe",     "Backend"),
-    ("volcatenate.backends.evo",       "Backend"),
-    ("volcatenate.backends.magec",     "Backend"),
-    ("volcatenate.backends.sulfurx",   "Backend"),
+    ("volcatenate.backends.volfe", "Backend"),
+    ("volcatenate.backends.evo", "Backend"),
+    ("volcatenate.backends.magec", "Backend"),
+    ("volcatenate.backends.sulfurx", "Backend"),
     ("volcatenate.backends.dcompress", "Backend"),
 ]
 
@@ -59,6 +58,7 @@ def _discover() -> None:
     # VESIcal has no default solubility model — register one backend per variant.
     try:
         from volcatenate.backends.vesical import Backend as VESIcalBackend, VARIANT_MAP
+
         for display_name, internal_name in VARIANT_MAP.items():
             _REGISTRY[display_name] = VESIcalBackend(variant=internal_name)
     except ImportError as exc:
@@ -99,8 +99,7 @@ def get_backend(name: str) -> ModelBackend:
         )
 
     raise KeyError(
-        f"Unknown backend {name!r}. "
-        f"Available: {sorted(_REGISTRY.keys())}."
+        f"Unknown backend {name!r}. " f"Available: {sorted(_REGISTRY.keys())}."
     )
 
 

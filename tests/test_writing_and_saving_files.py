@@ -12,13 +12,15 @@ def test_simplify_runs_when_o2_mass_bal_false(tmp_path):
 
     model_dir = tmp_path / "EVo"
     model_dir.mkdir()
-    df_out = pd.DataFrame({
-        "P_bars": [1000.0, 500.0],
-        "H2OT_m_wtpc": [0.30, 0.20],
-        "CO2T_m_ppmw": [800.0, 400.0],
-        "ST_m_ppmw": [1500.0, 800.0],
-        "EXTRA_COLUMN_SHOULD_BE_DROPPED": [9.9, 9.9],
-    })
+    df_out = pd.DataFrame(
+        {
+            "P_bars": [1000.0, 500.0],
+            "H2OT_m_wtpc": [0.30, 0.20],
+            "CO2T_m_ppmw": [800.0, 400.0],
+            "ST_m_ppmw": [1500.0, 800.0],
+            "EXTRA_COLUMN_SHOULD_BE_DROPPED": [9.9, 9.9],
+        }
+    )
     (model_dir / "kilauea.csv").write_text(df_out.to_csv(index=False))
 
     data_morb, data_kil, data_fuego, data_fogo = loadData(
@@ -41,10 +43,12 @@ def test_simplify_false_preserves_extra_columns(tmp_path):
 
     model_dir = tmp_path / "EVo"
     model_dir.mkdir()
-    df_out = pd.DataFrame({
-        "P_bars": [1000.0],
-        "EXTRA_COL": [42.0],
-    })
+    df_out = pd.DataFrame(
+        {
+            "P_bars": [1000.0],
+            "EXTRA_COL": [42.0],
+        }
+    )
     (model_dir / "kilauea.csv").write_text(df_out.to_csv(index=False))
 
     _, data_kil, _, _ = loadData(
@@ -54,16 +58,19 @@ def test_simplify_false_preserves_extra_columns(tmp_path):
     )
     assert "EXTRA_COL" in data_kil["EVo"].columns
 
+
 def test_sample_key_not_overwritten_by_state():
     """row['Sample'] from comp must not be overwritten by state.to_dict()."""
     sample_name = "TestSample"
     row: dict = {"Sample": sample_name}
 
     # Simulate a state Series that includes "Sample" with a wrong value
-    state = pd.Series({
-        col.P_BARS: 1234.0,
-        "Sample": "WRONG_SAMPLE",
-    })
+    state = pd.Series(
+        {
+            col.P_BARS: 1234.0,
+            "Sample": "WRONG_SAMPLE",
+        }
+    )
 
     # This is the fixed code pattern from core.py
     state_dict = state.to_dict()
@@ -78,27 +85,40 @@ def test_sample_key_not_overwritten_by_state():
 
 
 def test_core_calculate_satp_sample_identity(tmp_path):
-    """calculate_saturation_pressure must preserve sample name even when backend returns a Series with Sample key."""
+    """calculate_saturation_pressure must preserve sample name even when backend returns a Series
+    with Sample key.
+    """
     from unittest.mock import MagicMock, patch
     from volcatenate.core import calculate_saturation_pressure
-    from volcatenate.composition import composition_from_dict
     from volcatenate.config import RunConfig
 
     comp_dict = {
         "Sample": "MyRealSample",
         "T_C": 1200.0,
-        "SiO2": 50.0, "TiO2": 1.0, "Al2O3": 15.0,
-        "FeOT": 10.0, "MnO": 0.2, "MgO": 8.0, "CaO": 10.0,
-        "Na2O": 2.5, "K2O": 0.5, "P2O5": 0.2,
-        "H2O": 0.3, "CO2": 0.05, "S": 0.1, "Fe3FeT": 0.15,
+        "SiO2": 50.0,
+        "TiO2": 1.0,
+        "Al2O3": 15.0,
+        "FeOT": 10.0,
+        "MnO": 0.2,
+        "MgO": 8.0,
+        "CaO": 10.0,
+        "Na2O": 2.5,
+        "K2O": 0.5,
+        "P2O5": 0.2,
+        "H2O": 0.3,
+        "CO2": 0.05,
+        "S": 0.1,
+        "Fe3FeT": 0.15,
     }
 
     # Build a fake state Series that includes the wrong "Sample"
-    fake_state = pd.Series({
-        col.P_BARS: 999.0,
-        col.H2OT_M_WTPC: 0.3,
-        "Sample": "WRONG_NAME_FROM_BACKEND",
-    })
+    fake_state = pd.Series(
+        {
+            col.P_BARS: 999.0,
+            col.H2OT_M_WTPC: 0.3,
+            "Sample": "WRONG_NAME_FROM_BACKEND",
+        }
+    )
 
     mock_backend = MagicMock()
     mock_backend.name = "FakeModel"
@@ -112,15 +132,20 @@ def test_core_calculate_satp_sample_identity(tmp_path):
         verbose=False,
     )
 
-    with patch("volcatenate.core.get_backend", return_value=mock_backend), \
-         patch("volcatenate.core.list_backends", return_value=["FakeModel"]):
-        result = calculate_saturation_pressure(comp_dict, models=["FakeModel"], config=config)
+    with (
+        patch("volcatenate.core.get_backend", return_value=mock_backend),
+        patch("volcatenate.core.list_backends", return_value=["FakeModel"]),
+    ):
+        result = calculate_saturation_pressure(
+            comp_dict, models=["FakeModel"], config=config
+        )
 
     eq = result.equilibrium_state["FakeModel"]
     assert eq["Sample"].iloc[0] == "MyRealSample", (
         f"Sample should be 'MyRealSample' but got {eq['Sample'].iloc[0]!r}; "
         "state.to_dict() is overwriting the Sample key"
     )
+
 
 def test_write_satp_summary_ignores_bookkeeping_dirs(tmp_path):
     """Spurious `<bookkeeping_dir>_SatP_bars` columns must not appear in the
@@ -144,9 +169,7 @@ def test_write_satp_summary_ignores_bookkeeping_dirs(tmp_path):
     # Junk dir a user happened to drop in
     junk_dir = tmp_path / "MyTool"
     junk_dir.mkdir()
-    pd.DataFrame({col.P_BARS: [200.0]}).to_csv(
-        junk_dir / "sample_a.csv", index=False
-    )
+    pd.DataFrame({col.P_BARS: [200.0]}).to_csv(junk_dir / "sample_a.csv", index=False)
 
     satp_path = tmp_path / "saturation_pressures.csv"
     _write_satp_summary_from_outputs(
@@ -159,9 +182,9 @@ def test_write_satp_summary_ignores_bookkeeping_dirs(tmp_path):
 
     df = pd.read_csv(satp_path)
     assert "EVo_SatP_bars" in df.columns
-    assert "saturation_pressures_details_SatP_bars" not in df.columns, (
-        f"Spurious bookkeeping column leaked into CSV: {list(df.columns)}"
-    )
+    assert (
+        "saturation_pressures_details_SatP_bars" not in df.columns
+    ), f"Spurious bookkeeping column leaked into CSV: {list(df.columns)}"
     assert "MyTool_SatP_bars" not in df.columns
     assert "resolved_inputs_SatP_bars" not in df.columns
 

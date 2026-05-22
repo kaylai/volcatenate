@@ -61,12 +61,15 @@ from volcatenate.core import (
     export_degassing_paths,
     run_comparison,
 )
-from volcatenate.backends import list_backends, get_all_backends
+from volcatenate.backends import list_backends
 from volcatenate.composition import MeltComposition, read_compositions
 from volcatenate.config import RunConfig, load_config, save_config, default_config_path
 from volcatenate.compat import (
-    load_model_csv, load_data, degassing_results_to_compat,
-    loadData, load_results,
+    load_model_csv,
+    load_data,
+    degassing_results_to_compat,
+    loadData,
+    load_results,
 )
 from volcatenate.log import setup_logging
 from volcatenate.plotting import generate_all_figures
@@ -85,6 +88,8 @@ from volcatenate.versions import (
     volcatenate_version_info,
 )
 
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
 
 def list_models(available_only: bool = False) -> list[str]:
     """Return the names of all registered model backends.
@@ -96,8 +101,6 @@ def list_models(available_only: bool = False) -> list[str]:
     """
     return list_backends(available_only=available_only)
 
-
-from importlib.metadata import version as _pkg_version, PackageNotFoundError
 
 try:
     __version__ = _pkg_version("volcatenate")

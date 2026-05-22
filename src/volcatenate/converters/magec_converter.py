@@ -25,7 +25,6 @@ import pandas as pd
 
 from volcatenate import columns as col
 
-
 # ── Flexible column mapping ─────────────────────────────────────────
 # raw MAGEC name candidates → standardized name
 # The first match wins.
@@ -69,25 +68,25 @@ _RENAME: dict[str, str] = {
 _VAPOR_RENAME: dict[str, str] = {
     # X-prefix form (older/alternative MAGEC output)
     "XH2O": col.H2O_V_MF,
-    "XH2":  col.H2_V_MF,
-    "XO2":  col.O2_V_MF,
+    "XH2": col.H2_V_MF,
+    "XO2": col.O2_V_MF,
     "XCO2": col.CO2_V_MF,
-    "XCO":  col.CO_V_MF,
+    "XCO": col.CO_V_MF,
     "XCH4": col.CH4_V_MF,
     "XSO2": col.SO2_V_MF,
     "XH2S": col.H2S_V_MF,
-    "XS2":  col.S2_V_MF,
+    "XS2": col.S2_V_MF,
     "XOCS": col.OCS_V_MF,
     # Already standard names
     col.H2O_V_MF: col.H2O_V_MF,
-    col.H2_V_MF:  col.H2_V_MF,
-    col.O2_V_MF:  col.O2_V_MF,
+    col.H2_V_MF: col.H2_V_MF,
+    col.O2_V_MF: col.O2_V_MF,
     col.CO2_V_MF: col.CO2_V_MF,
-    col.CO_V_MF:  col.CO_V_MF,
+    col.CO_V_MF: col.CO_V_MF,
     col.CH4_V_MF: col.CH4_V_MF,
     col.SO2_V_MF: col.SO2_V_MF,
     col.H2S_V_MF: col.H2S_V_MF,
-    col.S2_V_MF:  col.S2_V_MF,
+    col.S2_V_MF: col.S2_V_MF,
     col.OCS_V_MF: col.OCS_V_MF,
 }
 
@@ -95,14 +94,14 @@ _VAPOR_RENAME: dict[str, str] = {
 # Values need to be divided by 100 to convert from mol% to mole fraction.
 _VAPOR_MOLPCT: dict[str, str] = {
     "H2O (mol%)": col.H2O_V_MF,
-    "H2 (mol%)":  col.H2_V_MF,
-    "O2 (mol%)":  col.O2_V_MF,
+    "H2 (mol%)": col.H2_V_MF,
+    "O2 (mol%)": col.O2_V_MF,
     "CO2 (mol%)": col.CO2_V_MF,
-    "CO (mol%)":  col.CO_V_MF,
+    "CO (mol%)": col.CO_V_MF,
     "CH4 (mol%)": col.CH4_V_MF,
     "SO2 (mol%)": col.SO2_V_MF,
     "H2S (mol%)": col.H2S_V_MF,
-    "S2 (mol%)":  col.S2_V_MF,
+    "S2 (mol%)": col.S2_V_MF,
     "COS (mol%)": col.OCS_V_MF,
 }
 
@@ -174,13 +173,19 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
 
     # --- Drop MAGEC section-header columns (non-data noise) ---
     _SECTION_HEADERS = {"Vapor:", "Melt:", "Track phases:", "fugacity:"}
-    out.drop(columns=[c for c in _SECTION_HEADERS if c in out.columns],
-             inplace=True, errors="ignore")
+    out.drop(
+        columns=[c for c in _SECTION_HEADERS if c in out.columns],
+        inplace=True,
+        errors="ignore",
+    )
 
     # --- Drop non-standard columns (e.g. MAGEC metadata: T_initial, P_initial, etc.) ---
     _keep = set(col.STANDARD_COLUMNS) | {"Run_ID"}
-    out.drop(columns=[c for c in out.columns if c not in _keep],
-             inplace=True, errors="ignore")
+    out.drop(
+        columns=[c for c in out.columns if c not in _keep],
+        inplace=True,
+        errors="ignore",
+    )
 
     return out
 
@@ -247,8 +252,7 @@ def parse_saturation_pressure(xlsx_path: str) -> float:
             break
     if p_col is None:
         raise KeyError(
-            f"No pressure column found in {xlsx_path}. "
-            f"Columns: {list(df.columns)}"
+            f"No pressure column found in {xlsx_path}. " f"Columns: {list(df.columns)}"
         )
 
     # Identify vapor weight column

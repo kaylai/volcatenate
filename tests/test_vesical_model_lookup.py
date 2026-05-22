@@ -7,10 +7,10 @@ lives at ``v.models.magmasat.MagmaSat`` as a class instead.
 These tests instantiate model objects but do not invoke MELTS, so they run
 fine without ``thermoengine`` available at test time.
 """
+
 from __future__ import annotations
 
 import pytest
-
 
 # Skip the whole module cleanly if VESIcal isn't installed.
 pytest.importorskip("VESIcal")
@@ -34,12 +34,12 @@ def test_get_vesical_model_resolves_default_models():
     for variant in ["IaconoMarziano", "Dixon", "Liu", "ShishkinaIdealMixing"]:
         model = _get_vesical_model(variant)
         assert model is not None, f"{variant} resolved to None"
-        assert hasattr(model, "calculate_saturation_pressure"), (
-            f"{variant} model has no calculate_saturation_pressure"
-        )
-        assert hasattr(model, "calculate_degassing_path"), (
-            f"{variant} model has no calculate_degassing_path"
-        )
+        assert hasattr(
+            model, "calculate_saturation_pressure"
+        ), f"{variant} model has no calculate_saturation_pressure"
+        assert hasattr(
+            model, "calculate_degassing_path"
+        ), f"{variant} model has no calculate_degassing_path"
 
 
 def test_get_vesical_model_raises_on_unknown_variant():
@@ -66,6 +66,7 @@ def test_backend_construction_does_not_invoke_model():
 
 # ── stdout-capture context manager ─────────────────────────────────────
 
+
 def test_quiet_vesical_captures_stdout_to_logger(caplog):
     """``_quiet_vesical`` must redirect stdout to logger.debug, not the terminal."""
     import logging
@@ -76,9 +77,9 @@ def test_quiet_vesical_captures_stdout_to_logger(caplog):
             print("noisy MELTS-style message")
 
     messages = [r.getMessage() for r in caplog.records]
-    assert any("noisy MELTS-style message" in m for m in messages), (
-        f"Expected captured stdout in logger.debug; got: {messages}"
-    )
+    assert any(
+        "noisy MELTS-style message" in m for m in messages
+    ), f"Expected captured stdout in logger.debug; got: {messages}"
 
 
 def test_quiet_vesical_captures_stderr_to_logger(caplog):

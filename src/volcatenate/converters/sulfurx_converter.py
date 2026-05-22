@@ -24,33 +24,32 @@ import pandas as pd
 
 from volcatenate import columns as col
 
-
 # ── Raw SulfurX column -> standard column mapping ──────────────────
 _RENAME: dict[str, str] = {
     # Melt volatile concentrations
-    "wS_melt":        col.ST_M_PPMW,
-    "wH2O_melt":      col.H2OT_M_WTPC,
-    "wCO2_melt":      col.CO2T_M_PPMW,
+    "wS_melt": col.ST_M_PPMW,
+    "wH2O_melt": col.H2OT_M_WTPC,
+    "wCO2_melt": col.CO2T_M_PPMW,
     # Redox
-    "S6+/ST":         col.S6ST_M,
-    "ferric_ratio":   col.FE3FET_M,
-    "fO2":            col.LOGFO2,
+    "S6+/ST": col.S6ST_M,
+    "ferric_ratio": col.FE3FET_M,
+    "fO2": col.LOGFO2,
     # Vapor
     "vapor_fraction": col.VAPOR_WT,
-    "XH2O_fluid":     col.H2O_V_MF,
-    "XCO2_fluid":     col.CO2_V_MF,
-    "XSO2_fluid":     col.SO2_V_MF,
-    "XH2S_fluid":     col.H2S_V_MF,
+    "XH2O_fluid": col.H2O_V_MF,
+    "XCO2_fluid": col.CO2_V_MF,
+    "XSO2_fluid": col.SO2_V_MF,
+    "XH2S_fluid": col.H2S_V_MF,
     # Already-standard names (identity, harmless)
-    col.P_BARS:       col.P_BARS,
-    col.H2OT_M_WTPC:  col.H2OT_M_WTPC,
-    col.CO2T_M_PPMW:  col.CO2T_M_PPMW,
-    col.ST_M_PPMW:    col.ST_M_PPMW,
-    col.FE3FET_M:     col.FE3FET_M,
-    col.S6ST_M:       col.S6ST_M,
-    col.LOGFO2:       col.LOGFO2,
-    col.DFMQ:         col.DFMQ,
-    col.VAPOR_WT:     col.VAPOR_WT,
+    col.P_BARS: col.P_BARS,
+    col.H2OT_M_WTPC: col.H2OT_M_WTPC,
+    col.CO2T_M_PPMW: col.CO2T_M_PPMW,
+    col.ST_M_PPMW: col.ST_M_PPMW,
+    col.FE3FET_M: col.FE3FET_M,
+    col.S6ST_M: col.S6ST_M,
+    col.LOGFO2: col.LOGFO2,
+    col.DFMQ: col.DFMQ,
+    col.VAPOR_WT: col.VAPOR_WT,
 }
 
 
