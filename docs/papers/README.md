@@ -18,6 +18,7 @@ docs/papers/
 ├── magec/
 │   ├── SunLee2022.pdf                    # Sun & Lee (2022), GCA 338, 302–321
 │   └── SunYao2024.pdf                    # Sun & Yao (2024), EPSL 638, 118742
+│   └── MAGEC_Supplement.zip              # Sun & Yao (2024) supplement (incl. MAGEC software)
 ├── sulfurx/
 │   ├── Ding2023.pdf                      # Ding, Plank, Wallace & Rasmussen (2023), G-Cubed 24
 │   └── Ding2023_supplement.pdf           # Supporting information

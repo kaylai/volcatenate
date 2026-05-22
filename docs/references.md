@@ -37,6 +37,7 @@ volcatenate is a thin Python wrapper. Every numerical result it produces comes f
 
 - _Original MAGEC presentation._ Sun, C. & Lee, C.-T. A. (2022). Redox evolution of crystallizing magmas with C-H-O-S volatiles and its implications for atmospheric oxygenation. _Geochimica et Cosmochimica Acta_, 338, 302–321. [doi:10.1016/j.gca.2022.09.044](https://doi.org/10.1016/j.gca.2022.09.044) — {download}`PDF <papers/magec/SunLee2022.pdf>`
 - _Current version of the Fe redox model used in volcatenate._ Sun, C. & Yao, L. (2024). Redox equilibria of iron in low- to high-silica melts: A simple model and its applications to C-H-O-S degassing. _Earth and Planetary Science Letters_, 638, 118742. [doi:10.1016/j.epsl.2024.118742](https://doi.org/10.1016/j.epsl.2024.118742) — {download}`PDF <papers/magec/SunYao2024.pdf>`
+- _MAGEC supplement and software files._ - {download}`ZIP <papers/magec/MAGEC_Supplement.zip>`
 
 ---
 
