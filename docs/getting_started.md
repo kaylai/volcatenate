@@ -7,9 +7,10 @@ Install volcatenate from a clone of the repository:
 ```bash
 # From the volcatenate directory:
 pip install -e .
+```
 
-Each model backend is optional. If a model's dependencies are not
-installed, it is silently skipped. Check which backends are available:
+Each model backend is optional. If a model's dependencies are not installed, it is silently skipped.
+Check which backends are available on your machine:
 
 ```python
 import volcatenate
@@ -36,7 +37,8 @@ satp_df = volcatenate.calculate_saturation_pressure(
 volcatenate.export_saturation_pressure(satp_df, "results/saturation_pressures.csv")
 ```
 
-The returned DataFrame has one row per sample and columns `Sample`, plus `<Model>_SatP_bars` for each model.
+The returned DataFrame has one row per sample and columns `Sample`, plus `<Model>_SatP_bars` for
+each model.
 
 ## Degassing path (single composition)
 
@@ -46,13 +48,13 @@ Calculate a degassing path for one composition:
 import volcatenate
 
 # From a CSV (uses the first row):
-paths = volcatenate.calculate_degassing(
+degassing_paths = volcatenate.calculate_degassing(
     "examples/example_degassing_input.csv",
     models=["EVo", "VolFe"],
 )
 
 # Or from a dict:
-paths = volcatenate.calculate_degassing(
+degassing_paths = volcatenate.calculate_degassing(
     {
         "Sample": "Kilauea", "T_C": 1200,
         "SiO2": 50.19, "TiO2": 2.34, "Al2O3": 12.79,
@@ -65,7 +67,7 @@ paths = volcatenate.calculate_degassing(
 )
 
 # Export per-model CSVs
-volcatenate.export_degassing_paths(paths, output_dir="results/degassing", sample_name="kilauea")
+volcatenate.export_degassing_paths(degassing_paths, output_dir="results/degassing", sample_name="kilauea")
 ```
 
 The returned dict maps model names to DataFrames with standardized output

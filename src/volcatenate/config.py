@@ -742,8 +742,8 @@ class RunConfig:
     tool output subdirectory). Default ``"."`` (current working directory).
     - ``raw_output_dir`` — subdirectory (relative to ``output_dir``) for raw per-backend files: EVo
     YAML configs, MAGEC input/output XLSX, etc. Default ``"raw_tool_output"``.
-    - ``keep_raw_output`` — when ``True`` (default), all raw tool output files are retained for
-    inspection. ``False`` cleans them up after each run, keeping only the standardized DataFrames in
+    - ``keep_raw_output`` — when ``True``, all raw tool output files are retained for inspection.
+    ``False`` (default) cleans them up after each run, keeping only the standardized DataFrames in
     memory.
     - ``verbose`` — print progress to the terminal.
     - ``verbose_level`` — terminal log level when ``verbose`` is True. One of ``"DEBUG"``,
@@ -808,6 +808,15 @@ def default_config_path() -> str:
         save_config(RunConfig(), "volcatenate_config.yaml")
     """
     return _DEFAULT_CONFIG_PATH
+
+def default_config():
+    """Pretty-prints the contents of volcatenate's default configuration yaml file using rich.
+    """
+    from rich import print
+    from rich.syntax import Syntax
+
+    with open(_DEFAULT_CONFIG_PATH) as f:
+        print(Syntax(f.read(), "yaml", theme="lovelace"))
 
 
 # ── Inline comments for YAML export ──────────────────────────────────
