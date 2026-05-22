@@ -309,65 +309,48 @@ def test_evo_open_system_differs_from_closed(tmp_path):
 # Iacono_Marziano_COH solver — known sensitivity at low CO2.
 _KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
 
+from volcatenate.backends.sulfurx import Backend
+sulfurx_backend = Backend()
 
 @pytest.mark.integration
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
+@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
 def test_sulfurx_satp_smoke(tmp_path):
     """SulfurX calculate_saturation_pressure returns a sane pd.Series."""
-    from volcatenate.backends.sulfurx import Backend
-
-    backend = Backend()
-    if not backend.is_available():
-        pytest.skip("SulfurX not available (SULFURX_PATH not set or path not found)")
-
     comp = composition_from_dict(_KILAUEA_SX)
-    state = backend.calculate_saturation_pressure(comp, _config(str(tmp_path)))
+    state = sulfurx_backend.calculate_saturation_pressure(comp, _config(str(tmp_path)))
     _assert_satp_sane(state, "SulfurX")
 
 
 @pytest.mark.integration
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
+@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
 def test_sulfurx_degassing_smoke(tmp_path):
     """SulfurX calculate_degassing returns a valid degassing path."""
-    from volcatenate.backends.sulfurx import Backend
-
-    backend = Backend()
-    if not backend.is_available():
-        pytest.skip("SulfurX not available")
-
     comp = composition_from_dict(_KILAUEA_SX)
-    df = backend.calculate_degassing(comp, _fast_sulfurx_config(str(tmp_path)))
+    df = sulfurx_backend.calculate_degassing(comp, _fast_sulfurx_config(str(tmp_path)))
     _assert_degassing_sane(df, "SulfurX")
 
 
 # ── MAGEC ─────────────────────────────────────────────────────────────────────
-
+from volcatenate.backends.magec import Backend
+magec_backend = Backend()
 
 @pytest.mark.integration
+@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
 def test_magec_satp_smoke(tmp_path):
     """MAGEC calculate_saturation_pressure returns a sane pd.Series."""
-    from volcatenate.backends.magec import Backend
-
-    backend = Backend()
-    if not backend.is_available():
-        pytest.skip("MAGEC not available (MATLAB or solver not found)")
-
     comp = composition_from_dict(KILAUEA)
-    state = backend.calculate_saturation_pressure(
+    state = magec_backend.calculate_saturation_pressure(
         comp, _fast_magec_config(str(tmp_path))
     )
     _assert_satp_sane(state, "MAGEC")
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
 def test_magec_degassing_smoke(tmp_path):
     """MAGEC calculate_degassing returns a valid degassing path."""
-    from volcatenate.backends.magec import Backend
-
-    backend = Backend()
-    if not backend.is_available():
-        pytest.skip("MAGEC not available")
-
     comp = composition_from_dict(KILAUEA)
-    df = backend.calculate_degassing(comp, _fast_magec_config(str(tmp_path)))
+    df = magec_backend.calculate_degassing(comp, _fast_magec_config(str(tmp_path)))
     _assert_degassing_sane(df, "MAGEC")
