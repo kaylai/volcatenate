@@ -1,18 +1,12 @@
 """Integration / smoke tests for each backend wrapper.
 
 Each test:
-  1. Skips if the required external library is not installed.
+  1. For Sulfur_X and MAGEC, skips if the required external library is not installed.
   2. Runs a saturation pressure or degassing calculation through volcatenate.
   3. Checks that the result has expected columns and physically sane values.
 
 For EVo and VolFe, the raw-library comparison test verifies that volcatenate
 does not mangle the underlying model's output (P_bars must agree within 2%).
-
-To run only integration tests:
-    pytest tests/test_integration.py -v -m integration
-
-To skip integration tests (default in CI):
-    pytest tests/ -m "not integration"
 """
 
 from __future__ import annotations
@@ -114,7 +108,6 @@ def _assert_degassing_sane(df: pd.DataFrame, model: str) -> None:
 # ── VESIcal ───────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.integration
 def test_vesical_satp_smoke(tmp_path):
     """VESIcal calculate_saturation_pressure returns a sane pd.Series."""
     pytest.importorskip("VESIcal")
@@ -129,7 +122,6 @@ def test_vesical_satp_smoke(tmp_path):
     _assert_satp_sane(state, "VESIcal")
 
 
-@pytest.mark.integration
 def test_vesical_degassing_smoke(tmp_path):
     """VESIcal calculate_degassing returns a DataFrame with standard columns."""
     pytest.importorskip("VESIcal")
@@ -147,7 +139,6 @@ def test_vesical_degassing_smoke(tmp_path):
 # ── VolFe ─────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.integration
 def test_volfe_satp_smoke(tmp_path):
     """VolFe calculate_saturation_pressure returns a sane pd.Series."""
     pytest.importorskip("VolFe")
@@ -162,7 +153,6 @@ def test_volfe_satp_smoke(tmp_path):
     _assert_satp_sane(state, "VolFe")
 
 
-@pytest.mark.integration
 def test_volfe_satp_vs_raw_library(tmp_path):
     """Volcatenate VolFe satP must agree with the raw library within 2%."""
     vf = pytest.importorskip("VolFe")
@@ -201,7 +191,6 @@ def test_volfe_satp_vs_raw_library(tmp_path):
     ), f"Volcatenate P={volc_p:.1f} bar differs from raw VolFe P={raw_p:.1f} bar by >2%"
 
 
-@pytest.mark.integration
 def test_volfe_degassing_smoke(tmp_path):
     """VolFe calculate_degassing returns a valid degassing path."""
     pytest.importorskip("VolFe")
@@ -217,9 +206,15 @@ def test_volfe_degassing_smoke(tmp_path):
 
 
 # ── EVo ───────────────────────────────────────────────────────────────────────
+from volcatenate.backends.evo import Backend
+try:
+    evo_backend = Backend()
+    is_evo_backend_available = True
+except:
+    is_evo_backend_available = False
+    
 
-
-@pytest.mark.integration
+@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
 def test_evo_satp_smoke(tmp_path):
     """EVo calculate_saturation_pressure returns a sane pd.Series."""
     pytest.importorskip("evo")
@@ -234,7 +229,7 @@ def test_evo_satp_smoke(tmp_path):
     _assert_satp_sane(state, "EVo")
 
 
-@pytest.mark.integration
+@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
 def test_evo_degassing_smoke(tmp_path):
     """EVo calculate_degassing returns a valid degassing path."""
     pytest.importorskip("evo")
@@ -249,7 +244,7 @@ def test_evo_degassing_smoke(tmp_path):
     _assert_degassing_sane(df, "EVo")
 
 
-@pytest.mark.integration
+@pytest.mark.skipif(is_evo_backend_available == False, reason="EVo backend not available.")
 def test_evo_open_system_differs_from_closed(tmp_path):
     """EVo open-system run must produce a different result than closed-system."""
     pytest.importorskip("evo")
@@ -310,11 +305,15 @@ def test_evo_open_system_differs_from_closed(tmp_path):
 _KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
 
 from volcatenate.backends.sulfurx import Backend
-sulfurx_backend = Backend()
+try:
+    sulfurx_backend = Backend()
+    is_sulfurx_backend_available = True
+except:
+    is_sulfurx_backend_available = False
 
-@pytest.mark.integration
+
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
-@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
+@pytest.mark.skipif(is_sulfurx_backend_available == False, reason="SulfurX backend not available.")
 def test_sulfurx_satp_smoke(tmp_path):
     """SulfurX calculate_saturation_pressure returns a sane pd.Series."""
     comp = composition_from_dict(_KILAUEA_SX)
@@ -322,9 +321,8 @@ def test_sulfurx_satp_smoke(tmp_path):
     _assert_satp_sane(state, "SulfurX")
 
 
-@pytest.mark.integration
 @pytest.mark.filterwarnings("ignore:invalid value encountered in")
-@pytest.mark.skipif(sulfurx_backend.is_available() == False, reason="SulfurX backend not available.")
+@pytest.mark.skipif(is_sulfurx_backend_available == False, reason="SulfurX backend not available.")
 def test_sulfurx_degassing_smoke(tmp_path):
     """SulfurX calculate_degassing returns a valid degassing path."""
     comp = composition_from_dict(_KILAUEA_SX)
@@ -335,9 +333,14 @@ def test_sulfurx_degassing_smoke(tmp_path):
 # ── MAGEC ─────────────────────────────────────────────────────────────────────
 from volcatenate.backends.magec import Backend
 magec_backend = Backend()
+try:
+    magec_backend = Backend()
+    is_magec_backend_available = True
+except:
+    is_magec_backend_available = False
 
-@pytest.mark.integration
-@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
+
+@pytest.mark.skipif(is_magec_backend_available == False, reason="MAGEC backend not available.")
 def test_magec_satp_smoke(tmp_path):
     """MAGEC calculate_saturation_pressure returns a sane pd.Series."""
     comp = composition_from_dict(KILAUEA)
@@ -347,8 +350,7 @@ def test_magec_satp_smoke(tmp_path):
     _assert_satp_sane(state, "MAGEC")
 
 
-@pytest.mark.integration
-@pytest.mark.skipif(magec_backend.is_available() == False, reason="MAGEC backend not available.")
+@pytest.mark.skipif(is_magec_backend_available == False, reason="MAGEC backend not available.")
 def test_magec_degassing_smoke(tmp_path):
     """MAGEC calculate_degassing returns a valid degassing path."""
     comp = composition_from_dict(KILAUEA)
