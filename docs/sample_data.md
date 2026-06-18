@@ -98,6 +98,17 @@ A list of `MeltComposition` instances also works.
 
 This is the lowest-level entry point. Both the CSV and dict paths build `MeltComposition` objects internally, so anything you can do via CSV you can do via `MeltComposition` and vice versa.
 
+### Editing one in place
+
+`MeltComposition` is a plain dataclass, so you can change any field by assignment — handy when most samples share a value but one backend needs a different redox indicator:
+
+```python
+fuego.dFMQ = 1.17   # set a value SulfurX can read
+fuego.H2O = 4.5     # any other field works the same way
+```
+
+The change sticks on that object. If you need an independent copy — say, a different fO₂ for one backend without touching another run's samples — read the CSV again rather than mutating a shared list.
+
 ## What "the sample" means in this documentation
 
 Every reference to "the sample" or "from the composition" elsewhere in this documentation — in the [propagation reference](config_options.md), the [run-bundle guide](run_bundles.md), the example notebooks, and the API docstrings — refers to a single `MeltComposition` instance. The three input shapes above are just different ways of constructing those instances.
