@@ -1539,34 +1539,6 @@ def _build_dataclass(
     return cls(**filtered)
 
 
-def _migrate_deprecated_keys(section_name: str, section_data: dict) -> None:
-    """Mutate ``section_data`` in place to fold deprecated keys into
-    their replacements. Emits a deprecation warning for each migration.
-    """
-    if section_name == "vesical" and "model" in section_data:
-        section_data.pop("model")
-        logger.warning(
-            "vesical.model is deprecated and ignored; the VESIcal solubility "
-            "model is now selected by backend name (e.g. 'VESIcal_Iacono', "
-            "'VESIcal_Dixon', 'VESIcal_MS') passed to the calculate_* "
-            "functions. Remove vesical.model from your config to silence "
-            "this warning."
-        )
-
-    if section_name == "magec" and "p_start_overrides" in section_data:
-        old = section_data.pop("p_start_overrides") or {}
-        new = section_data.setdefault("overrides", {})
-        for sample, p_start in old.items():
-            # New-shape entry wins on conflict.
-            entry = new.setdefault(sample, {})
-            entry.setdefault("p_start_kbar", p_start)
-        logger.warning(
-            "magec.p_start_overrides is deprecated; folded into "
-            "magec.overrides as '<sample>: {p_start_kbar: <value>}'. "
-            "Update your config to silence this warning."
-        )
-
-
 def load_config(path: str) -> RunConfig:
     """Load a RunConfig from a YAML file.
 
@@ -1608,7 +1580,6 @@ def load_config(path: str) -> RunConfig:
     for section_name, cls in _SECTION_CLASSES.items():
         if section_name in raw and isinstance(raw[section_name], dict):
             section_data = raw[section_name]
-            _migrate_deprecated_keys(section_name, section_data)
             kwargs[section_name] = _build_dataclass(
                 cls,
                 section_data,
