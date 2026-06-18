@@ -398,7 +398,7 @@ def _run_degassing(
                     "coh_model": int(coh_model),
                     "crystallization": int(choice),
                     "fo2_tracker": int(fo2_tracker),
-                    "s_fe_choice": int(s_fe_choice),
+                    "s_fe_choice": float(s_fe_choice),
                     "sigma": float(sigma),
                     "sulfide_pre": int(sulfide_pre),
                     "slope_h2o": float(slope_h2o),
