@@ -205,10 +205,11 @@ evo:
 #   - 'Reference' column = 'auto_satP' (we always use auto sat-P search,
 #     not a user-supplied initial pressure via 'Reference P (kbar)')
 # Fallback chain when redox_source = 'auto':
-#   cfg.redox_option (if present)  →  Fe3+/FeT  →  raise
+#   cfg.redox_option (if present)  →  Fe3+/FeT  →  dFMQ  →  raise
 #   The wrapper passes the chosen indicator through unchanged; it does
-#   not convert one indicator into another. Use redox_source='fe3fet'/
-#   'dfmq' to require that exact indicator and raise on missing data.
+#   not convert one indicator into another (dFMQ is a native MAGEC
+#   input). Use redox_source='fe3fet'/'dfmq' to require that exact
+#   indicator and raise on missing data.
 # See docs/config_options.md for the full mapping.
 magec:
   solver_dir: ""  # Path to MAGEC_Solver_v1b.p directory (empty = auto-detect)

@@ -369,8 +369,10 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     indicator into another:
 
     - ``"auto"`` (default): honors ``cfg.redox_option`` if the matching
-      indicator is on the comp; otherwise uses ``Fe3+/FeT`` if available;
-      otherwise raises ``ValueError``.
+      indicator is on the comp; otherwise falls through the native MAGEC
+      indicators present on the sample in order ``Fe3+/FeT`` -> ``dFMQ``;
+      otherwise raises ``ValueError``. (Falling through to ``dFMQ`` selects a
+      native indicator that is on the sample — it is not a conversion.)
     - ``"fe3fet"`` or ``"dfmq"``: require that exact column label; raise ValueError
     if missing.
 
@@ -417,6 +419,15 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
             comp.sample, requested, fe3fet,
         )
         return "Fe3+/FeT", float(fe3fet)
+
+    # 3. fall through to dFMQ — also a native MAGEC indicator. Selecting it
+    #    when it is on the sample is not a conversion.
+    if comp.dFMQ is not None:
+        logger.info(
+            "[MAGEC] %s: requested redox=%s missing; using dFMQ (%.3f)",
+            comp.sample, requested, comp.dFMQ,
+        )
+        return "dFMQ", float(comp.dFMQ)
 
     raise ValueError(
         f"No usable redox indicator for {comp.sample}. "

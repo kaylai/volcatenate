@@ -245,7 +245,7 @@ def test_evo_open_system_differs_from_closed(tmp_path):
 # Use a slightly more CO2-rich Kilauea-like composition so the solver
 # can find a satP and walk a degassing path.  See SulfurX's
 # Iacono_Marziano_COH solver — known sensitivity at low CO2.
-_KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
+_KILAUEA_SX = {**KILAUEA, "CO2": 0.05, "dFMQ": 0.55}  # 500 ppm CO2 instead of 80
 
 from volcatenate.backends.sulfurx import Backend
 sulfurx_backend = Backend()

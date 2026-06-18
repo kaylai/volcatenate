@@ -567,7 +567,9 @@ class MAGECConfig:
     natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``. The wrapper passes the
     chosen indicator through unchanged; it never converts one indicator into another:
         - ``"auto"`` (default): honor ``redox_option`` if the matching column is on the sample;
-        otherwise prefer ``Fe3+/FeT`` if available; otherwise raise ``ValueError``.
+        otherwise fall through the native MAGEC indicators present on the sample in order
+        ``Fe3+/FeT`` -> ``dFMQ``; otherwise raise ``ValueError``. (No indicator is converted into
+        another; the fallthrough only picks an indicator MAGEC natively accepts.)
         - ``"fe3fet"`` / ``"dfmq"``: require that exact indicator on the sample; raise
         ``ValueError`` if missing.
     - ``timeout`` — MATLAB subprocesses are killed after this many seconds. MAGEC can hang
@@ -611,8 +613,9 @@ class MAGECConfig:
     # never converts one indicator into another:
     #
     #   "auto"               — honor redox_option when its column is on
-    #                          the sample, otherwise use Fe3+/FeT if
-    #                          available, otherwise raise ValueError.
+    #                          the sample, otherwise fall through the
+    #                          native indicators present in order
+    #                          Fe3+/FeT -> dFMQ, otherwise raise.
     #   "fe3fet" / "dfmq"    — require that exact indicator on the
     #                          sample; raise ValueError if missing.
     redox_option: str = "Fe3+/FeT"  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
@@ -1203,10 +1206,11 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  - 'Reference' column = 'auto_satP' (we always use auto sat-P search,",
         "    not a user-supplied initial pressure via 'Reference P (kbar)')",
         "Fallback chain when redox_source = 'auto':",
-        "  cfg.redox_option (if present)  →  Fe3+/FeT  →  raise",
+        "  cfg.redox_option (if present)  →  Fe3+/FeT  →  dFMQ  →  raise",
         "  The wrapper passes the chosen indicator through unchanged; it does",
-        "  not convert one indicator into another. Use redox_source='fe3fet'/",
-        "  'dfmq' to require that exact indicator and raise on missing data.",
+        "  not convert one indicator into another (dFMQ is a native MAGEC",
+        "  input). Use redox_source='fe3fet'/'dfmq' to require that exact",
+        "  indicator and raise on missing data.",
         "See docs/config_options.md for the full mapping.",
     ],
     "sulfurx": [

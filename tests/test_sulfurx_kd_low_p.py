@@ -125,7 +125,7 @@ _KILAUEA = {
     **_CANONICAL_KILAUEA,
     "Sample": "KilaueaKdLowP",
     "CO2": 0.008,
-    "dNNO": -0.23,
+    "dFMQ": 0.55,
 }
 
 
