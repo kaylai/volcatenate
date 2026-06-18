@@ -64,24 +64,19 @@ def test_resolve_falls_through_for_unmatched_sample():
     assert out.dp_max == 100
 
 
-def test_resolve_warns_and_skips_unknown_field(caplog):
+def test_resolve_raises_on_unknown_field():
     cfg = EVoConfig(overrides={"MORB": {"dp_maxx": 25}})  # typo
-    with caplog.at_level(logging.WARNING, logger="volcatenate"):
-        out = resolve_sample_config(cfg, "MORB")
-    assert out.dp_max == 100  # original kept
-    assert "dp_maxx" in caplog.text
-    assert "MORB" in caplog.text
+    with pytest.raises(ValueError) as exc_info:
+        resolve_sample_config(cfg, "MORB")
+    msg = str(exc_info.value)
+    assert "dp_maxx" in msg
+    assert "MORB" in msg
 
 
-def test_resolve_skips_attempts_to_override_overrides_field(caplog):
+def test_resolve_raises_on_attempt_to_override_overrides_field():
     cfg = EVoConfig(overrides={"MORB": {"overrides": {"X": {"y": 1}}}})
-    with caplog.at_level(logging.WARNING, logger="volcatenate"):
-        out = resolve_sample_config(cfg, "MORB")
-    # Guard preserved the original — the inner {"X": {"y": 1}} value did not become
-    # the new `overrides` dict (which would happen if the guard had been bypassed).
-    assert "X" not in out.overrides
-    assert out.overrides == cfg.overrides
-    assert "overrides" in caplog.text
+    with pytest.raises(ValueError, match="overrides"):
+        resolve_sample_config(cfg, "MORB")
 
 
 def test_resolve_applies_multiple_fields():
@@ -611,3 +606,64 @@ def test_resolve_sample_config_accepts_valid_override():
     cfg = SulfurXConfig(overrides={"Fuego": {"kd_low_p_threshold_mpa": 15.0}})
     out = resolve_sample_config(cfg, "Fuego")
     assert out.kd_low_p_threshold_mpa == 15.0
+
+
+# ── Literal-membership validation: bad enum values raise loudly ───────
+
+
+def test_load_config_rejects_invalid_literal_value_regression(tmp_path):
+    """Regression: a redox_source value that was removed from MAGEC's Literal
+    (kc_from_buffer / kc91_from_buffer was a real manuscript-config value) must
+    raise at load, not silently fall through to the auto path."""
+    yaml_path = tmp_path / "bad_literal.yaml"
+    yaml_path.write_text("magec:\n  redox_source: kc_from_buffer\n")
+    with pytest.raises(ValueError) as exc_info:
+        load_config(str(yaml_path))
+    msg = str(exc_info.value)
+    assert "redox_source" in msg
+    assert "kc_from_buffer" in msg
+    assert "auto" in msg  # error should list the allowed values
+
+
+def test_load_config_rejects_invalid_literal_in_section(tmp_path):
+    """A bogus value for a Literal field inside a section raises at load."""
+    yaml_path = tmp_path / "bad.yaml"
+    yaml_path.write_text("volfe:\n  eq_fe: maybe\n")
+    with pytest.raises(ValueError, match="eq_fe"):
+        load_config(str(yaml_path))
+
+
+def test_load_config_accepts_valid_literal_value(tmp_path):
+    """A valid Literal value still loads fine. The value is quoted, matching how
+    save_config emits yes/no/true/false (unquoted `no` is YAML boolean False)."""
+    yaml_path = tmp_path / "good.yaml"
+    yaml_path.write_text('volfe:\n  eq_fe: "no"\n')
+    cfg = load_config(str(yaml_path))
+    assert cfg.volfe.eq_fe == "no"
+
+
+def test_resolve_rejects_invalid_literal_value_in_override():
+    """An override carrying a non-member value for a Literal field raises."""
+    from volcatenate.config import VolFeConfig
+
+    cfg = VolFeConfig(overrides={"Fogo": {"eq_fe": "maybe"}})
+    with pytest.raises(ValueError, match="eq_fe"):
+        resolve_sample_config(cfg, "Fogo")
+
+
+def test_resolve_accepts_valid_literal_value_in_override():
+    from volcatenate.config import VolFeConfig
+
+    cfg = VolFeConfig(overrides={"Fogo": {"eq_fe": "no"}})
+    out = resolve_sample_config(cfg, "Fogo")
+    assert out.eq_fe == "no"
+
+
+def test_load_config_preserves_float_s_fe_choice(tmp_path):
+    """SulfurX's s_fe_choice selects a model by 0/1/100, but any other value is
+    the modified-Muth constant — a non-integer must survive load unchanged
+    (the field is float, not int, so it is not truncated)."""
+    yaml_path = tmp_path / "sfe.yaml"
+    yaml_path.write_text("sulfurx:\n  s_fe_choice: 7.5\n")
+    cfg = load_config(str(yaml_path))
+    assert cfg.sulfurx.s_fe_choice == 7.5

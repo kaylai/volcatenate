@@ -17,8 +17,8 @@ indicator through unchanged; it never converts one indicator into another):
   - VolFe  — accepts Fe3FeT / dNNO / dFMQ; auto falls back fo2_column → Fe3FeT
              → dNNO → dFMQ.
   - EVo    — accepts Fe3FeT / dNNO / dFMQ; auto uses Fe3FeT else a buffer.
-  - MAGEC  — accepts Fe3FeT / dFMQ (not dNNO); auto honors redox_option then
-             Fe3+/FeT, else raises.
+  - MAGEC  — accepts Fe3+/FeT / logfO2 / S6+/ST; volcatenate currently only surfaces
+             Fe3+/FeT
   - SulfurX — accepts dFMQ only; raises otherwise.
 """
 
@@ -257,20 +257,14 @@ class TestMAGECAuto:
         assert opt == "Fe3+/FeT"
         assert val == pytest.approx(0.18)
 
-    def test_dfmq_used_when_option_is_dfmq(self):
+    def test_redox_option_dfmq_rejected(self):
         cfg = MAGECConfig(redox_option="dFMQ")
-        opt, val = _resolve_magec_redox(comp(dFMQ=0.7), cfg)
-        assert opt == "dFMQ"
-        assert val == pytest.approx(0.7)
+        with pytest.raises(ValueError, match="dFMQ"):
+            _resolve_magec_redox(comp(Fe3FeT=0.18, dFMQ=0.7), cfg)
 
-    def test_auto_falls_through_to_dfmq(self):
-        # redox_option defaults to 'Fe3+/FeT'; with only dFMQ present (a native
-        # MAGEC indicator) and no Fe3FeT, auto falls through to dFMQ rather than
-        # raising. This selects a native indicator that is on the sample — it is
-        # not a conversion.
-        opt, val = _resolve_magec_redox(comp(dFMQ=0.7), MAGECConfig())
-        assert opt == "dFMQ"
-        assert val == pytest.approx(0.7)
+    def test_auto_raises_when_only_dfmq(self):
+        with pytest.raises(ValueError, match="Fe3|dFMQ"):
+            _resolve_magec_redox(comp(dFMQ=0.7), MAGECConfig())
 
     def test_dnno_only_raises(self):
         # MAGEC never accepts dNNO and the wrapper does not convert it.
@@ -283,16 +277,14 @@ class TestMAGECStrict:
         with pytest.raises(ValueError):
             _resolve_magec_redox(comp(dFMQ=0.7), MAGECConfig(redox_source="fe3fet"))
 
-    def test_strict_dfmq_raises_when_missing(self):
-        with pytest.raises(ValueError):
-            _resolve_magec_redox(comp(Fe3FeT=0.18), MAGECConfig(redox_source="dfmq"))
-
-    def test_strict_dfmq_returns_value(self):
-        opt, val = _resolve_magec_redox(
-            comp(dFMQ=0.7), MAGECConfig(redox_source="dfmq")
-        )
-        assert opt == "dFMQ"
-        assert val == pytest.approx(0.7)
+    def test_unknown_redox_source_raises(self):
+        # A Python-constructed config bypasses the Literal load-time validation,
+        # so the resolver itself must reject an unknown redox_source (e.g. the
+        # removed 'kc_from_buffer') rather than silently absorbing it into auto.
+        with pytest.raises(ValueError, match="redox_source"):
+            _resolve_magec_redox(
+                comp(Fe3FeT=0.18), MAGECConfig(redox_source="kc_from_buffer")
+            )
 
 
 # ── Layer 2: SulfurX (dFMQ only) ─────────────────────────────────────────────

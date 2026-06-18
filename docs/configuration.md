@@ -17,7 +17,7 @@ Fields are plain attributes — assigning one mutates the config in place and th
 
 ```python
 config.output_dir = "my_output"       # top-level field
-config.magec.redox_source = "dfmq"    # nested backend field
+config.magec.redox_source = "fe3fet"  # nested backend field
 ```
 
 To reuse one config across several `run_comparison` calls, set the field right before each call:

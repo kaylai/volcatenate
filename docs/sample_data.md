@@ -51,10 +51,10 @@ Different backends accept different redox indicators, and the wrapper passes wha
 | ------- | -------------------------------- | -------------------------------------------------------------------- |
 | EVo     | `Fe3FeT`, `dNNO`, `dFMQ`         | `auto` falls back Fe3+/FeT → dNNO → dFMQ across these three.          |
 | VolFe   | `Fe3FeT`, `dNNO`, `dFMQ`         | `auto` falls back Fe3+/FeT → dNNO → dFMQ across these three.          |
-| MAGEC   | `Fe3FeT`, `dFMQ`                 | Does not accept `dNNO`.                                               |
+| MAGEC   | `Fe3FeT` (also `logfO2`, `S6+/ST`) | The wrapper sources `Fe3FeT` only. |
 | SulfurX | `dFMQ`                           | Its native input is `delta_FMQ`; requires `dFMQ`.                     |
 
-If a backend's accepted indicator is missing on the sample, that backend raises `ValueError` rather than substituting. `dFMQ` is the one indicator all four backends accept, so it is the safest single value to supply when you want to run every backend on the same sample. If you have only `Fe3FeT` or `dNNO` and want to include SulfurX (or MAGEC, for `dNNO`), convert to the accepted indicator yourself, using whichever fO2 model your study has standardized on, before the run. The strict-mode options (`evo.fo2_source`, `volfe.fo2_source`, `magec.redox_source`) make a backend raise on a specific missing indicator rather than fall back.
+If a backend's accepted indicator is missing on the sample, that backend raises `ValueError` rather than substituting. There is no single indicator that all four backends accept: MAGEC needs `Fe3FeT`, while SulfurX needs `dFMQ`. To run every backend on the same sample, supply both a `Fe3FeT` value (for MAGEC, EVo, and VolFe) and a `dFMQ` value (for SulfurX), derived consistently from the same fO2 at the run's T, P. If you have only one indicator and want a backend that cannot consume it, convert to the accepted indicator yourself, using whichever fO2 model your study has standardized on, before the run — volcatenate never converts between redox indicators. The strict-mode options (`evo.fo2_source`, `volfe.fo2_source`, `magec.redox_source`) make a backend raise on a specific missing indicator rather than fall back.
 
 You need at least one indicator each backend you run can accept. Providing more than one is fine; each backend picks the one it accepts per its config.
 

@@ -361,6 +361,11 @@ class Backend(ModelBackend):
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+# The redox indicators MAGEC's solver reads in its "Initial redox options"
+# column. dFMQ is intentionally excluded: MAGEC's solver cannot consume it.
+_MAGEC_NATIVE_REDOX = ("Fe3+/FeT", "logfO2", "S6+/ST")
+
+
 def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     """Pick the (redox_option, redox_value) pair to send to MAGEC.
 
@@ -369,18 +374,27 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     indicator into another:
 
     - ``"auto"`` (default): honors ``cfg.redox_option`` if the matching
-      indicator is on the comp; otherwise falls through the native MAGEC
-      indicators present on the sample in order ``Fe3+/FeT`` -> ``dFMQ``;
-      otherwise raises ``ValueError``. (Falling through to ``dFMQ`` selects a
-      native indicator that is on the sample — it is not a conversion.)
-    - ``"fe3fet"`` or ``"dfmq"``: require that exact column label; raise ValueError
-    if missing.
+      indicator is on the comp; otherwise uses ``Fe3+/FeT`` if present;
+      otherwise raises ``ValueError``.
+    - ``"fe3fet"``: require ``Fe3+/FeT``; raise ``ValueError`` if missing.
 
-    Returns (option_string, value).  Raises ``ValueError`` if no
-    suitable indicator is available given the chosen mode.
+    MAGEC accepts ``Fe3+/FeT``, ``logfO2``, or ``S6+/ST`` (see
+    ``_MAGEC_NATIVE_REDOX``); volcatenate carries a direct sample source only
+    for ``Fe3+/FeT``.
+
+    Returns (option_string, value).  Raises ``ValueError`` if ``redox_option``
+    or ``redox_source`` is invalid, or if no usable indicator is available.
     """
     fe3fet = comp.fe3fet_computed
     src = cfg.redox_source
+
+    # redox_option must be one MAGEC actually accepts.
+    if cfg.redox_option not in _MAGEC_NATIVE_REDOX:
+        raise ValueError(
+            f"[MAGEC] redox_option={cfg.redox_option!r} is not a redox indicator "
+            f"MAGEC accepts. Use one of {', '.join(_MAGEC_NATIVE_REDOX)}. "
+            f"(dFMQ is not a MAGEC input — convert it to Fe3+/FeT upstream.)"
+        )
 
     if src == "fe3fet":
         if np.isnan(fe3fet):
@@ -389,30 +403,24 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
                 f"{comp.sample!r}, but none was provided."
             )
         return "Fe3+/FeT", float(fe3fet)
-    if src == "dfmq":
-        if comp.dFMQ is None:
-            raise ValueError(
-                f"[MAGEC] redox_source='dfmq' requires dFMQ on sample "
-                f"{comp.sample!r}, but it is missing."
-            )
-        return "dFMQ", float(comp.dFMQ)
 
-    # ── "auto" (default): preserve the existing behavior, with INFO ──
-    # logging on each choice so the path is visible.
-    requested = cfg.redox_option   # e.g. "Fe3+/FeT"
+    if src != "auto":
+        raise ValueError(
+            f"[MAGEC] unknown redox_source {src!r} for sample {comp.sample!r}; "
+            f"expected 'auto' or 'fe3fet'."
+        )
 
-    # 1. honor the requested option if data is present.
+    # ── "auto" ──────────────────────────────────────────────────────
+    requested = cfg.redox_option  # e.g. "Fe3+/FeT"
+
+    # 1. honor the requested option if its sample source is present.
+    #    Only Fe3+/FeT has a direct source on the composition today.
     if requested == "Fe3+/FeT" and not np.isnan(fe3fet):
         logger.info("[MAGEC] %s: redox=Fe3+/FeT (%.4f)", comp.sample, fe3fet)
         return "Fe3+/FeT", float(fe3fet)
-    if requested == "dFMQ" and comp.dFMQ is not None:
-        logger.info("[MAGEC] %s: redox=dFMQ (%.3f)", comp.sample, comp.dFMQ)
-        return "dFMQ", float(comp.dFMQ)
-    # ``logfO2`` and ``S6+/ST`` are valid MAGEC options but volcatenate
-    # doesn't carry direct sources for them on the composition; fall
-    # through to the chain below.
 
-    # 2. prefer Fe3+/FeT when available (MAGEC handles it natively).
+    # 2. otherwise use Fe3+/FeT if available (the only indicator volcatenate
+    #    can source for MAGEC).
     if not np.isnan(fe3fet):
         logger.info(
             "[MAGEC] %s: requested redox=%s missing; using Fe3+/FeT (%.4f)",
@@ -420,18 +428,12 @@ def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
         )
         return "Fe3+/FeT", float(fe3fet)
 
-    # 3. fall through to dFMQ — also a native MAGEC indicator. Selecting it
-    #    when it is on the sample is not a conversion.
-    if comp.dFMQ is not None:
-        logger.info(
-            "[MAGEC] %s: requested redox=%s missing; using dFMQ (%.3f)",
-            comp.sample, requested, comp.dFMQ,
-        )
-        return "dFMQ", float(comp.dFMQ)
-
     raise ValueError(
-        f"No usable redox indicator for {comp.sample}. "
-        f"MAGEC needs Fe3+/FeT or dFMQ."
+        f"No usable redox indicator for {comp.sample}. MAGEC accepts only "
+        f"{', '.join(_MAGEC_NATIVE_REDOX)} and volcatenate sources Fe3+/FeT. "
+        f"This sample has no Fe3+/FeT; if it carries only dFMQ, convert dFMQ to "
+        f"Fe3+/FeT (or logfO2) upstream before the run — volcatenate does not "
+        f"convert between redox indicators."
     )
 
 
@@ -607,6 +609,25 @@ def _create_magec_input_csv(
     _write_magec_csv(_build_sample_input_rows(comp, cfg, output_dir=output_dir), cfg, csv_path)
 
 
+def _surface_matlab_result(stdout: str | None, returncode: int) -> list[str]:
+    """Log MAGEC's MATLAB stdout, lifting solver failures above DEBUG.
+
+    Every stdout line is logged at DEBUG (the firehose), but any line carrying
+    the wrapper's ``MAGEC: FAILED - <msg>`` marker is also emitted at WARNING so
+    the real cause is visible at the default log level. Returns the list of
+    failure lines found (for callers/tests).
+    """
+    failed: list[str] = []
+    if stdout:
+        for line in stdout.strip().split("\n"):
+            logger.debug("    [MATLAB] %s", line)
+            if "MAGEC: FAILED" in line:
+                failed.append(line.strip())
+    for line in failed:
+        logger.warning("[MAGEC] MATLAB solver reported a failure: %s", line)
+    return failed
+
+
 def _run_magec_matlab(
     in_csv: str,
     out_csv: str,
@@ -669,6 +690,9 @@ def _run_magec_matlab(
         f"    fprintf('MAGEC: OK\\n');",
         f"catch ME",
         f"    fprintf('MAGEC: FAILED - %s\\n', ME.message);",
+        # Exit non-zero on failure so the Python side's returncode check fires;
+        # historically this exited 0, hiding solver failures behind a green run.
+        f"    exit(1);",
         f"end",
         f"exit;",
     ]
@@ -695,9 +719,7 @@ def _run_magec_matlab(
         )
         return
 
-    if result.stdout:
-        for line in result.stdout.strip().split("\n"):
-            logger.debug("    [MATLAB] %s", line)
+    _surface_matlab_result(result.stdout, result.returncode)
     if result.returncode != 0:
         stderr_msg = result.stderr[:500] if result.stderr else "no stderr"
         stdout_msg = result.stdout[:500] if result.stdout else "no stdout"
