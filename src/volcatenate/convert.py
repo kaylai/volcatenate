@@ -51,7 +51,9 @@ def compute_cs_v_mf(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def normalize_volatiles(df: pd.DataFrame) -> pd.DataFrame:
-    """Add ``_norm`` columns for H2O, CO2, S relative to initial (row 0) values.
+    """
+    # TODO check whether this breaks fidelity with any of the original backends
+    Add ``_norm`` columns for H2O, CO2, S relative to initial (row 0) values.
 
     Modifies *df* in place and returns it for chaining.
 

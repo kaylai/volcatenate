@@ -145,19 +145,19 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
                     out[col.P_BARS] = out[candidate]
                 break
 
-    # --- Handle vapor weight column ---
+    # --- Handle vapor wt% -> wt fraction ---
     if col.VAPOR_WT not in out.columns:
         for candidate in _VAPOR_WT_CANDIDATES:
             if candidate in out.columns:
-                # MAGEC gives wt% — convert to fraction (0–1)
+                # MAGEC gives wt% — convert to wt fraction
                 out[col.VAPOR_WT] = out[candidate] / 100.0
                 break
 
-    # --- Handle H2O in ppm (MAGEC v1b gives melt H2O in ppm, not wt%) ---
+    # --- Handle H2O in ppm -> wt% ---
     if col.H2OT_M_WTPC not in out.columns and "H2O (ppm)" in out.columns:
         out[col.H2OT_M_WTPC] = out["H2O (ppm)"] / 10000.0
 
-    # --- Handle vapor species in mol% (MAGEC v1b output) ---
+    # --- Handle vapor species in mol% -> mol fraction ---
     for molpct_col, std_col in _VAPOR_MOLPCT.items():
         if molpct_col in out.columns and std_col not in out.columns:
             out[std_col] = out[molpct_col] / 100.0
@@ -171,7 +171,7 @@ def convert(df: pd.DataFrame) -> pd.DataFrame:
                 rename_map[raw_name] = std_name
     out.rename(columns=rename_map, inplace=True)
 
-    # --- Drop MAGEC section-header columns (non-data noise) ---
+    # --- Drop MAGEC section-header columns ---
     _SECTION_HEADERS = {"Vapor:", "Melt:", "Track phases:", "fugacity:"}
     out.drop(
         columns=[c for c in _SECTION_HEADERS if c in out.columns],
