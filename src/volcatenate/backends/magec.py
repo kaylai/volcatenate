@@ -364,12 +364,13 @@ class Backend(ModelBackend):
 def _resolve_magec_redox(comp: MeltComposition, cfg) -> tuple[str, float]:
     """Pick the (redox_option, redox_value) pair to send to MAGEC.
 
-    Behavior depends on :class:`~volcatenate.config.MAGECConfig.redox_source`:
+    Behavior depends on :class:`~volcatenate.config.MAGECConfig.redox_source`.
+    The chosen indicator is passed through unchanged; this never converts one
+    indicator into another:
 
     - ``"auto"`` (default): honors ``cfg.redox_option`` if the matching
-      indicator is on the comp; otherwise falls through to values defined in the
-      MeltComposition object or the input CSV file or python dict in the order:
-      "fe3fet", "dfmq".
+      indicator is on the comp; otherwise uses ``Fe3+/FeT`` if available;
+      otherwise raises ``ValueError``.
     - ``"fe3fet"`` or ``"dfmq"``: require that exact column label; raise ValueError
     if missing.
 

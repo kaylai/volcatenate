@@ -564,17 +564,12 @@ class MAGECConfig:
     -----
     The high-leverage / gotcha fields are these:
     - ``redox_source`` — how the wrapper picks the redox indicator to send to MAGEC, which only
-    natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``:
+    natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``. The wrapper passes the
+    chosen indicator through unchanged; it never converts one indicator into another:
         - ``"auto"`` (default): honor ``redox_option`` if the matching column is on the sample;
-        otherwise prefer ``Fe3+/FeT`` if available; otherwise compute Fe3+/FeT from
-        ``dNNO`` / ``dFMQ`` via Kress & Carmichael (1991) inversion at 1 bar (a substantively
-        different calculation than MAGEC's own equations, logged at WARNING).
+        otherwise prefer ``Fe3+/FeT`` if available; otherwise raise ``ValueError``.
         - ``"fe3fet"`` / ``"dfmq"``: require that exact indicator on the sample; raise
         ``ValueError`` if missing.
-        - ``"kc91_from_buffer"``: explicitly opt into the KC91 inversion even when Fe3+/FeT is also
-        available — useful for diagnostics or for like-with-like comparisons across backends.
-        - ``"dnno"``: raises informatively; MAGEC does not natively accept dNNO and the user must
-        pick ``kc91_from_buffer`` or ``dfmq`` instead.
     - ``timeout`` — MATLAB subprocesses are killed after this many seconds. MAGEC can hang
     indefinitely when the saturation pressure is outside the search range; bumping ``p_start_kbar``
     is usually the fix.
@@ -611,24 +606,17 @@ class MAGECConfig:
 
     # ── Redox selection ──────────────────────────────────────────────
     # ``redox_option`` is the column name MAGEC will read.
-    # ``redox_source`` controls how strictly that choice is enforced
-    # and whether the wrapper is allowed to do its own KC91 conversion
-    # when only buffer-relative redox (dNNO / dFMQ) is on the sample:
+    # ``redox_source`` controls how strictly that choice is enforced.
+    # The wrapper passes the chosen indicator through unchanged and
+    # never converts one indicator into another:
     #
-    #   "auto"               — current behavior. Honors redox_option
-    #                          when possible, falls through to whichever
-    #                          indicator the comp does have, and as a
-    #                          last resort computes Fe3+/FeT from
-    #                          dNNO/dFMQ via KC91 + Frost-1991 buffer
-    #                          at 1 bar (a substantively different
-    #                          calculation, logged at WARNING).
-    #   "fe3fet" / "dfmq" / "dnno"
-    #                        — require that exact indicator on the
+    #   "auto"               — honor redox_option when its column is on
+    #                          the sample, otherwise use Fe3+/FeT if
+    #                          available, otherwise raise ValueError.
+    #   "fe3fet" / "dfmq"    — require that exact indicator on the
     #                          sample; raise ValueError if missing.
-    #   "kc91_from_buffer"   — explicitly opt into the KC91 conversion
-    #                          even when Fe3+/FeT is also available.
     redox_option: str = "Fe3+/FeT"  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
-    redox_source: Literal["auto", "fe3fet", "dfmq", "dnno", "kc91_from_buffer"] = "auto"
+    redox_source: Literal["auto", "fe3fet", "dfmq"] = "auto"
     p_start_kbar: float = 3.0
     p_final_kbar: float = 0.001
     n_steps: int = 100
@@ -684,10 +672,10 @@ class SulfurXConfig:
     Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
     dataclass):
     - Sample name, ``T_C``, all major oxides, all volatile concentrations
-    - The starting ``delta_FMQ`` is computed by
-    :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade:
-    ``comp.dFMQ`` direct -> Fe3+/FeT via KC91 inversion -> ``comp.dNNO`` via Frost-1991 buffer
-    offset -> ``ValueError`` if none are available.
+    - The starting ``delta_FMQ`` is taken straight from ``comp.dFMQ`` by
+    :func:`~volcatenate.backends.sulfurx._resolve_sulfurx_redox`. SulfurX's native redox input is
+    ``delta_FMQ``; the wrapper passes it through unchanged and does not synthesize it from
+    ``Fe3FeT`` or ``dNNO``. Raises ``ValueError`` if ``comp.dFMQ`` is absent.
 
     Always managed by volcatenate (you cannot set these here):
     - SulfurX ships with a hardcoded Fuego reference composition in its internal ``MeltComposition``
@@ -1111,7 +1099,7 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     (
         "magec",
         "redox_source",
-    ): "'auto' | 'fe3fet' | 'dfmq' | 'kc91_from_buffer' — strict modes raise on missing data",
+    ): "'auto' | 'fe3fet' | 'dfmq' — strict modes raise on missing data; no conversion",
     ("magec", "p_start_kbar"): "SatP search start pressure (kbar)",
     ("magec", "p_final_kbar"): "SatP search end pressure (kbar)",
     ("magec", "n_steps"): "Number of pressure steps for SatP search",
@@ -1215,10 +1203,10 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  - 'Reference' column = 'auto_satP' (we always use auto sat-P search,",
         "    not a user-supplied initial pressure via 'Reference P (kbar)')",
         "Fallback chain when redox_source = 'auto':",
-        "  cfg.redox_option (if present)  →  Fe3+/FeT  →  KC91 from dNNO/dFMQ",
-        "  ↑ The KC91 step is a substantively different calculation; logged at WARNING.",
-        "  Use redox_source='kc91_from_buffer' to opt into it explicitly, or",
-        "  redox_source='fe3fet'/'dfmq' to refuse it and raise on missing data.",
+        "  cfg.redox_option (if present)  →  Fe3+/FeT  →  raise",
+        "  The wrapper passes the chosen indicator through unchanged; it does",
+        "  not convert one indicator into another. Use redox_source='fe3fet'/",
+        "  'dfmq' to require that exact indicator and raise on missing data.",
         "See docs/config_options.md for the full mapping.",
     ],
     "sulfurx": [
@@ -1226,14 +1214,15 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "Always sourced from the sample composition (NOT this YAML):",
         "  - Sample name, T_C, all major oxides",
         "  - H2O (wt%), CO2 (→ ppm), S (→ ppm)",
-        "  - Initial delta_FMQ from the redox indicator on the sample (see below)",
+        "  - Initial delta_FMQ taken straight from comp.dFMQ (see below)",
         "Always managed by volcatenate (NOT exposed here):",
         "  - SulfurX bundles a hardcoded reference composition (Fuego) into",
         "    its internal MeltComposition class. The volcatenate wrapper",
         "    monkey-patches that class so SulfurX uses YOUR sample composition.",
-        "Fallback chain (in _compute_delta_fmq):",
-        "  comp.dFMQ (direct)  →  Fe3+/FeT via KC91 inversion  →  comp.dNNO via Frost-1991",
-        "  Logs the choice at INFO; raises ValueError if none are available.",
+        "Redox (in _resolve_sulfurx_redox):",
+        "  comp.dFMQ passed through unchanged; raises ValueError if absent.",
+        "  SulfurX's native redox input is delta_FMQ; the wrapper does not",
+        "  synthesize it from Fe3FeT or dNNO. Supply dFMQ directly.",
         "See docs/config_options.md for the full mapping.",
     ],
 }

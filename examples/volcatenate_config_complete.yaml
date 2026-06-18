@@ -205,10 +205,10 @@ evo:
 #   - 'Reference' column = 'auto_satP' (we always use auto sat-P search,
 #     not a user-supplied initial pressure via 'Reference P (kbar)')
 # Fallback chain when redox_source = 'auto':
-#   cfg.redox_option (if present)  →  Fe3+/FeT  →  KC91 from dNNO/dFMQ
-#   ↑ The KC91 step is a substantively different calculation; logged at WARNING.
-#   Use redox_source='kc91_from_buffer' to opt into it explicitly, or
-#   redox_source='fe3fet'/'dfmq' to refuse it and raise on missing data.
+#   cfg.redox_option (if present)  →  Fe3+/FeT  →  raise
+#   The wrapper passes the chosen indicator through unchanged; it does
+#   not convert one indicator into another. Use redox_source='fe3fet'/
+#   'dfmq' to require that exact indicator and raise on missing data.
 # See docs/config_options.md for the full mapping.
 magec:
   solver_dir: ""  # Path to MAGEC_Solver_v1b.p directory (empty = auto-detect)
@@ -228,7 +228,7 @@ magec:
   gas_behavior: 1  # (1) real gas; (2) ideal
   o2_balance: 0  # (0) Total O balanced; (1) fixed fO2 buffer
   redox_option: Fe3+/FeT  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
-  redox_source: auto  # 'auto' | 'fe3fet' | 'dfmq' | 'kc91_from_buffer' — strict modes raise on missing data
+  redox_source: auto  # 'auto' | 'fe3fet' | 'dfmq' — strict modes raise on missing data; no conversion
   p_start_kbar: 3.0  # SatP search start pressure (kbar)
   p_final_kbar: 0.001  # SatP search end pressure (kbar)
   n_steps: 100  # Number of pressure steps for SatP search
@@ -239,14 +239,15 @@ magec:
 # Always sourced from the sample composition (NOT this YAML):
 #   - Sample name, T_C, all major oxides
 #   - H2O (wt%), CO2 (→ ppm), S (→ ppm)
-#   - Initial delta_FMQ from the redox indicator on the sample (see below)
+#   - Initial delta_FMQ taken straight from comp.dFMQ (see below)
 # Always managed by volcatenate (NOT exposed here):
 #   - SulfurX bundles a hardcoded reference composition (Fuego) into
 #     its internal MeltComposition class. The volcatenate wrapper
 #     monkey-patches that class so SulfurX uses YOUR sample composition.
-# Fallback chain (in _compute_delta_fmq):
-#   comp.dFMQ (direct)  →  Fe3+/FeT via KC91 inversion  →  comp.dNNO via Frost-1991
-#   Logs the choice at INFO; raises ValueError if none are available.
+# Redox (in _resolve_sulfurx_redox):
+#   comp.dFMQ passed through unchanged; raises ValueError if absent.
+#   SulfurX's native redox input is delta_FMQ; the wrapper does not
+#   synthesize it from Fe3FeT or dNNO. Supply dFMQ directly.
 # See docs/config_options.md for the full mapping.
 sulfurx:
   path: ""  # Path to SulfurX installation (empty = auto-detect)
