@@ -457,7 +457,6 @@ class EVoConfig:
         False  # If True, EVo prints a warning when sulfide saturation is reached
     )
     atomic_mass_set: bool = False
-    ocs: bool = False  # Include OCS as a gas species
     dp_min: int = 1
     dp_max: int = 100
     mass: int = 100

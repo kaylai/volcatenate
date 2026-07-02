@@ -149,7 +149,6 @@ evo:
   single_step: false  # Single-pressure run (only meaningful when find_saturation=false)
   s_sat_warn: false  # EVo prints a warning at sulfide saturation (false silences it)
   atomic_mass_set: false  # Use atomic mass fractions for H/C/S/N
-  ocs: false  # Include OCS as a gas species
   dp_min: 1  # Minimum pressure step (bar)
   dp_max: 100  # Maximum pressure step (bar)
   mass: 100  # System mass (g)
