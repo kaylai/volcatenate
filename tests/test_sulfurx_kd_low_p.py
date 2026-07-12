@@ -23,6 +23,8 @@ from volcatenate.config import (
     save_config,
 )
 
+from .compositions import KILAUEA as _CANONICAL_KILAUEA
+
 # ── YAML round-trip ─────────────────────────────────────────────────────────
 
 
@@ -117,24 +119,13 @@ class TestPatchKdLowP:
 # The warning lives inside ``_run_degassing``, which requires the real SulfurX
 # install.  Marked as integration so CI skips it when SulfurX is absent.
 
+# kd-low-P-test Kilauea, derived from the canonical composition: a distinct
+# sample name, lower CO2, and an explicit dNNO redox.
 _KILAUEA = {
+    **_CANONICAL_KILAUEA,
     "Sample": "KilaueaKdLowP",
-    "T_C": 1200.0,
-    "SiO2": 50.19,
-    "TiO2": 2.34,
-    "Al2O3": 12.79,
-    "FeOT": 11.34,
-    "MnO": 0.18,
-    "MgO": 9.23,
-    "CaO": 10.44,
-    "Na2O": 2.39,
-    "K2O": 0.43,
-    "P2O5": 0.27,
-    "H2O": 0.30,
     "CO2": 0.008,
-    "S": 0.15,
-    "Fe3FeT": 0.18,
-    "dNNO": -0.23,
+    "dFMQ": 0.55,
 }
 
 
@@ -147,7 +138,6 @@ def _fast_sulfurx_run_config(tmp_path, **sulfurx_kwargs):
     )
 
 
-@pytest.mark.integration
 class TestHighThresholdWarning:
     @pytest.mark.filterwarnings("ignore: invalid value encountered in ")
     # filters unrelated upstream sulfur_x warning

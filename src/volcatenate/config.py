@@ -28,7 +28,16 @@ from dataclasses import (
     replace,
     MISSING as dataclass_field_missing,
 )
-from typing import Any, Literal, Type, TypeVar
+from functools import lru_cache
+from typing import (
+    Any,
+    Literal,
+    Type,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from volcatenate.log import logger
 
@@ -191,7 +200,7 @@ class VESIcalConfig:
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"steps": 50, "final_pressure": 10.0}}
-    # Unknown field names are warned and skipped at resolution time.
+    # Unknown field names raise ValueError at resolution time.
     overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -371,7 +380,7 @@ class VolFeConfig:
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"gassing_style": "open", "scss": "Fortin15"}}
-    # Unknown field names are warned and skipped at resolution time.
+    # Unknown field names raise ValueError at resolution time.
     overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -448,7 +457,6 @@ class EVoConfig:
         False  # If True, EVo prints a warning when sulfide saturation is reached
     )
     atomic_mass_set: bool = False
-    ocs: bool = False  # Include OCS as a gas species
     dp_min: int = 1
     dp_max: int = 100
     mass: int = 100
@@ -531,7 +539,7 @@ class EVoConfig:
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"MORB": {"dp_max": 25}, "Fogo": {"p_start": 5000, "gas_system": "coh"}}
-    # Unknown field names are warned and skipped at resolution time.
+    # Unknown field names raise ValueError at resolution time.
     overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -564,17 +572,10 @@ class MAGECConfig:
     -----
     The high-leverage / gotcha fields are these:
     - ``redox_source`` — how the wrapper picks the redox indicator to send to MAGEC, which only
-    natively accepts ``Fe3+/FeT``, ``dFMQ``, ``logfO2``, or ``S6+/ST``:
-        - ``"auto"`` (default): honor ``redox_option`` if the matching column is on the sample;
-        otherwise prefer ``Fe3+/FeT`` if available; otherwise compute Fe3+/FeT from
-        ``dNNO`` / ``dFMQ`` via Kress & Carmichael (1991) inversion at 1 bar (a substantively
-        different calculation than MAGEC's own equations, logged at WARNING).
-        - ``"fe3fet"`` / ``"dfmq"``: require that exact indicator on the sample; raise
-        ``ValueError`` if missing.
-        - ``"kc91_from_buffer"``: explicitly opt into the KC91 inversion even when Fe3+/FeT is also
-        available — useful for diagnostics or for like-with-like comparisons across backends.
-        - ``"dnno"``: raises informatively; MAGEC does not natively accept dNNO and the user must
-        pick ``kc91_from_buffer`` or ``dfmq`` instead.
+    natively accepts ``Fe3+/FeT``, ``logfO2``, or ``S6+/ST``:
+        - ``"auto"`` (default): honor ``redox_option`` if its source is on the sample; otherwise use
+        ``Fe3+/FeT`` if present; otherwise raise ``ValueError``.
+        - ``"fe3fet"``: require ``Fe3+/FeT`` on the sample; raise ``ValueError`` if missing.
     - ``timeout`` — MATLAB subprocesses are killed after this many seconds. MAGEC can hang
     indefinitely when the saturation pressure is outside the search range; bumping ``p_start_kbar``
     is usually the fix.
@@ -610,25 +611,16 @@ class MAGECConfig:
     o2_balance: int = 0  # (0) Total O balanced; (1) fixed fO2 buffer
 
     # ── Redox selection ──────────────────────────────────────────────
-    # ``redox_option`` is the column name MAGEC will read.
-    # ``redox_source`` controls how strictly that choice is enforced
-    # and whether the wrapper is allowed to do its own KC91 conversion
-    # when only buffer-relative redox (dNNO / dFMQ) is on the sample:
+    # ``redox_option`` is the column name MAGEC will read. MAGEC accepts
+    # 'Fe3+/FeT', 'logfO2', or 'S6+/ST'. ``redox_source`` controls how strictly that
+    # choice is enforced. The wrapper passes the chosen indicator through
+    # unchanged and never converts one indicator into another:
     #
-    #   "auto"               — current behavior. Honors redox_option
-    #                          when possible, falls through to whichever
-    #                          indicator the comp does have, and as a
-    #                          last resort computes Fe3+/FeT from
-    #                          dNNO/dFMQ via KC91 + Frost-1991 buffer
-    #                          at 1 bar (a substantively different
-    #                          calculation, logged at WARNING).
-    #   "fe3fet" / "dfmq" / "dnno"
-    #                        — require that exact indicator on the
-    #                          sample; raise ValueError if missing.
-    #   "kc91_from_buffer"   — explicitly opt into the KC91 conversion
-    #                          even when Fe3+/FeT is also available.
-    redox_option: str = "Fe3+/FeT"  # 'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'
-    redox_source: Literal["auto", "fe3fet", "dfmq", "dnno", "kc91_from_buffer"] = "auto"
+    #   "auto"     — honor redox_option when its source is on the sample,
+    #                otherwise use Fe3+/FeT if present, otherwise raise.
+    #   "fe3fet"   — require Fe3+/FeT on the sample; raise if missing.
+    redox_option: str = "Fe3+/FeT"  # 'Fe3+/FeT', 'logfO2', or 'S6+/ST'
+    redox_source: Literal["auto", "fe3fet"] = "auto"
     p_start_kbar: float = 3.0
     p_final_kbar: float = 0.001
     n_steps: int = 100
@@ -639,7 +631,7 @@ class MAGECConfig:
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"p_start_kbar": 8.0}}
-    # Unknown field names are warned and skipped at resolution time.
+    # Unknown field names raise ValueError at resolution time.
     overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -684,10 +676,10 @@ class SulfurXConfig:
     Always sourced from the input :class:`~volcatenate.composition.MeltComposition` (not from this
     dataclass):
     - Sample name, ``T_C``, all major oxides, all volatile concentrations
-    - The starting ``delta_FMQ`` is computed by
-    :func:`~volcatenate.backends.sulfurx._compute_delta_fmq`, which has its own explicit cascade:
-    ``comp.dFMQ`` direct -> Fe3+/FeT via KC91 inversion -> ``comp.dNNO`` via Frost-1991 buffer
-    offset -> ``ValueError`` if none are available.
+    - The starting ``delta_FMQ`` is taken straight from ``comp.dFMQ`` by
+    :func:`~volcatenate.backends.sulfurx._resolve_sulfurx_redox`. SulfurX's native redox input is
+    ``delta_FMQ``; the wrapper passes it through unchanged and does not synthesize it from
+    ``Fe3FeT`` or ``dNNO``. Raises ``ValueError`` if ``comp.dFMQ`` is absent.
 
     Always managed by volcatenate (you cannot set these here):
     - SulfurX ships with a hardcoded Fuego reference composition in its internal ``MeltComposition``
@@ -726,7 +718,11 @@ class SulfurXConfig:
     constant_h2o: float = 2.7
     n_steps: int = 600  # Pressure grid steps for degassing
     fo2_tracker: int = 1  # 0 = buffered fO2, 1 = redox evolution
-    s_fe_choice: int = 1  # S speciation model: 0=Nash, 1=O'Neill&Mavrogenes
+    # S6+/S2- speciation model. 0 = Nash (2019); 1 = O'Neill & Mavrogenes
+    # (2022); 100 = Muth. Any other value selects the modified-Muth model with
+    # that value used as the last constant (10**(... - 2863/T + value)), so it
+    # is a float (a non-integer constant must not be truncated).
+    s_fe_choice: float = 1.0
     sigma: float = 0.005  # log10fO2 tolerance for redox calculation
     sulfide_pre: int = 0  # 0 = no sulfide precipitation, 1 = enabled
 
@@ -751,7 +747,7 @@ class SulfurXConfig:
 
     # Per-sample overrides: {sample_name: {field_name: value}}
     # Example: {"Fogo": {"n_steps": 100, "sigma": 0.001}}
-    # Unknown field names are warned and skipped at resolution time.
+    # Unknown field names raise ValueError at resolution time.
     overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -1085,8 +1081,8 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("evo", "fmq_model"): "FMQ buffer parameterisation",
     ("evo", "overrides"): "Per-sample overrides, e.g. {MORB: {dp_max: 25}}",
     # MAGEC
-    ("magec", "solver_dir"): "Path to MAGEC_Solver_v1b.p directory",
-    ("magec", "matlab_bin"): "Path to MATLAB binary",
+    ("magec", "solver_dir"): "Path to MAGEC_Solver_v1b.p directory (empty = auto-detect)",
+    ("magec", "matlab_bin"): "Path to MATLAB binary (empty = auto-detect)",
     ("magec", "sulfide_sat"): "(1) Yes; (0) No",
     ("magec", "sulfate_sat"): "(1) Yes; (0) No",
     ("magec", "graphite_sat"): "(1) Yes; (0) No",
@@ -1107,24 +1103,27 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
     ("magec", "solver"): "(1) lsqnonlin; (2) fsolve",
     ("magec", "gas_behavior"): "(1) real gas; (2) ideal",
     ("magec", "o2_balance"): "(0) Total O balanced; (1) fixed fO2 buffer",
-    ("magec", "redox_option"): "'logfO2', 'dFMQ', 'Fe3+/FeT', or 'S6+/ST'",
+    ("magec", "redox_option"): "'Fe3+/FeT', 'logfO2', or 'S6+/ST'",
     (
         "magec",
         "redox_source",
-    ): "'auto' | 'fe3fet' | 'dfmq' | 'kc91_from_buffer' — strict modes raise on missing data",
+    ): "'auto' | 'fe3fet' — strict mode raises on missing Fe3+/FeT; no conversion",
     ("magec", "p_start_kbar"): "SatP search start pressure (kbar)",
     ("magec", "p_final_kbar"): "SatP search end pressure (kbar)",
     ("magec", "n_steps"): "Number of pressure steps for SatP search",
     ("magec", "overrides"): "Per-sample overrides, e.g. {Fogo: {p_start_kbar: 8.0}}",
     ("magec", "timeout"): "MATLAB subprocess timeout (seconds)",
     # SulfurX
-    ("sulfurx", "path"): "Path to SulfurX installation",
+    ("sulfurx", "path"): "Path to SulfurX installation (empty = auto-detect)",
     ("sulfurx", "coh_model"): "0 = Iacono-Marziano, 1 = VolatileCalc",
     ("sulfurx", "slope_h2o"): "K2O-H2O relationship slope: K2O = a*H2O + b",
     ("sulfurx", "constant_h2o"): "K2O-H2O relationship intercept",
     ("sulfurx", "n_steps"): "Pressure grid steps for degassing",
     ("sulfurx", "fo2_tracker"): "0 = buffered fO2, 1 = redox evolution",
-    ("sulfurx", "s_fe_choice"): "S speciation: 0=Nash, 1=O'Neill&Mavrogenes",
+    (
+        "sulfurx",
+        "s_fe_choice",
+    ): "S speciation: 0=Nash, 1=O'Neill&Mavrogenes, 100=Muth; any other value = modified Muth (value is the last constant)",
     ("sulfurx", "sigma"): "log10fO2 tolerance for redox calculation",
     ("sulfurx", "sulfide_pre"): "0 = no sulfide precipitation, 1 = enabled",
     (
@@ -1214,11 +1213,11 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "Always managed by volcatenate (NOT exposed here):",
         "  - 'Reference' column = 'auto_satP' (we always use auto sat-P search,",
         "    not a user-supplied initial pressure via 'Reference P (kbar)')",
+        "MAGEC accepts Fe3+/FeT, logfO2, or S6+/ST; volcatenate sources Fe3+/FeT.",
         "Fallback chain when redox_source = 'auto':",
-        "  cfg.redox_option (if present)  →  Fe3+/FeT  →  KC91 from dNNO/dFMQ",
-        "  ↑ The KC91 step is a substantively different calculation; logged at WARNING.",
-        "  Use redox_source='kc91_from_buffer' to opt into it explicitly, or",
-        "  redox_source='fe3fet'/'dfmq' to refuse it and raise on missing data.",
+        "  cfg.redox_option (if its source is present)  →  Fe3+/FeT  →  raise",
+        "  The wrapper passes the chosen indicator through unchanged; it does",
+        "  not convert one indicator into another.",
         "See docs/config_options.md for the full mapping.",
     ],
     "sulfurx": [
@@ -1226,14 +1225,15 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "Always sourced from the sample composition (NOT this YAML):",
         "  - Sample name, T_C, all major oxides",
         "  - H2O (wt%), CO2 (→ ppm), S (→ ppm)",
-        "  - Initial delta_FMQ from the redox indicator on the sample (see below)",
+        "  - Initial delta_FMQ taken straight from comp.dFMQ (see below)",
         "Always managed by volcatenate (NOT exposed here):",
         "  - SulfurX bundles a hardcoded reference composition (Fuego) into",
         "    its internal MeltComposition class. The volcatenate wrapper",
         "    monkey-patches that class so SulfurX uses YOUR sample composition.",
-        "Fallback chain (in _compute_delta_fmq):",
-        "  comp.dFMQ (direct)  →  Fe3+/FeT via KC91 inversion  →  comp.dNNO via Frost-1991",
-        "  Logs the choice at INFO; raises ValueError if none are available.",
+        "Redox (in _resolve_sulfurx_redox):",
+        "  comp.dFMQ passed through unchanged; raises ValueError if absent.",
+        "  SulfurX's native redox input is delta_FMQ; the wrapper does not",
+        "  synthesize it from Fe3FeT or dNNO. Supply dFMQ directly.",
         "See docs/config_options.md for the full mapping.",
     ],
 }
@@ -1256,9 +1256,10 @@ def resolve_sample_config(cfg, sample: str):
     original ``cfg`` unchanged. Otherwise returns a shallow
     ``dataclasses.replace`` copy with each listed field set.
 
-    Unknown field names emit a warning via the volcatenate logger and
-    are skipped (the original value is kept). The ``overrides`` field
-    itself cannot be overridden — attempts are warned and skipped.
+    An unknown field name raises :class:`ValueError` (a typo or a removed
+    option should fail loudly, not silently no-op for that sample). The
+    ``overrides`` field itself cannot be overridden — attempting to do so also
+    raises.
     """
     sample_overrides = cfg.overrides.get(sample, {})
     if not sample_overrides:
@@ -1267,15 +1268,17 @@ def resolve_sample_config(cfg, sample: str):
     resolved = replace(cfg, overrides=dict(cfg.overrides))
     context = f"{type(cfg).__name__}.overrides['{sample}']"
     for k, v in sample_overrides.items():
-        if k not in field_map or k == "overrides":
-            logger.warning(
-                "[%s] Unknown override field '%s' for sample '%s' — ignored",
-                type(cfg).__name__,
-                k,
-                sample,
+        if k == "overrides":
+            raise ValueError(
+                f"{context}: cannot override the 'overrides' field itself."
             )
-            continue
+        if k not in field_map:
+            raise ValueError(
+                f"{context}: unknown override field '{k}' for sample "
+                f"'{sample}'."
+            )
         _validate_scalar_value(k, v, field_map[k].type, context)
+        _validate_literal_value(type(cfg), k, v, context)
         setattr(resolved, k, v)
     return resolved
 
@@ -1313,34 +1316,57 @@ def _format_value(val: object) -> str:
     return str(val)
 
 
-def save_config(config: RunConfig, path: str) -> str:
-    """Write a RunConfig to a commented YAML file.
+# Header for a user-saved config (save_config). User-owned — fine to edit.
+_USER_CONFIG_HEADER: list[str] = [
+    "# volcatenate configuration",
+    "# Generated with: volcatenate.config.save_config(RunConfig(), path)",
+    "#",
+    "# Edit only the settings you need to change.",
+    "# Missing keys use defaults (paper settings).",
+    "# Load with: config = volcatenate.config.load_config(path)",
+]
 
-    The generated file includes inline comments describing each
-    setting, making it easy to edit.  All current values are written,
-    so the file serves as both documentation and configuration.
+# Header for the bundled default_config.yaml — a generated artifact whose
+# single source of truth is config.py. Hand edits are overwritten and fail the
+# sync test (see tests/test_config_sync.py).
+_DEFAULT_CONFIG_HEADER: list[str] = [
+    "# volcatenate default configuration",
+    "#",
+    "# DO NOT EDIT THIS FILE DIRECTLY.",
+    "# It is generated from the dataclass defaults and field comments in",
+    "# src/volcatenate/config.py, which is the single source of truth. Hand",
+    "# edits will be overwritten and will fail the default-config sync test.",
+    "# To change a default or a comment, edit config.py and regenerate:",
+    "#   python -c \"from volcatenate.config import regenerate_default_config; regenerate_default_config()\"",  # noqa: E501
+    "#",
+    "# To use these settings, copy this file and edit the copy:",
+    "#   import shutil, volcatenate",
+    "#   shutil.copy(volcatenate.default_config_path(), \"volcatenate_config.yaml\")",
+    "# then load with: config = volcatenate.config.load_config(\"volcatenate_config.yaml\")",
+    "# Missing keys use the defaults (paper settings).",
+    "# See docs/config_options.md for what each field does in the underlying model.",
+]
 
-    Parameters
-    ----------
-    config : RunConfig
-        Configuration to save.
-    path : str
-        Output YAML file path.
+# (section, field) pairs whose value is an auto-detected path. Blanked when
+# generating the bundled default so it carries no machine-specific paths; an
+# empty string tells load_config to re-run auto-detection.
+_AUTODETECT_PATH_FIELDS = {
+    ("magec", "solver_dir"),
+    ("magec", "matlab_bin"),
+    ("sulfurx", "path"),
+}
 
-    Returns
-    -------
-    str
-        The path that was written to.
+
+def _render_config_yaml(config: RunConfig, header_lines: list[str]) -> str:
+    """Render a RunConfig to commented-YAML text with the given header.
+
+    All field values and inline comments come from ``config`` and
+    :data:`_FIELD_COMMENTS` / :data:`_SECTION_PREAMBLE` — i.e. from config.py.
+    Shared by :func:`save_config` and the bundled-default generator so both
+    produce byte-identical structure.
     """
-    lines: list[str] = [
-        "# volcatenate configuration",
-        "# Generated with: volcatenate.config.save_config(RunConfig(), path)",
-        "#",
-        "# Edit only the settings you need to change.",
-        "# Missing keys use defaults (paper settings).",
-        "# Load with: config = volcatenate.config.load_config(path)",
-        "",
-    ]
+    lines: list[str] = list(header_lines)
+    lines.append("")
 
     # Top-level scalar fields
     for f in fields(RunConfig):
@@ -1392,11 +1418,57 @@ def save_config(config: RunConfig, path: str) -> str:
             lines.append(line)
 
     lines.append("")  # trailing newline
+    return "\n".join(lines)
 
+
+def save_config(config: RunConfig, path: str) -> str:
+    """Write a RunConfig to a commented YAML file.
+
+    The generated file includes inline comments describing each
+    setting, making it easy to edit.  All current values are written,
+    so the file serves as both documentation and configuration.
+
+    Parameters
+    ----------
+    config : RunConfig
+        Configuration to save.
+    path : str
+        Output YAML file path.
+
+    Returns
+    -------
+    str
+        The path that was written to.
+    """
+    text = _render_config_yaml(config, _USER_CONFIG_HEADER)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines))
+        fh.write(text)
+    return path
 
+
+def default_config_text() -> str:
+    """Return the canonical text of the bundled ``default_config.yaml``.
+
+    Built from :class:`RunConfig` defaults with auto-detected paths blanked, so
+    it is deterministic and machine-independent. This is what the bundled file
+    must equal; the sync test compares the two.
+    """
+    cfg = RunConfig()
+    for section, field_name in _AUTODETECT_PATH_FIELDS:
+        setattr(getattr(cfg, section), field_name, "")
+    return _render_config_yaml(cfg, _DEFAULT_CONFIG_HEADER)
+
+
+def regenerate_default_config(path: str | None = None) -> str:
+    """Regenerate the bundled ``default_config.yaml`` from config.py.
+
+    Run this after changing any dataclass default, :data:`_FIELD_COMMENTS`, or
+    :data:`_SECTION_PREAMBLE`. Writes to the bundled path by default.
+    """
+    path = path or _DEFAULT_CONFIG_PATH
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(default_config_text())
     return path
 
 
@@ -1477,6 +1549,50 @@ def _validate_scalar_value(
     )
 
 
+@lru_cache(maxsize=None)
+def _literal_choices(cls: type) -> dict[str, tuple]:
+    """Map each ``Literal``-annotated field of ``cls`` to its allowed values.
+
+    Annotations are stored as strings (``from __future__ import annotations``),
+    so they are resolved with :func:`typing.get_type_hints` before inspecting
+    each field's origin.  Non-``Literal`` fields are omitted.  Cached per class
+    since the annotations never change at runtime.
+    """
+    try:
+        hints = get_type_hints(cls)
+    except Exception:
+        return {}
+    return {
+        name: get_args(hint)
+        for name, hint in hints.items()
+        if get_origin(hint) is Literal
+    }
+
+
+def _validate_literal_value(
+    cls: type,
+    field_name: str,
+    value: Any,
+    context: str,
+) -> None:
+    """Raise ValueError if ``value`` is not a member of a ``Literal`` field's set.
+
+    No-op for fields whose annotation is not a ``Literal``.  The message lists the
+    allowed values so the user can see what to use — this is what catches a
+    removed enum value (e.g. a ``redox_source`` option that no longer exists)
+    instead of letting it fall through to a silent default path.
+    """
+    choices = _literal_choices(cls).get(field_name)
+    if choices is None:
+        return
+    if value not in choices:
+        allowed = ", ".join(repr(c) for c in choices)
+        raise ValueError(
+            f"{context}: field '{field_name}' got {value!r}, which is not one "
+            f"of the allowed values: {allowed}."
+        )
+
+
 def _build_dataclass(
     cls: Type[T],
     data: dict,
@@ -1539,39 +1655,13 @@ def _build_dataclass(
             continue
         # Validate scalar primitive types and raise a useful error on mismatch.
         _validate_scalar_value(k, v, f.type, section_label)
+        # Validate Literal-typed fields against their allowed value set.
+        _validate_literal_value(cls, k, v, section_label)
         # Coerce types where needed (YAML may parse ints as floats)
         if f.type == "int" and isinstance(v, float):
             v = int(v)
         filtered[k] = v
     return cls(**filtered)
-
-
-def _migrate_deprecated_keys(section_name: str, section_data: dict) -> None:
-    """Mutate ``section_data`` in place to fold deprecated keys into
-    their replacements. Emits a deprecation warning for each migration.
-    """
-    if section_name == "vesical" and "model" in section_data:
-        section_data.pop("model")
-        logger.warning(
-            "vesical.model is deprecated and ignored; the VESIcal solubility "
-            "model is now selected by backend name (e.g. 'VESIcal_Iacono', "
-            "'VESIcal_Dixon', 'VESIcal_MS') passed to the calculate_* "
-            "functions. Remove vesical.model from your config to silence "
-            "this warning."
-        )
-
-    if section_name == "magec" and "p_start_overrides" in section_data:
-        old = section_data.pop("p_start_overrides") or {}
-        new = section_data.setdefault("overrides", {})
-        for sample, p_start in old.items():
-            # New-shape entry wins on conflict.
-            entry = new.setdefault(sample, {})
-            entry.setdefault("p_start_kbar", p_start)
-        logger.warning(
-            "magec.p_start_overrides is deprecated; folded into "
-            "magec.overrides as '<sample>: {p_start_kbar: <value>}'. "
-            "Update your config to silence this warning."
-        )
 
 
 def load_config(path: str) -> RunConfig:
@@ -1609,13 +1699,13 @@ def load_config(path: str) -> RunConfig:
             continue
         if f.name in raw:
             _validate_scalar_value(f.name, raw[f.name], f.type, top_level_label)
+            _validate_literal_value(RunConfig, f.name, raw[f.name], top_level_label)
             kwargs[f.name] = raw[f.name]
 
     # Sub-config sections
     for section_name, cls in _SECTION_CLASSES.items():
         if section_name in raw and isinstance(raw[section_name], dict):
             section_data = raw[section_name]
-            _migrate_deprecated_keys(section_name, section_data)
             kwargs[section_name] = _build_dataclass(
                 cls,
                 section_data,

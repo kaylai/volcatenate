@@ -34,7 +34,7 @@ The CSV has one row per sample.
 | ------------------------------------- | -------------------------------------------------------------------------- |
 | `FeOT` (or `FeO*`)                | Total iron as FeO, wt%. The most common form.                              |
 | `FeO`, `Fe2O3`                    | Speciated iron, both wt%. Supply both*or* just `FeOT`, not a mix.      |
-| `Fe3FeT`                            | Ferric ratio (0–1). Used for redox initialization on every backend.       |
+| `Fe3FeT`                            | Ferric ratio (0–1). Accepted by EVo, VolFe, and MAGEC (not SulfurX).       |
 | `dFMQ` (or `DFMQ`)                | log fO₂ relative to FMQ buffer.                                           |
 | `dNNO` (or `DNNO`)                | log fO₂ relative to NNO buffer.                                           |
 | `Cr2O3`                             | Used by MAGEC's anhydrous renormalization; ignored by every other backend. |
@@ -45,9 +45,18 @@ Header matching is exact for canonical names but accepts the common aliases show
 
 ### Redox columns — what to provide
 
-Different backends prefer different redox indicators. The simplest rule: **supply whatever you have, and let the wrapper pick.** All four real backends fall back through Fe3+/FeT → dNNO → dFMQ when their preferred column is missing (the propagation doc has the per-backend cascade). If you want to *force* a specific indicator, set the corresponding strict-mode option (`evo.fo2_source`, `volfe.fo2_source`, `magec.redox_source`) and the wrapper will raise rather than silently substitute.
+Different backends accept different redox indicators, and the wrapper passes whatever you supply straight through — it does **not** convert one indicator into another on a backend's behalf. So a sample must carry an indicator each backend you run can actually accept:
 
-You only need *one* of `Fe3FeT`, `dNNO`, `dFMQ` per sample for a run to proceed. Providing more than one is fine; the wrapper picks per-backend per-config.
+| Backend | Accepts                          | Notes                                                                 |
+| ------- | -------------------------------- | -------------------------------------------------------------------- |
+| EVo     | `Fe3FeT`, `dNNO`, `dFMQ`         | `auto` falls back Fe3+/FeT → dNNO → dFMQ across these three.          |
+| VolFe   | `Fe3FeT`, `dNNO`, `dFMQ`         | `auto` falls back Fe3+/FeT → dNNO → dFMQ across these three.          |
+| MAGEC   | `Fe3FeT` (also `logfO2`, `S6+/ST`) | The wrapper sources `Fe3FeT` only. |
+| SulfurX | `dFMQ`                           | Its native input is `delta_FMQ`; requires `dFMQ`.                     |
+
+If a backend's accepted indicator is missing on the sample, that backend raises `ValueError` rather than substituting. There is no single indicator that all four backends accept: MAGEC needs `Fe3FeT`, while SulfurX needs `dFMQ`. To run every backend on the same sample, supply both a `Fe3FeT` value (for MAGEC, EVo, and VolFe) and a `dFMQ` value (for SulfurX), derived consistently from the same fO2 at the run's T, P. If you have only one indicator and want a backend that cannot consume it, convert to the accepted indicator yourself, using whichever fO2 model your study has standardized on, before the run — volcatenate never converts between redox indicators. The strict-mode options (`evo.fo2_source`, `volfe.fo2_source`, `magec.redox_source`) make a backend raise on a specific missing indicator rather than fall back.
+
+You need at least one indicator each backend you run can accept. Providing more than one is fine; each backend picks the one it accepts per its config.
 
 ## Option 2 — Python dict
 
@@ -88,6 +97,17 @@ fuego = MeltComposition(
 A list of `MeltComposition` instances also works.
 
 This is the lowest-level entry point. Both the CSV and dict paths build `MeltComposition` objects internally, so anything you can do via CSV you can do via `MeltComposition` and vice versa.
+
+### Editing one in place
+
+`MeltComposition` is a plain dataclass, so you can change any field by assignment — handy when most samples share a value but one backend needs a different redox indicator:
+
+```python
+fuego.dFMQ = 1.17   # set a value SulfurX can read
+fuego.H2O = 4.5     # any other field works the same way
+```
+
+The change sticks on that object. If you need an independent copy — say, a different fO₂ for one backend without touching another run's samples — read the CSV again rather than mutating a shared list.
 
 ## What "the sample" means in this documentation
 

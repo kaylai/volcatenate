@@ -13,6 +13,23 @@ from volcatenate.config import RunConfig, EVoConfig
 config = RunConfig(evo=EVoConfig(p_stop=10))
 ```
 
+Fields are plain attributes — assigning one mutates the config in place and the new value sticks. Nested backend settings live one level down (`config.magec`, `config.evo`, …):
+
+```python
+config.output_dir = "my_output"       # top-level field
+config.magec.redox_source = "fe3fet"  # nested backend field
+```
+
+To reuse one config across several `run_comparison` calls, set the field right before each call:
+
+```python
+config.save_bundle = "run_bundle.json"
+run_comparison(..., config=config)
+
+config.save_bundle = "run_bundle_SulfurX.json"
+run_comparison(..., config=config)
+```
+
 ### YAML
 
 ```python
@@ -44,7 +61,7 @@ This file covers the *mechanics* of the config system — how to build, load, sa
 
 In short:
 
-- **This file**: how to construct a config, where YAML lands in the dataclass, how per-sample overrides resolve, deprecated-key migrations.
+- **This file**: how to construct a config, where YAML lands in the dataclass, how per-sample overrides resolve.
 - **config_options.md**: every YAML field listed once, with a plain-English description of what it does.
 
 ## Backend sections
@@ -102,38 +119,6 @@ under `overrides` use the global defaults from the rest of the section.
 - Single-sample direct calls
   (`backend.calculate_degassing(comp, config)`) skip sample-name validation.
   They have no full sample list to compare against.
-
-### Backwards compatibility
-
-MAGEC previously had a per-field `p_start_overrides: {sample: value}` shim.
-Configs that still use it load successfully with a deprecation warning, and
-the values are folded into `magec.overrides`. Update your configs to silence
-the warning:
-
-```yaml
-# Old (still works, but deprecated):
-magec:
-  p_start_overrides: {Fogo: 8.0}
-
-# New:
-magec:
-  overrides:
-    Fogo: {p_start_kbar: 8.0}
-```
-
-VESIcal previously had a `vesical.model: <SolubilityModel>` field that picked
-which solubility model to use for the bare `"VESIcal"` backend. The bare
-backend has been removed — request a named variant directly. Configs with
-the old field load with a deprecation warning and the field is ignored:
-
-```yaml
-# Old (still loads, but deprecated and ignored):
-vesical:
-  model: IaconoMarziano
-
-# New: drop the field, then request the variant by name:
-#   volcatenate.calculate_degassing(comp, models=["VESIcal_Iacono", ...])
-```
 
 ## Loading and saving
 

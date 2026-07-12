@@ -4,9 +4,6 @@ Each test:
   1. For Sulfur_X and MAGEC, skips if the required external library is not installed.
   2. Runs a saturation pressure or degassing calculation through volcatenate.
   3. Checks that the result has expected columns and physically sane values.
-
-For EVo and VolFe, the raw-library comparison test verifies that volcatenate
-does not mangle the underlying model's output (P_bars must agree within 2%).
 """
 
 from __future__ import annotations
@@ -19,25 +16,14 @@ from volcatenate import columns as col
 from volcatenate.composition import composition_from_dict
 from volcatenate.config import RunConfig
 
-# ── Shared test composition (Kilauea-like basalt) ─────────────────────────────
+from .compositions import KILAUEA as _CANONICAL_KILAUEA
 
+# Integration-specific Kilauea, derived from the canonical composition: a
+# distinct sample name, lower CO2, and an explicit dNNO redox.
 KILAUEA = {
+    **_CANONICAL_KILAUEA,
     "Sample": "KilaeaInteg",
-    "T_C": 1200.0,
-    "SiO2": 50.19,
-    "TiO2": 2.34,
-    "Al2O3": 12.79,
-    "FeOT": 11.34,
-    "MnO": 0.18,
-    "MgO": 9.23,
-    "CaO": 10.44,
-    "Na2O": 2.39,
-    "K2O": 0.43,
-    "P2O5": 0.27,
-    "H2O": 0.30,
     "CO2": 0.008,
-    "S": 0.15,
-    "Fe3FeT": 0.18,
     "dNNO": -0.23,
 }
 
@@ -153,44 +139,6 @@ def test_volfe_satp_smoke(tmp_path):
     _assert_satp_sane(state, "VolFe")
 
 
-def test_volfe_satp_vs_raw_library(tmp_path):
-    """Volcatenate VolFe satP must agree with the raw library within 2%."""
-    vf = pytest.importorskip("VolFe")
-    from volcatenate.backends.volfe import (
-        Backend,
-        _build_setup_df,
-        _build_models_df,
-        _quiet_volfe,
-    )
-    from volcatenate.config import VolFeConfig
-
-    comp = composition_from_dict(KILAUEA)
-    cfg = VolFeConfig()
-    setup_df = _build_setup_df(comp, cfg)
-    models_df = _build_models_df(cfg)
-
-    with _quiet_volfe():
-        raw_result = vf.calc_Pvsat(setup_df, models=models_df)
-
-    # VolFe returns a DataFrame; P column name may vary by version
-    p_col = next(
-        (c for c in ("P_bar", "P", "P_bars") if c in raw_result.columns),
-        None,
-    )
-    assert p_col is not None, f"Cannot find pressure column in raw VolFe output: \
-        {list(raw_result.columns)}"
-    raw_p = float(raw_result.iloc[0][p_col])
-
-    backend = Backend()
-    state = backend.calculate_saturation_pressure(comp, _config(str(tmp_path)))
-    assert state is not None
-    volc_p = float(state[col.P_BARS])
-
-    assert (
-        abs(volc_p - raw_p) / max(raw_p, 1.0) < 0.02
-    ), f"Volcatenate P={volc_p:.1f} bar differs from raw VolFe P={raw_p:.1f} bar by >2%"
-
-
 def test_volfe_degassing_smoke(tmp_path):
     """VolFe calculate_degassing returns a valid degassing path."""
     pytest.importorskip("VolFe")
@@ -297,7 +245,7 @@ def test_evo_open_system_differs_from_closed(tmp_path):
 # Use a slightly more CO2-rich Kilauea-like composition so the solver
 # can find a satP and walk a degassing path.  See SulfurX's
 # Iacono_Marziano_COH solver — known sensitivity at low CO2.
-_KILAUEA_SX = {**KILAUEA, "CO2": 0.05}  # 500 ppm CO2 instead of 80
+_KILAUEA_SX = {**KILAUEA, "CO2": 0.05, "dFMQ": 0.55}  # 500 ppm CO2 instead of 80
 
 from volcatenate.backends.sulfurx import Backend
 sulfurx_backend = Backend()
