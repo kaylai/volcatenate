@@ -37,7 +37,7 @@ The CSV has one row per sample.
 | `Fe3FeT`                            | Ferric ratio (0–1). Accepted by EVo, VolFe, and MAGEC (not SulfurX).       |
 | `dFMQ` (or `DFMQ`)                | log fO₂ relative to FMQ buffer.                                           |
 | `dNNO` (or `DNNO`)                | log fO₂ relative to NNO buffer.                                           |
-| `Cr2O3`                             | Used by MAGEC's anhydrous renormalization; ignored by every other backend. |
+| `Cr2O3`                             | Passed through to MAGEC's input; ignored by every other backend.           |
 | `N_ppm` (or `Nppm`, `Nitrogen`) | Bulk nitrogen in ppm. Used by EVo when `evo.nitrogen_set=True`.          |
 | `Xppm`                              | Inert trace species (Ar/Ne) — VolFe only.                                 |
 

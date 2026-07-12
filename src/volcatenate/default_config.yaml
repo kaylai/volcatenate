@@ -194,7 +194,7 @@ evo:
 #   - Bulk_H = H2O × 2/18, Bulk_C = CO2 × 12/44, Bulk_S = S
 #     (volcatenate does the molecular→elemental conversion using the
 #     rounded molecular weights from the Sun & Yao 2024 example files)
-#   - Anhydrous renormalization to 100 wt% before passing to MAGEC
+#   - Oxides pass through exactly as given; MAGEC renormalizes internally
 # Always managed by volcatenate (NOT exposed here):
 #   - 'Reference' column = 'auto_satP' (we always use auto sat-P search,
 #     not a user-supplied initial pressure via 'Reference P (kbar)')

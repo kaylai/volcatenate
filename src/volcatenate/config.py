@@ -558,8 +558,8 @@ class MAGECConfig:
       Volcatenate does a molecular to elemental conversion to send volatile values to MAGEC using
       rounded molecular weights matching the Sun & Yao 2024 example files; MAGEC does not do this
       internally.
-      - All oxides are renormalized to a 100 wt% anhydrous total before being passed to MAGEC, since
-      MAGEC expects volatile-free oxide totals.
+      - All oxides are passed to MAGEC exactly as they appear on the sample; MAGEC renormalizes
+      oxides internally.
 
     Always managed by volcatenate (you cannot set these here):
       - MAGEC's ``Reference`` column is hardcoded to ``"auto_satP"``, which puts MAGEC in
@@ -1026,7 +1026,6 @@ _FIELD_COMMENTS: dict[tuple[str, str], str] = {
         "s_sat_warn",
     ): "EVo prints a warning at sulfide saturation (false silences it)",
     ("evo", "atomic_mass_set"): "Use atomic mass fractions for H/C/S/N",
-    ("evo", "ocs"): "Include OCS as a gas species",
     ("evo", "dp_min"): "Minimum pressure step (bar)",
     ("evo", "dp_max"): "Maximum pressure step (bar)",
     ("evo", "mass"): "System mass (g)",
@@ -1209,7 +1208,7 @@ _SECTION_PREAMBLE: dict[str, list[str]] = {
         "  - Bulk_H = H2O × 2/18, Bulk_C = CO2 × 12/44, Bulk_S = S",
         "    (volcatenate does the molecular→elemental conversion using the",
         "    rounded molecular weights from the Sun & Yao 2024 example files)",
-        "  - Anhydrous renormalization to 100 wt% before passing to MAGEC",
+        "  - Oxides pass through exactly as given; MAGEC renormalizes internally",
         "Always managed by volcatenate (NOT exposed here):",
         "  - 'Reference' column = 'auto_satP' (we always use auto sat-P search,",
         "    not a user-supplied initial pressure via 'Reference P (kbar)')",
